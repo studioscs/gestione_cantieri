@@ -1,0 +1,3029 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GestioneCantiere — SCS</title>
+<style>
+:root{
+  --primary:#1F3864;--accent:#2E75B6;--accent-light:#D1ECF1;--surface:#F8F9FA;
+  --border:#DEE2E6;--text:#212529;--muted:#6C757D;--white:#FFFFFF;
+  --green:#155724;--green-bg:#D4EDDA;--yellow:#856404;--yellow-bg:#FFF3CD;
+  --red:#721C24;--red-bg:#F8D7DA;--blue:#0C5460;--blue-bg:#D1ECF1;
+  --font:"Helvetica Neue",Helvetica,Arial,sans-serif;
+  --shadow:0 1px 3px rgba(0,0,0,0.08);--shadow-md:0 4px 12px rgba(0,0,0,0.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);font-size:14px;color:var(--text);background:var(--surface);line-height:1.5}
+h1{font-size:20px;font-weight:700}h2{font-size:16px;font-weight:600}h3{font-size:14px;font-weight:600}
+.app{display:flex;flex-direction:column;min-height:100vh}
+.topbar{background:var(--primary);color:white;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.topbar-brand{display:flex;align-items:center;gap:12px}
+.topbar-brand span{font-size:16px;font-weight:700;letter-spacing:-0.02em}
+.topbar-brand small{font-size:11px;opacity:0.6}
+.topbar-right{display:flex;align-items:center;gap:16px}
+.user-badge{display:flex;align-items:center;gap:8px;font-size:13px}
+.role-pill{background:rgba(255,255,255,0.15);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em}
+.layout{display:flex;flex:1}
+.sidebar{width:220px;background:var(--white);border-right:1px solid var(--border);padding:16px 0;flex-shrink:0;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto}
+.main{flex:1;padding:24px;overflow:auto}
+.nav-section{margin-bottom:8px}
+.nav-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);padding:8px 16px 4px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 16px;cursor:pointer;color:var(--text);font-size:13px;transition:background 100ms;border-left:3px solid transparent}
+.nav-item:hover{background:var(--surface)}
+.nav-item.active{background:#EBF3FB;color:var(--accent);border-left-color:var(--accent);font-weight:600}
+.nav-icon{width:16px;text-align:center;flex-shrink:0}
+.nav-divider{border:none;border-top:1px solid var(--border);margin:8px 0}
+.cantiere-selector{padding:12px 16px;border-bottom:1px solid var(--border);margin-bottom:8px}
+.cantiere-selector label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);display:block;margin-bottom:4px}
+.cantiere-selector select{width:100%;font-size:12px;border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-family:var(--font);background:white;color:var(--text)}
+.card{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:20px;box-shadow:var(--shadow)}
+.card+.card{margin-top:16px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid var(--primary)}
+.card-title{font-size:14px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:0.04em}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:16px;box-shadow:var(--shadow)}
+.kpi-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:6px}
+.kpi-value{font-size:24px;font-weight:700;color:var(--primary)}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:var(--primary);color:white;padding:10px 12px;text-align:left;font-weight:500;font-size:11px;letter-spacing:0.04em;text-transform:uppercase}
+thead th:first-child{border-radius:4px 0 0 0}thead th:last-child{border-radius:0 4px 0 0}
+tbody td{padding:9px 12px;border-bottom:1px solid var(--border)}
+tbody tr:hover td{background:#F0F4F8}tbody tr:last-child td{border-bottom:none}
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
+.badge-green{background:var(--green-bg);color:var(--green)}.badge-yellow{background:var(--yellow-bg);color:var(--yellow)}
+.badge-red{background:var(--red-bg);color:var(--red)}.badge-blue{background:var(--blue-bg);color:var(--blue)}
+.badge-grey{background:#E9ECEF;color:#495057}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:4px;border:none;cursor:pointer;font-family:var(--font);font-size:13px;font-weight:500;transition:background 120ms,box-shadow 120ms;text-decoration:none}
+.btn-primary{background:var(--accent);color:white}.btn-primary:hover{background:#1a5c9e}
+.btn-secondary{background:var(--white);color:var(--text);border:1px solid var(--border)}.btn-secondary:hover{background:var(--surface)}
+.btn-danger{background:#DC3545;color:white}.btn-danger:hover{background:#b02a37}
+.btn-sm{padding:4px 10px;font-size:12px}.btn-group{display:flex;gap:8px}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group.span-2{grid-column:span 2}.form-group.span-3{grid-column:span 3}
+.form-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)}
+.form-control{border:1px solid var(--border);border-radius:4px;padding:8px 12px;font-family:var(--font);font-size:13px;color:var(--text);background:white;transition:border-color 100ms,box-shadow 100ms}
+.form-control:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(46,117,182,0.15);outline:none}
+textarea.form-control{resize:vertical;min-height:80px}
+.form-hint{font-size:11px;color:#ADB5BD}
+.form-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+.modal{background:white;border-radius:8px;box-shadow:var(--shadow-md);width:100%;max-width:680px;max-height:90vh;overflow-y:auto}
+.modal-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.modal-title{font-size:15px;font-weight:700;color:var(--primary)}
+.modal-body{padding:24px}
+.modal-close{background:none;border:none;cursor:pointer;font-size:20px;color:var(--muted);line-height:1;padding:0}.modal-close:hover{color:var(--text)}
+.fase-item{border:1px solid var(--border);border-radius:6px;margin-bottom:8px;overflow:hidden}
+.fase-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--white)}
+.fase-name{font-weight:600;font-size:13px}
+.fase-meta{font-size:12px;color:var(--muted);display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.fase-progress{height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.fase-progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width 300ms}
+.subfase-list{border-top:1px solid var(--border);background:var(--surface)}
+.subfase-item{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 10px 32px;border-bottom:1px solid var(--border)}
+.subfase-item:last-child{border-bottom:none}
+.giornale-entry{border:1px solid var(--border);border-radius:6px;margin-bottom:12px;overflow:hidden}
+.giornale-date{background:var(--primary);color:white;padding:10px 16px;font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.giornale-body{padding:16px}
+.giornale-section{margin-bottom:12px}
+.giornale-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:6px}
+.giornale-text{font-size:13px;line-height:1.6;white-space:pre-wrap}
+.meteo-row{display:flex;gap:16px;flex-wrap:wrap}
+.meteo-chip{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 10px;font-size:12px}
+.maestranze-table{width:100%;font-size:12px;border-collapse:collapse}
+.maestranze-table td,.maestranze-table th{padding:4px 8px;border:1px solid var(--border)}
+.maestranze-table th{background:var(--surface);font-weight:600}
+.ods-card{border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:10px;background:white}
+.ods-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+.ods-numero{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase}
+.ods-oggetto{font-size:14px;font-weight:600;color:var(--primary);margin-top:2px}
+.firma-row{display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap}
+.firma-chip{display:flex;align-items:center;gap:5px;font-size:11px;padding:4px 10px;border-radius:10px;border:1px solid var(--border)}
+.firma-chip.signed{background:var(--green-bg);border-color:#c3e6cb;color:var(--green)}
+.firma-chip.pending{background:var(--yellow-bg);border-color:#ffc107;color:var(--yellow)}
+.comm-item{display:flex;gap:12px;padding:14px;border-bottom:1px solid var(--border)}
+.comm-item:last-child{border-bottom:none}
+.comm-icon{width:36px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.comm-body{flex:1}
+.comm-meta{font-size:11px;color:var(--muted);display:flex;gap:12px;margin-top:3px;flex-wrap:wrap}
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+.page-title{font-size:18px;font-weight:700;color:var(--primary)}
+.page-subtitle{font-size:13px;color:var(--muted);margin-top:2px}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--primary);padding:24px}
+.login-box{background:white;border-radius:8px;padding:36px;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.2)}
+.login-logo{text-align:center;margin-bottom:24px}
+.login-logo h1{color:var(--primary);font-size:22px}
+.login-logo p{color:var(--muted);font-size:13px;margin-top:4px}
+.login-tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:20px}
+.login-tab{flex:1;text-align:center;padding:10px;cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.login-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.alert{padding:10px 14px;border-radius:4px;font-size:13px;margin-bottom:16px}
+.alert-info{background:var(--blue-bg);color:var(--blue);border:1px solid #bee5eb}
+.alert-warning{background:var(--yellow-bg);color:var(--yellow);border:1px solid #ffc107}
+.alert-error{background:var(--red-bg);color:var(--red);border:1px solid #f5c6cb}
+.alert-success{background:var(--green-bg);color:var(--green);border:1px solid #c3e6cb}
+.empty{text-align:center;padding:48px 24px;color:var(--muted)}
+.empty-icon{font-size:40px;margin-bottom:12px}
+.empty h3{font-size:15px;color:var(--text);margin-bottom:6px}.empty p{font-size:13px}
+.loading{text-align:center;padding:48px;color:var(--muted)}
+.spinner{display:inline-block;width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.text-muted{color:var(--muted)}.text-right{text-align:right}.mt-16{margin-top:16px}
+.hidden{display:none!important}.w-full{width:100%}
+@media(max-width:768px){.kpi-row{grid-template-columns:1fr 1fr}.form-grid,.form-grid-3{grid-template-columns:1fr}.form-group.span-2,.form-group.span-3{grid-column:span 1}.sidebar{display:none}}
+@media print{.sidebar,.topbar,.btn,.modal-overlay{display:none!important}.main{padding:0}.card{box-shadow:none;border:1px solid #ccc}}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">
+      <h1>🏗️ GestioneCantiere</h1>
+      <p>SCS — Piattaforma Lavori Pubblici</p>
+    </div>
+    <div class="login-tabs">
+      <div class="login-tab active" id="tabLogin" onclick="switchAuthTab('login')">Accedi</div>
+      <div class="login-tab" id="tabSignup" onclick="switchAuthTab('signup')">Registrati</div>
+    </div>
+    <div id="authMsg"></div>
+    <div id="signupFields" class="hidden">
+      <div class="form-grid" style="margin-bottom:12px">
+        <div class="form-group"><label class="form-label">Nome</label><input class="form-control" id="su_nome"></div>
+        <div class="form-group"><label class="form-label">Cognome</label><input class="form-control" id="su_cognome"></div>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:12px"><label class="form-label">Email</label><input class="form-control" type="email" id="auth_email" placeholder="email@studio.it"></div>
+    <div class="form-group" style="margin-bottom:20px"><label class="form-label">Password</label><input class="form-control" type="password" id="auth_pass" placeholder="••••••••"></div>
+    <button class="btn btn-primary w-full" id="authBtn" onclick="doAuth()" style="justify-content:center;padding:10px">Accedi</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app hidden" id="appScreen">
+  <div class="topbar">
+    <div class="topbar-brand"><span>🏗️ GestioneCantiere</span><small>SCS</small></div>
+    <div class="topbar-right">
+      <div class="user-badge"><span id="topbarUser">—</span><span class="role-pill" id="topbarRole">—</span></div>
+      <button class="btn btn-secondary btn-sm" onclick="doLogout()">Esci</button>
+    </div>
+  </div>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="cantiere-selector">
+        <label>Cantiere attivo</label>
+        <select id="cantiereSel" onchange="selectCantiere(this.value)"><option value="">— Seleziona —</option></select>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Generale</div>
+        <div class="nav-item active" onclick="showView('dashboard')" data-view="dashboard"><span class="nav-icon">📊</span> Dashboard</div>
+        <div class="nav-item" onclick="showView('cantieri')" data-view="cantieri"><span class="nav-icon">🗂️</span> Cantieri</div>
+      </div>
+      <hr class="nav-divider">
+      <div class="nav-section" id="navCantiere" style="opacity:0.4;pointer-events:none">
+        <div class="nav-label">Cantiere corrente</div>
+        <div class="nav-item" onclick="showView('fasi')" data-view="fasi"><span class="nav-icon">📋</span> Fasi lavori</div>
+        <div class="nav-item" onclick="showView('giornale')" data-view="giornale"><span class="nav-icon">📓</span> Giornale lavori</div>
+        <div class="nav-item" onclick="showView('ods')" data-view="ods"><span class="nav-icon">📄</span> Ordini di servizio</div>
+        <div class="nav-item" onclick="showView('comunicazioni')" data-view="comunicazioni"><span class="nav-icon">💬</span> Comunicazioni</div>
+        <div class="nav-item" onclick="showView('verbali')" data-view="verbali"><span class="nav-icon">📋</span> Verbali</div>
+        <div class="nav-item" onclick="showView('sal')" data-view="sal"><span class="nav-icon">💶</span> SAL</div>
+        <div class="nav-item" onclick="showView('sospensioni')" data-view="sospensioni"><span class="nav-icon">⏸️</span> Sosp. e Proroghe</div>
+        <div class="nav-item" onclick="showView('varianti')" data-view="varianti"><span class="nav-icon">📝</span> Varianti</div>
+        <div class="nav-item" onclick="showView('ditte')" data-view="ditte"><span class="nav-icon">🏢</span> Ditte presenti</div>
+        <div class="nav-item" onclick="showView('team')" data-view="team"><span class="nav-icon">👥</span> Team cantiere</div>
+      </div>
+      <hr class="nav-divider">
+      <div class="nav-section">
+        <div class="nav-label">Sistema</div>
+        <div class="nav-item" onclick="showView('report')" data-view="report"><span class="nav-icon">📊</span> Report SA</div>
+      </div>
+    </nav>
+    <main class="main" id="mainContent"></main>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header"><span class="modal-title" id="modalTitle">—</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ============================================================
+// CONFIG SUPABASE — progetto: SCS - gestionale cantiere DL
+// ============================================================
+const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtkc2hydnNhZWNkYmNmcHNvZ2d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MDU0NDMsImV4cCI6MjA5NzE4MTQ0M30.HJaYNeKFSVPEXT28e0NAd3xHnZnQl5JaJKck5t6RGYo';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ============================================================
+// STATO
+// ============================================================
+let currentUser = null;       // {id, email, nome, cognome}
+let currentCantiere = null;   // id
+let currentRole = null;       // ruolo nel cantiere selezionato
+let myCantieri = [];          // [{cantiere, ruolo}]
+let authMode = 'login';
+
+const ROLE_LABELS = {dl:'Direttore Lavori',rup:'RUP',dt_impresa:'DT Impresa',do:'Direttore Operativo'};
+
+// permessi: cosa può fare un ruolo (la sicurezza VERA è lato DB/RLS; qui è solo UI)
+const ROLE_PERMS = {
+  dl:        {write:true, giornale:true, ods:true, report:true},
+  rup:       {write:false,giornale:'read',ods:false,report:true},
+  dt_impresa:{write:false,giornale:'read',ods:false,report:false},
+  do:        {write:true, giornale:true, ods:true, report:false}
+};
+function can(p){ if(!currentRole) return false; return !!ROLE_PERMS[currentRole]?.[p]; }
+function giornaleAccess(){ return ROLE_PERMS[currentRole]?.giornale; } // true|false|'read'
+
+// ============================================================
+// AUTH
+// ============================================================
+function switchAuthTab(mode){
+  authMode = mode;
+  document.getElementById('tabLogin').classList.toggle('active', mode==='login');
+  document.getElementById('tabSignup').classList.toggle('active', mode==='signup');
+  document.getElementById('signupFields').classList.toggle('hidden', mode!=='signup');
+  document.getElementById('authBtn').textContent = mode==='login' ? 'Accedi' : 'Crea account';
+  document.getElementById('authMsg').innerHTML = '';
+}
+
+function authMessage(text, type='error'){
+  document.getElementById('authMsg').innerHTML = `<div class="alert alert-${type}">${text}</div>`;
+}
+
+async function doAuth(){
+  const email = document.getElementById('auth_email').value.trim();
+  const pass = document.getElementById('auth_pass').value;
+  const btn = document.getElementById('authBtn');
+  if(!email || !pass){ authMessage('Inserisci email e password'); return; }
+  btn.disabled = true; btn.textContent = 'Attendere…';
+
+  try {
+    if(authMode === 'signup'){
+      const nome = document.getElementById('su_nome').value.trim();
+      const cognome = document.getElementById('su_cognome').value.trim();
+      const {data, error} = await sb.auth.signUp({
+        email, password: pass,
+        options:{ data:{ nome, cognome } }
+      });
+      if(error) throw error;
+      if(data.user && !data.session){
+        authMessage('Account creato. Controlla la tua email per confermare, poi accedi.', 'success');
+        switchAuthTab('login');
+      } else {
+        await onLoggedIn();
+      }
+    } else {
+      const {error} = await sb.auth.signInWithPassword({email, password:pass});
+      if(error) throw error;
+      await onLoggedIn();
+    }
+  } catch(e){
+    authMessage(traduciErrore(e.message));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = authMode==='login' ? 'Accedi' : 'Crea account';
+  }
+}
+
+function traduciErrore(msg){
+  if(/Invalid login/i.test(msg)) return 'Email o password errati.';
+  if(/already registered/i.test(msg)) return 'Email già registrata. Usa "Accedi".';
+  if(/at least 6/i.test(msg)) return 'La password deve avere almeno 6 caratteri.';
+  if(/confirm/i.test(msg)) return 'Conferma l\'email prima di accedere.';
+  return msg;
+}
+
+async function onLoggedIn(){
+  const {data:{user}} = await sb.auth.getUser();
+  if(!user){ return; }
+  // carica profilo
+  const {data:profile} = await sb.from('profiles').select('*').eq('id',user.id).single();
+  currentUser = {
+    id:user.id, email:user.email,
+    nome: profile?.nome || '', cognome: profile?.cognome || ''
+  };
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('appScreen').classList.remove('hidden');
+  const displayName = (currentUser.nome || currentUser.cognome) ? `${currentUser.nome} ${currentUser.cognome}`.trim() : currentUser.email;
+  document.getElementById('topbarUser').textContent = displayName;
+  await loadMyCantieri();
+  showView('dashboard');
+}
+
+async function loadMyCantieri(){
+  // grazie a RLS, .select() restituisce solo i cantieri di cui sono membro
+  const {data:cu, error} = await sb.from('cantiere_utenti')
+    .select('ruolo, cantiere:cantieri(*)')
+    .eq('utente_id', currentUser.id);
+  if(error){ console.error(error); myCantieri=[]; }
+  else myCantieri = (cu||[]).filter(r=>r.cantiere);
+  const sel = document.getElementById('cantiereSel');
+  let opts = '<option value="">— Seleziona cantiere —</option>';
+  myCantieri.forEach(r => opts += `<option value="${r.cantiere.id}">${r.cantiere.nome}${r.cantiere.codice_commessa?' — '+r.cantiere.codice_commessa:''}</option>`);
+  sel.innerHTML = opts;
+}
+
+async function doLogout(){
+  await sb.auth.signOut();
+  currentUser=null; currentCantiere=null; currentRole=null; myCantieri=[];
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('appScreen').classList.add('hidden');
+}
+
+// ============================================================
+// NAV
+// ============================================================
+function selectCantiere(id){
+  currentCantiere = id || null;
+  const r = myCantieri.find(x=>x.cantiere.id===id);
+  currentRole = r ? r.ruolo : null;
+  document.getElementById('topbarRole').textContent = currentRole ? ROLE_LABELS[currentRole] : '—';
+  const nav = document.getElementById('navCantiere');
+  nav.style.opacity = id?'1':'0.4';
+  nav.style.pointerEvents = id?'auto':'none';
+  if(id) showView('dashboard');
+}
+
+async function showView(view){
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active', el.dataset.view===view));
+  const main = document.getElementById('mainContent');
+  main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  const views = {dashboard:renderDashboard,cantieri:renderCantieri,fasi:renderFasi,sospensioni:renderSospensioni,varianti:renderVarianti,giornale:renderGiornale,ods:renderODS,comunicazioni:renderComunicazioni,verbali:renderVerbali,sal:renderSAL,ditte:renderDitte,team:renderTeam,report:renderReport};
+  try { main.innerHTML = await views[view](); }
+  catch(e){ console.error(e); main.innerHTML = `<div class="alert alert-error">Errore caricamento: ${e.message}</div>`; }
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+const fmt = d => d ? new Date(d).toLocaleDateString('it-IT') : '—';
+const fmtEur = n => new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'}).format(n||0);
+const today = () => new Date().toISOString().split('T')[0];
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function statoFaseBadge(s){const m={attesa:['badge-grey','In attesa'],in_corso:['badge-yellow','In corso'],completata:['badge-blue','Completata'],verificata_dl:['badge-green','Verificata DL']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
+function odsStatoBadge(s){const m={bozza:['badge-grey','Bozza'],emessa:['badge-blue','Emessa'],ricevuta:['badge-yellow','Ricevuta'],accettata:['badge-green','Accettata'],contestata:['badge-red','Contestata']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
+function commTipoBadge(t){const m={nota:['badge-blue','📋 Nota'],richiesta:['badge-yellow','❓ Richiesta'],diffida:['badge-red','⚠️ Diffida']};const[c,l]=m[t]||['badge-grey',t];return`<span class="badge ${c}">${l}</span>`;}
+function roleBadge(r){const m={dl:['badge-blue','DL'],rup:['badge-green','RUP'],dt_impresa:['badge-yellow','DT Impresa'],do:['badge-grey','DO']};const[c,l]=m[r]||['badge-grey',r];return`<span class="badge ${c}">${l}</span>`;}
+function getCantiereObj(id){return myCantieri.find(x=>x.cantiere.id===(id||currentCantiere))?.cantiere;}
+
+// ============================================================
+// VIEWS
+// ============================================================
+async function renderDashboard(){
+  const cantieri = myCantieri.map(r=>r.cantiere);
+  const ids = cantieri.map(c=>c.id);
+  let fasiInCorso=0, odsAperti=0, commNonLette=0;
+  if(ids.length){
+    const [{count:f},{count:o},{count:cm}] = await Promise.all([
+      sb.from('fasi').select('id',{count:'exact',head:true}).in('cantiere_id',ids).eq('stato','in_corso'),
+      sb.from('ods').select('id',{count:'exact',head:true}).in('cantiere_id',ids).neq('stato','accettata'),
+      sb.from('comunicazioni').select('id',{count:'exact',head:true}).in('cantiere_id',ids).eq('letto',false)
+    ]);
+    fasiInCorso=f||0; odsAperti=o||0; commNonLette=cm||0;
+  }
+  const attivi = cantieri.filter(c=>c.stato==='attivo').length;
+
+  let html = `<div class="section-header"><div><div class="page-title">Dashboard</div>
+    <div class="page-subtitle">${new Date().toLocaleDateString('it-IT',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div></div>
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-label">Cantieri attivi</div><div class="kpi-value">${attivi}</div><div class="kpi-sub">di ${cantieri.length} totali</div></div>
+    <div class="kpi"><div class="kpi-label">Fasi in corso</div><div class="kpi-value">${fasiInCorso}</div><div class="kpi-sub">lavorazioni attive</div></div>
+    <div class="kpi"><div class="kpi-label">ODS da evadere</div><div class="kpi-value" style="color:${odsAperti>0?'#856404':'#155724'}">${odsAperti}</div><div class="kpi-sub">ordini aperti</div></div>
+    <div class="kpi"><div class="kpi-label">Comunicazioni</div><div class="kpi-value" style="color:${commNonLette>0?'#721C24':'#155724'}">${commNonLette}</div><div class="kpi-sub">non lette</div></div>
+  </div>`;
+
+  if(!cantieri.length){
+    html += `<div class="card"><div class="empty"><div class="empty-icon">🏗️</div><h3>Nessun cantiere assegnato</h3>
+      <p>Non sei ancora membro di alcun cantiere. Crea un nuovo cantiere dalla sezione "Cantieri" (diventerai automaticamente DL) oppure chiedi al DL di aggiungerti al team.</p></div></div>`;
+    return html;
+  }
+
+  html += `<div class="card"><div class="card-header"><span class="card-title">I miei cantieri</span></div>
+    <table><thead><tr><th>Codice commessa</th><th>Importo lavori</th><th>Mio ruolo</th><th></th></tr></thead><tbody>`;
+  myCantieri.forEach(r=>{const c=r.cantiere;
+    html += `<tr><td><strong>${esc(c.codice_commessa||c.nome)}</strong></td>
+      <td>${fmtEur(c.importo)}</td><td>${roleBadge(r.ruolo)}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="jumpToCantiere('${c.id}')">Apri →</button></td></tr>`;
+  });
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+function jumpToCantiere(id){
+  document.getElementById('cantiereSel').value=id;
+  selectCantiere(id);
+  showView('fasi');
+}
+
+async function renderCantieri(){
+  let html = `<div class="section-header"><div><div class="page-title">Gestione Cantieri</div><div class="page-subtitle">Archivio appalti</div></div>
+    <button class="btn btn-primary" onclick="openModalNuovoCantiere()">+ Nuovo cantiere</button></div>`;
+  if(!myCantieri.length) return html + `<div class="empty"><div class="empty-icon">🏗️</div><h3>Nessun cantiere</h3><p>Crea il primo cantiere: diventerai automaticamente il Direttore dei Lavori.</p></div>`;
+
+  for(const r of myCantieri){
+    const c = r.cantiere;
+    const {data:fasi} = await sb.from('fasi').select('stato').eq('cantiere_id',c.id).is('parent_id',null);
+    const tot=(fasi||[]).length, ver=(fasi||[]).filter(f=>f.stato==='verificata_dl').length;
+    const perc = tot ? Math.round(ver/tot*100) : 0;
+    html += `<div class="card"><div class="card-header"><div><div class="card-title">${esc(c.nome)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(c.stazione_appaltante||'')} • ${esc(c.impresa||'')}</div></div>
+      <div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="jumpToCantiere('${c.id}')">Apri cantiere</button>
+      ${r.ruolo==='dl'||r.ruolo==='rup'?`<button class="btn btn-secondary btn-sm" onclick="openModalEditCantiere('${c.id}')">✏️</button>`:''}</div></div>
+      <div class="form-grid-3" style="gap:12px;margin-bottom:16px">
+        <div><div class="form-label">CIG</div><div style="font-size:13px;font-weight:600">${esc(c.cig||'—')}</div></div>
+        <div><div class="form-label">CUP</div><div style="font-size:13px;font-weight:600">${esc(c.cup||'—')}</div></div>
+        <div><div class="form-label">Importo</div><div style="font-size:13px;font-weight:600">${fmtEur(c.importo)}</div></div>
+        <div><div class="form-label">Consegna lavori</div><div style="font-size:13px">${fmt(c.data_consegna)}</div></div>
+        <div><div class="form-label">Fine da contratto</div><div style="font-size:13px;font-weight:600">${fmt(c.data_fine_contratto||c.data_fine)}</div></div>
+        <div><div class="form-label">Fine aggiornata</div><div style="font-size:13px;font-weight:700;color:${c.data_fine_aggiornata&&c.data_fine_contratto&&c.data_fine_aggiornata!==c.data_fine_contratto?'var(--red)':'var(--text)'}">${fmt(c.data_fine_aggiornata||c.data_fine_contratto||c.data_fine)}</div></div>
+        <div><div class="form-label">Mio ruolo</div>${roleBadge(r.ruolo)}</div>
+        ${c.estremi_contratto?`<div class="form-group span-2" style="grid-column:span 3"><div class="form-label">Estremi contratto</div><div style="font-size:12px">${esc(c.estremi_contratto)}</div></div>`:''}
+      </div>
+      <div><div class="form-label" style="margin-bottom:6px">Avanzamento macrofasi (${ver}/${tot} verificate DL)</div>
+      <div class="fase-progress"><div class="fase-progress-fill" style="width:${perc}%"></div></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px">${perc}% completato</div></div></div>`;
+  }
+  return html;
+}
+
+async function renderFasi(){
+  if(!currentCantiere) return noCantiere();
+  const c = getCantiereObj();
+  const {data:allFasi} = await sb.from('fasi').select('*').eq('cantiere_id',currentCantiere).order('ordine');
+  const macro = (allFasi||[]).filter(f=>!f.parent_id).sort((a,b)=>a.ordine-b.ordine);
+
+  let html = `<div class="section-header"><div><div class="page-title">Fasi Lavorative</div><div class="page-subtitle">${esc(c?.nome||'')}</div></div>
+    ${can('write')?`<button class="btn btn-primary" onclick="openModalNuovaFase()">+ Nuova fase</button>`:''}</div>`;
+  if(!macro.length) return html + `<div class="empty"><div class="empty-icon">📋</div><h3>Nessuna fase</h3><p>Aggiungi le macrofasi del cantiere.</p></div>`;
+
+  macro.forEach(f=>{
+    const subs = (allFasi||[]).filter(s=>s.parent_id===f.id).sort((a,b)=>a.ordine-b.ordine);
+    const ver = subs.filter(s=>s.stato==='verificata_dl').length;
+    const perc = subs.length ? Math.round(ver/subs.length*100) : (f.stato==='verificata_dl'?100:f.stato==='in_corso'?50:0);
+    html += `<div class="fase-item"><div class="fase-header"><div>
+      <div class="fase-name">${f.ordine}. ${esc(f.nome)}</div>
+      <div class="fase-meta"><span>${fmtEur(f.importo)}</span><span>Prev: ${fmt(f.data_inizio_prev)} → ${fmt(f.data_fine_prev)}</span>
+      ${f.data_inizio_eff?`<span style="color:var(--accent)">Eff: ${fmt(f.data_inizio_eff)} → ${f.data_fine_eff?fmt(f.data_fine_eff):'in corso'}</span>`:''}</div>
+      <div style="margin-top:8px;max-width:300px"><div class="fase-progress"><div class="fase-progress-fill" style="width:${perc}%"></div></div></div></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">${statoFaseBadge(f.stato)}
+      ${can('write')?`<div class="btn-group">
+        <button class="btn btn-secondary btn-sm" onclick="openModalStatoFase('${f.id}')">Aggiorna stato</button>
+        <button class="btn btn-secondary btn-sm" onclick="openModalEditFase('${f.id}')">✏️</button>
+        <button class="btn btn-secondary btn-sm" onclick="openModalNuovaFase('${f.id}')">+ Subfase</button>
+        <button class="btn btn-danger btn-sm" onclick="eliminaFase('${f.id}','${esc(f.nome)}')">🗑️</button>
+      </div>`:''}</div></div>`;
+    if(subs.length){
+      html += `<div class="subfase-list">`;
+      subs.forEach(s=>{
+        html += `<div class="subfase-item"><div><div style="font-size:13px;font-weight:500">${esc(s.nome)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtEur(s.importo)} • ${fmt(s.data_inizio_prev)} → ${fmt(s.data_fine_prev)}</div></div>
+          <div style="display:flex;align-items:center;gap:8px">${statoFaseBadge(s.stato)}
+          ${can('write')?`<div class="btn-group">
+            <button class="btn btn-secondary btn-sm" onclick="openModalStatoFase('${s.id}')">Stato</button>
+            <button class="btn btn-secondary btn-sm" onclick="openModalEditFase('${s.id}')">✏️</button>
+            <button class="btn btn-danger btn-sm" onclick="eliminaFase('${s.id}','${esc(s.nome)}')">🗑️</button>
+          </div>`:''}</div></div>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+  });
+  return html;
+}
+
+async function renderGiornale(){
+  if(!currentCantiere) return noCantiere();
+  const c = getCantiereObj();
+
+  let html = `<div class="section-header"><div><div class="page-title">Giornale dei Lavori</div>
+    <div class="page-subtitle">${esc(c?.nome||'')} — tenuto a cura del Direttore dei Lavori</div></div>
+    ${giornaleAccess()===true?`<button class="btn btn-primary" onclick="openModalNuovaRegistrazione()">+ Nuova registrazione</button>`:''}</div>`;
+
+  if(giornaleAccess()==='read'){
+    html += `<div class="alert alert-info">👁️ Visione in sola lettura — il Giornale è redatto dal DL e dai DO per delega. L'impresa può visualizzare ma non modificare.</div>`;
+  }
+
+  const {data:entries,error} = await sb.from('giornale_lavori').select('*').eq('cantiere_id',currentCantiere).order('data',{ascending:true});
+  if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
+
+  // Carica fasi — prende prima data assoluta e ultima data assoluta tra tutte le fasi
+  const {data:fasiPeriodo} = await sb.from('fasi')
+    .select('data_inizio_eff,data_fine_eff,data_inizio_prev,data_fine_prev')
+    .eq('cantiere_id',currentCantiere);
+
+  // Raccoglie tutte le date non nulle in un unico array e trova min/max
+  const tutteLeDateInizio = [];
+  const tutteLeDateFine = [];
+  (fasiPeriodo||[]).forEach(f=>{
+    if(f.data_inizio_eff)  tutteLeDateInizio.push(f.data_inizio_eff);
+    if(f.data_inizio_prev) tutteLeDateInizio.push(f.data_inizio_prev);
+    if(f.data_fine_eff)    tutteLeDateFine.push(f.data_fine_eff);
+    if(f.data_fine_prev)   tutteLeDateFine.push(f.data_fine_prev);
+  });
+
+  tutteLeDateInizio.sort();
+  tutteLeDateFine.sort();
+
+  const dataInizioStr = tutteLeDateInizio.length ? tutteLeDateInizio[0] : (entries.length ? entries[0].data : today());
+  const dataFineStr   = tutteLeDateFine.length   ? tutteLeDateFine[tutteLeDateFine.length-1] : today();
+
+  // Mappa delle registrazioni per data
+  const entriesMap = {};
+  (entries||[]).forEach(g => { entriesMap[g.data] = g; });
+
+  // Genera TUTTI i giorni tra prima data e ultima data fasi
+  const giorni = [];
+  const cur = new Date(dataInizioStr+'T00:00:00');
+  const fine = new Date(dataFineStr+'T00:00:00');
+  while(cur <= fine){
+    giorni.push(cur.toISOString().split('T')[0]);
+    cur.setDate(cur.getDate()+1);
+  }
+
+  const totGiorni = giorni.length;
+  const totRegistrati = Object.keys(entriesMap).length;
+
+  html += `<div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+    <div class="kpi" style="flex:1;min-width:140px"><div class="kpi-label">Periodo fasi</div><div class="kpi-value">${totGiorni}</div><div class="kpi-sub">giorni totali</div></div>
+    <div class="kpi" style="flex:1;min-width:140px"><div class="kpi-label">Giorni registrati</div><div class="kpi-value" style="color:var(--green)">${totRegistrati}</div><div class="kpi-sub">con lavorazioni</div></div>
+    <div class="kpi" style="flex:1;min-width:140px"><div class="kpi-label">Giorni non lavorati</div><div class="kpi-value" style="color:var(--muted)">${totGiorni-totRegistrati}</div><div class="kpi-sub">attestati senza lavorazione</div></div>
+  </div>`;
+
+  // TABELLA GIORNALIERA — una riga per giorno, dal più recente
+  html += `<div class="card" style="padding:0;overflow:hidden">
+    <table style="table-layout:fixed">
+      <colgroup>
+        <col style="width:110px">
+        <col style="width:70px">
+        <col style="width:80px">
+        <col style="width:60px">
+        <col style="width:180px">
+        <col style="width:auto">
+        <col style="width:60px">
+        <col style="width:90px">
+      </colgroup>
+      <thead><tr>
+        <th>Data</th>
+        <th>Meteo</th>
+        <th>Temp.</th>
+        <th style="text-align:center">Operai</th>
+        <th>Mezzi</th>
+        <th>Lavorazioni</th>
+        <th style="text-align:center">Note</th>
+        <th></th>
+      </tr></thead>
+      <tbody>`;
+
+  giorni.forEach(data => {  // ordine crescente: primo giorno = consegna lavori
+    const g = entriesMap[data];
+    const d = new Date(data+'T00:00:00');
+    const gg = d.toLocaleDateString('it-IT',{weekday:'short'});
+    const dataFmt = d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'});
+    const isToday = data === today();
+    const isFestivo = d.getDay()===0||d.getDay()===6;
+
+    if(g){
+      const mae = g.maestranze||[];
+      const mezzi = g.mezzi||[];
+      const totOp = mae.reduce((a,m)=>a+(m.num||0),0);
+      const mezziStr = mezzi.slice(0,2).join(', ')+(mezzi.length>2?` +${mezzi.length-2}`:'');
+      const lavStr = (g.lavorazioni||'').substring(0,80)+(g.lavorazioni?.length>80?'…':'');
+      const hasOss = !!(g.osservazioni||g.anomalie);
+      html += `<tr style="background:${isToday?'#EBF3FB':'white'}" title="${data}">
+        <td style="border-left:3px solid var(--accent)">
+          <div style="font-weight:700;font-size:12px;color:var(--primary)">${dataFmt}</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:capitalize">${gg}</div>
+        </td>
+        <td style="font-size:12px">${g.meteo||'—'}</td>
+        <td style="font-size:11px;color:var(--muted)">${g.temp_min??'—'}° / ${g.temp_max??'—'}°</td>
+        <td style="text-align:center"><span style="font-size:14px;font-weight:700;color:var(--primary)">${totOp}</span></td>
+        <td style="font-size:11px;color:var(--muted)">${mezziStr||'—'}</td>
+        <td style="font-size:12px;color:var(--text)">${lavStr||'—'}</td>
+        <td style="text-align:center">${hasOss?'<span title="Osservazioni / Anomalie presenti">⚠️</span>':'—'}</td>
+        <td>${giornaleAccess()===true?`<div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="openModalEditGiornaleData('${g.id}','${data}')">✏️</button><button class="btn btn-danger btn-sm" onclick="eliminaRegistrazione('${g.id}','${data}')">🗑️</button></div>`:''}</td>
+      </tr>`;
+    } else {
+      html += `<tr style="background:${isToday?'#EBF3FB':isFestivo?'#FAFAFA':'white'}" title="${data}">
+        <td style="border-left:3px solid var(--border)">
+          <div style="font-size:12px;color:${isFestivo?'#ADB5BD':'var(--muted)'};">${dataFmt}</div>
+          <div style="font-size:10px;color:#ADB5BD;text-transform:capitalize">${gg}</div>
+        </td>
+        <td colspan="5" style="font-size:11px;color:#ADB5BD;font-style:italic">— nessuna lavorazione registrata —</td>
+        <td></td>
+        <td>${giornaleAccess()===true?`<button class="btn btn-primary btn-sm" onclick="openModalNuovaRegistrazioneData('${data}')" title="Aggiungi registrazione">+</button>`:''}</td>
+      </tr>`;
+    }
+  });
+
+  html += `</tbody></table></div>`;
+
+  return html;
+}
+
+function openModalEditGiornaleData(id, data){
+  openModalEditGiornale(id);
+}
+
+function openModalNuovaRegistrazioneData(data){
+  openModalNuovaRegistrazione();
+  setTimeout(()=>{ const el=document.getElementById('gl_data'); if(el) el.value=data; },100);
+}
+
+async function renderODS(){
+  if(!currentCantiere) return noCantiere();
+  const c = getCantiereObj();
+  let html = `<div class="section-header"><div><div class="page-title">Ordini di Servizio</div><div class="page-subtitle">${esc(c?.nome||'')}</div></div>
+    ${can('ods')?`<button class="btn btn-primary" onclick="openModalNuovoODS()">+ Nuovo ODS</button>`:''}</div>
+  <div class="alert alert-warning">⚠️ <strong>Registro interno:</strong> gli ODS registrati in questa piattaforma hanno valore di archivio. La comunicazione ufficiale all'impresa avviene esclusivamente <strong>via PEC</strong>. Il portale non sostituisce la trasmissione formale.</div>`;
+  const {data:odsList} = await sb.from('ods').select('*').eq('cantiere_id',currentCantiere).order('data',{ascending:false});
+  if(!odsList.length) return html + `<div class="empty"><div class="empty-icon">📄</div><h3>Nessun ODS</h3></div>`;
+
+  odsList.forEach(o=>{
+    const firme = o.firme||[];
+    html += `<div class="ods-card"><div class="ods-header"><div><div class="ods-numero">${esc(o.numero)} • ${fmt(o.data)}</div>
+      <div class="ods-oggetto">${esc(o.oggetto)}</div></div>${odsStatoBadge(o.stato)}</div>
+      <div style="font-size:13px;color:var(--muted);background:var(--surface);padding:10px;border-radius:4px;line-height:1.6">${esc(o.corpo)}</div>
+      <div class="firma-row">${firme.map(f=>`<div class="firma-chip ${(f.stato==='firmato'||f.stato==='presa_visione')?'signed':'pending'}">
+        <span>${f.stato==='firmato'?'✅':f.stato==='presa_visione'?'👁️':'⏳'}</span><span>${esc(f.nome)}</span>
+        <span style="opacity:0.7">${f.data?fmt(f.data):'in attesa'}</span></div>`).join('')}</div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+        ${(currentRole==='dt_impresa'&&o.stato!=='accettata')?`<button class="btn btn-primary btn-sm" onclick="accettaODS('${o.id}')">✅ Accetta ODS</button>`:''}
+        ${(currentRole==='rup'&&firme.find(f=>f.ruolo==='rup'&&f.stato==='in_attesa'))?`<button class="btn btn-primary btn-sm" onclick="firmaRupODS('${o.id}')">👁️ Presa visione</button>`:''}
+        <button class="btn btn-secondary btn-sm" onclick="stampaODS('${o.id}')">🖨️ Stampa / PDF</button>
+        ${can('ods')?`<button class="btn btn-secondary btn-sm" onclick="openModalEditODS('${o.id}')">✏️</button>`:''}
+        ${can('ods')?`<button class="btn btn-danger btn-sm" onclick="eliminaODS('${o.id}','${esc(o.numero)}')">🗑️</button>`:''}
+      </div></div>`;
+  });
+  return html;
+}
+
+async function renderComunicazioni(){
+  if(!currentCantiere) return noCantiere();
+  const c = getCantiereObj();
+  const icons={nota:'📋',richiesta:'❓',diffida:'⚠️'};
+  const bg={nota:'#D1ECF1',richiesta:'#FFF3CD',diffida:'#F8D7DA'};
+  let html = `<div class="section-header"><div><div class="page-title">Comunicazioni</div><div class="page-subtitle">${esc(c?.nome||'')}</div></div>
+    <button class="btn btn-primary" onclick="openModalNuovaComunicazione()">+ Nuova comunicazione</button></div>
+  <div class="alert alert-warning">⚠️ <strong>Registro interno:</strong> le comunicazioni registrate in questa piattaforma hanno valore di archivio e coordinamento interno. La trasmissione ufficiale tra le parti avviene esclusivamente <strong>via PEC</strong>. Il portale non sostituisce la comunicazione formale.</div>
+  <div class="card" style="padding:0">`;
+  const {data:comms} = await sb.from('comunicazioni').select('*').eq('cantiere_id',currentCantiere).order('data',{ascending:false});
+  // Filtra lato client: impresa non vede comunicazioni riservate
+  const commsFiltrate = (comms||[]).filter(co=>{
+    if(currentRole==='dt_impresa' && co.visibilita==='riservata') return false;
+    return true;
+  });
+  if(!commsFiltrate.length){ html += `<div class="empty"><div class="empty-icon">💬</div><h3>Nessuna comunicazione</h3></div>`; }
+  else commsFiltrate.forEach(co=>{
+    const dest = (co.destinatari||[]).join(', ');
+    const badgeRiservata = co.visibilita==='riservata' ? `<span style="background:#F8D7DA;color:#721C24;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:6px">🔒 RISERVATA</span>` : '';
+    html += `<div class="comm-item" style="${!co.letto?'background:#FFF8E7':''}"><div class="comm-icon" style="background:${bg[co.tipo]||'#E9ECEF'}">${icons[co.tipo]||'📋'}</div>
+      <div class="comm-body"><div style="display:flex;align-items:center;gap:8px;justify-content:space-between">
+        <div style="font-weight:${co.letto?'400':'700'};font-size:13px">${esc(co.oggetto)} ${!co.letto?'<span style="color:#DC3545;font-size:11px">NUOVO</span>':''}${badgeRiservata}</div>${commTipoBadge(co.tipo)}</div>
+        <div class="comm-meta"><span>Da: ${esc(co.mittente||'')}</span><span>A: ${esc(dest)}</span><span>${fmt(co.data)}</span></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">${esc((co.testo||'').substring(0,100))}…</div>
+        <div style="margin-top:6px;display:flex;gap:6px">
+          <button class="btn btn-secondary btn-sm" onclick="viewComunicazione('${co.id}')">Leggi</button>
+          ${can('write')||currentRole==='dt_impresa'?`<button class="btn btn-secondary btn-sm" onclick="openModalEditComunicazione('${co.id}')">✏️</button>`:''}
+          ${can('write')?`<button class="btn btn-danger btn-sm" onclick="eliminaComunicazione('${co.id}')">🗑️</button>`:''}
+        </div></div></div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+
+// ============================================================
+// SOSPENSIONI E RIPRESE LAVORI
+// ============================================================
+async function renderSospensioni(){
+  if(!currentCantiere) return noCantiere();
+  const c = getCantiereObj();
+
+  let html = `<div class="section-header">
+    <div>
+      <div class="page-title">Sospensioni, Proroghe e Riprese</div>
+      <div class="page-subtitle">${esc(c?.nome||'')} — ex art. 107 D.Lgs. 36/2023</div>
+    </div>
+    ${can('write')?`<div class="btn-group">
+      <button class="btn btn-primary" onclick="openModalNuovaSospensione()">+ Sospensione</button>
+      <button class="btn btn-secondary" onclick="openModalNuovaProroga()">+ Proroga</button>
+    </div>`:''}
+  </div>
+  <div class="alert alert-info" style="font-size:12px">
+    ⚠️ <strong>Registro interno:</strong> i verbali di sospensione e ripresa lavori vengono trasmessi ufficialmente via PEC alla Stazione Appaltante e all'impresa. 
+    Alla registrazione della <strong>ripresa</strong>, le fasi non ancora verificate dal DL vengono automaticamente spostate in avanti dei giorni di sospensione accertati.
+  </div>`;
+
+  const {data:sosp, error} = await sb.from('sospensioni').select('*').eq('cantiere_id',currentCantiere).order('data',{ascending:false});
+  if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
+
+  // Verifica se c'è una sospensione aperta (senza ripresa)
+  const sospAperta = (sosp||[]).find(s=>s.tipo==='sospensione' && !s.data_ripresa);
+
+  if(sospAperta && can('write')){
+    html += `<div class="alert alert-warning" style="margin-bottom:16px">
+      ⏸️ <strong>Lavori attualmente sospesi</strong> dal ${fmt(sospAperta.data)} — Motivo: ${esc(sospAperta.motivo||'—')}
+      <div style="margin-top:8px"><button class="btn btn-primary btn-sm" onclick="openModalRipresaLavori('${sospAperta.id}')">▶️ Registra ripresa lavori</button></div>
+    </div>`;
+  }
+
+  if(!sosp||!sosp.length){
+    return html + `<div class="empty"><div class="empty-icon">⏸️</div><h3>Nessuna sospensione registrata</h3><p>Registra verbali di sospensione e ripresa lavori.</p></div>`;
+  }
+
+  html += `<div class="card" style="padding:0"><table>
+    <thead><tr>
+      <th>Tipo evento</th><th>Data</th><th>Dettaglio</th><th>Ripresa / Concessione</th>
+      <th>Giorni</th><th>Fine aggiornata</th><th>Fasi spostate</th><th></th>
+    </tr></thead><tbody>`;
+
+  sosp.forEach(s=>{
+    const tipoEv = s.tipo_evento || 'sospensione';
+    const isAperta = tipoEv==='sospensione' && !s.data_ripresa;
+    const isProroga = tipoEv==='proroga';
+    const tipoBadge = isProroga
+      ? `<span class="badge badge-blue">📅 Proroga</span>`
+      : isAperta ? `<span class="badge badge-red">⏸️ Sospensione aperta</span>`
+      : `<span class="badge badge-green">✓ Sospensione chiusa</span>`;
+    const dettaglio = isProroga
+      ? `Richiesta: ${fmt(s.data_richiesta_proroga||s.data)}<br>Concessione: ${fmt(s.data_concessione_proroga||'')}`
+      : esc(s.motivo||'—');
+    const dataRip = isProroga ? fmt(s.data_concessione_proroga||'')
+      : s.data_ripresa ? fmt(s.data_ripresa)
+      : isAperta ? '<span style="color:var(--yellow);font-weight:600">In corso</span>' : '—';
+    const giorni = isProroga
+      ? (s.giorni_proroga!=null?`<strong>${s.giorni_proroga} gg</strong>`:'—')
+      : (s.giorni_sospensione!=null?`<strong>${s.giorni_sospensione} gg</strong>`:'—');
+    html += `<tr style="${isAperta?'background:#FFF8E7':''}">
+      <td>${tipoBadge}</td>
+      <td><strong>${fmt(s.data)}</strong></td>
+      <td style="font-size:11px;max-width:180px">${dettaglio}</td>
+      <td>${dataRip}</td>
+      <td style="text-align:center">${giorni}</td>
+      <td>${s.nuova_fine_lavori?fmt(s.nuova_fine_lavori):'—'}</td>
+      <td style="text-align:center">${isProroga?'<span style="color:var(--muted);font-size:11px">N/A</span>':(s.fasi_spostate!=null?s.fasi_spostate:'—')}</td>
+      <td>${can('write')&&isAperta?`<button class="btn btn-primary btn-sm" onclick="openModalRipresaLavori('${s.id}')">▶️ Ripresa</button>`:
+          can('write')?`<div class="btn-group">
+            <button class="btn btn-secondary btn-sm" onclick="openModalEditSospensione('${s.id}')">✏️</button>
+            <button class="btn btn-danger btn-sm" onclick="eliminaSospensione('${s.id}')">🗑️</button>
+          </div>`:'—'}</td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+function openModalNuovaSospensione(){
+  openModal('Verbale di Sospensione Lavori', `
+    <div class="alert alert-warning" style="font-size:12px">
+      La registrazione attesta la sospensione dei lavori. Il verbale ufficiale va trasmesso via PEC.
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Data sospensione *</label>
+      <input class="form-control" type="date" id="ns_data" value="${today()}">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Motivo sospensione *</label>
+      <div class="form-hint">Es: cause di forza maggiore, condizioni meteo avverse, necessità di variante, ordine dell'autorità, ecc.</div>
+      <textarea class="form-control" id="ns_motivo" rows="4"
+        placeholder="Es: Sospensione disposta per condizioni meteo avverse (precipitazioni eccezionali) che rendono impossibile la prosecuzione in sicurezza delle lavorazioni strutturali in corso..."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaSospensione()">Registra sospensione</button>
+    </div>`);
+}
+
+
+// ---- PROROGA ----
+function openModalNuovaProroga(){
+  openModal('Nuova Proroga Termini', `
+    <div class="alert alert-info" style="font-size:12px">
+      La proroga estende la data fine lavori senza spostare le fasi già pianificate. Viene aggiornata automaticamente la data fine aggiornata del cantiere.
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Data richiesta proroga *</label>
+        <input class="form-control" type="date" id="np_datarich" value="${today()}">
+      </div>
+      <div class="form-group"><label class="form-label">Data concessione proroga</label>
+        <input class="form-control" type="date" id="np_dataconc">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Lascia vuoto se non ancora concessa</div>
+      </div>
+      <div class="form-group"><label class="form-label">Giorni di proroga concessi *</label>
+        <input class="form-control" type="number" id="np_giorni" min="1" placeholder="es. 30">
+      </div>
+      <div class="form-group"><label class="form-label">Data</label>
+        <input class="form-control" type="date" id="np_data" value="${today()}">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Data del verbale/atto</div>
+      </div>
+      <div class="form-group span-2"><label class="form-label">Motivo / Note</label>
+        <textarea class="form-control" id="np_motivo" rows="3" placeholder="Es. Proroga concessa per ritardi imputabili a cause di forza maggiore non prevedibili..."></textarea>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaProroga()">Registra proroga</button>
+    </div>`);
+}
+
+async function salvaProroga(){
+  const giorni = parseInt(document.getElementById('np_giorni').value);
+  const data = document.getElementById('np_data').value;
+  if(!giorni||!data){ alert('Data e giorni di proroga obbligatori'); return; }
+
+  const {error} = await sb.from('sospensioni').insert({
+    cantiere_id: currentCantiere,
+    tipo: 'sospensione',          // campo legacy
+    tipo_evento: 'proroga',
+    data,
+    giorni_proroga: giorni,
+    data_richiesta_proroga: document.getElementById('np_datarich').value||null,
+    data_concessione_proroga: document.getElementById('np_dataconc').value||null,
+    motivo: document.getElementById('np_motivo').value.trim()||null,
+    created_by: currentUser.id
+  });
+  if(error){ alert(error.message); return; }
+
+  // Ricalcola data_fine_aggiornata
+  await ricalcolaFineLavori(currentCantiere);
+
+  // Annotazione giornale
+  const dataAnnot = document.getElementById('np_dataconc').value || data;
+  await annotaGiornale(dataAnnot, `[PROROGA TERMINI] Concessa proroga di ${giorni} giorni. ${document.getElementById('np_motivo').value.trim()}`);
+
+  closeModal();
+  await loadMyCantieri();
+  showView('sospensioni');
+}
+
+// ---- RICALCOLO DATA FINE AGGIORNATA ----
+async function ricalcolaFineLavori(cantiereId){
+  // Legge sempre data_fine_contratto come base immutabile
+  const {data:cDB} = await sb.from('cantieri').select('data_fine_contratto,data_fine').eq('id',cantiereId).single();
+  const baseDate = cDB?.data_fine_contratto || cDB?.data_fine;
+  if(!baseDate) return;
+
+  // Σ giorni sospensioni accertate + proroghe
+  const {data:eventi} = await sb.from('sospensioni')
+    .select('tipo_evento,giorni_sospensione,giorni_proroga')
+    .eq('cantiere_id',cantiereId);
+  let giorniSospProroga = 0;
+  (eventi||[]).forEach(ev=>{
+    const tipoEv = ev.tipo_evento || 'sospensione';
+    if(tipoEv==='sospensione' && ev.giorni_sospensione) giorniSospProroga += ev.giorni_sospensione;
+    if(tipoEv==='proroga' && ev.giorni_proroga) giorniSospProroga += ev.giorni_proroga;
+  });
+
+  // Σ giorni varianti
+  const {data:varList} = await sb.from('varianti')
+    .select('giorni_concessi')
+    .eq('cantiere_id',cantiereId);
+  let giorniVarianti = 0;
+  (varList||[]).forEach(v=>{ if(v.giorni_concessi) giorniVarianti += v.giorni_concessi; });
+
+  const totGiorni = giorniSospProroga + giorniVarianti;
+  const base = new Date(baseDate+'T00:00:00');
+  base.setDate(base.getDate() + totGiorni);
+  const nuovaFine = base.toISOString().split('T')[0];
+
+  await sb.from('cantieri').update({
+    data_fine_aggiornata: nuovaFine,
+    data_fine: nuovaFine
+  }).eq('id', cantiereId);
+
+  // Aggiorna cache locale
+  const mc = myCantieri.find(r=>r.cantiere.id===cantiereId);
+  if(mc){ mc.cantiere.data_fine_aggiornata = nuovaFine; mc.cantiere.data_fine = nuovaFine; }
+
+  return nuovaFine;
+}
+
+async function salvaSospensione(){
+  const data = document.getElementById('ns_data').value;
+  const motivo = document.getElementById('ns_motivo').value.trim();
+  if(!data||!motivo){ alert('Data e motivo obbligatori'); return; }
+
+  // Verifica che non ci sia già una sospensione aperta
+  const {data:aperta} = await sb.from('sospensioni')
+    .select('id').eq('cantiere_id',currentCantiere).eq('tipo','sospensione').is('data_ripresa',null);
+  if(aperta&&aperta.length){ alert('Esiste già una sospensione aperta. Registra prima la ripresa lavori.'); return; }
+
+  const {error} = await sb.from('sospensioni').insert({
+    cantiere_id:currentCantiere, tipo:'sospensione', tipo_evento:'sospensione', data, motivo, created_by:currentUser.id
+  });
+  if(error){ alert(error.message); return; }
+  // Annotazione automatica sul giornale
+  await annotaGiornale(data, `[SOSPENSIONE LAVORI] ${motivo}`);
+  closeModal();
+  showView('sospensioni');
+}
+
+async function openModalRipresaLavori(sospId){
+  const {data:s} = await sb.from('sospensioni').select('*').eq('id',sospId).single();
+  if(!s) return;
+
+  // Calcola giorni minimi (da data sospensione ad oggi)
+  const diffMs = new Date() - new Date(s.data+'T00:00:00');
+  const diffGg = Math.ceil(diffMs/(1000*60*60*24));
+
+  openModal('Verbale di Ripresa Lavori', `
+    <div class="alert alert-info" style="font-size:12px">
+      Sospensione dal <strong>${fmt(s.data)}</strong> — Motivo: ${esc(s.motivo||'—')}
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Data ripresa lavori *</label>
+        <input class="form-control" type="date" id="rl_data" value="${today()}" oninput="aggiornaNuovaFine()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nuova data fine lavori *</label>
+        <input class="form-control" type="date" id="rl_fine_lavori">
+        <div class="form-hint" id="rl_giorni_hint">Inserisci la data di ripresa per calcolare i giorni</div>
+      </div>
+    </div>
+    <div class="alert alert-warning" style="margin-top:12px;font-size:12px">
+      ⚙️ <strong>Shift automatico fasi:</strong> tutte le fasi con data inizio/fine prevista successiva alla sospensione
+      e non ancora verificate dal DL verranno spostate automaticamente in avanti dei giorni di sospensione accertati.
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaRipresa('${sospId}','${s.data}')">▶️ Registra ripresa e shifta fasi</button>
+    </div>`);
+
+  // Imposta data di fine cantiere corrente come suggerimento
+  const c = getCantiereObj();
+  if(c?.data_fine){
+    // Suggerisci nuova fine = data_fine + giorni sospensione stimati
+    const fineOrig = new Date(c.data_fine+'T00:00:00');
+    fineOrig.setDate(fineOrig.getDate() + diffGg);
+    document.getElementById('rl_fine_lavori').value = fineOrig.toISOString().split('T')[0];
+  }
+  aggiornaNuovaFine(s.data);
+}
+
+function aggiornaNuovaFine(dataSosp){
+  const rl = document.getElementById('rl_data');
+  const hint = document.getElementById('rl_giorni_hint');
+  if(!rl||!hint||!dataSosp) return;
+  const ripresa = rl.value;
+  if(!ripresa) return;
+  const ms = new Date(ripresa+'T00:00:00') - new Date(dataSosp+'T00:00:00');
+  const gg = Math.ceil(ms/(1000*60*60*24));
+  hint.textContent = gg > 0 ? `Giorni di sospensione accertati: ${gg}` : 'Data ripresa non valida';
+}
+
+async function salvaRipresa(sospId, dataSosp){
+  const dataRipresa = document.getElementById('rl_data').value;
+  const nuovaFine = document.getElementById('rl_fine_lavori').value;
+  if(!dataRipresa||!nuovaFine){ alert('Data ripresa e nuova fine lavori obbligatorie'); return; }
+
+  // Calcola giorni sospensione
+  const ms = new Date(dataRipresa+'T00:00:00') - new Date(dataSosp+'T00:00:00');
+  const giorniSosp = Math.ceil(ms/(1000*60*60*24));
+  if(giorniSosp <= 0){ alert('La data di ripresa deve essere successiva alla data di sospensione'); return; }
+
+  // Carica fasi da shiftare: non verificate DL con date successive alla sospensione
+  const {data:fasiDaShiftare} = await sb.from('fasi')
+    .select('id,nome,data_inizio_prev,data_fine_prev,data_inizio_eff,data_fine_eff,stato')
+    .eq('cantiere_id',currentCantiere)
+    .neq('stato','verificata_dl');
+
+  const fasiFiltrate = (fasiDaShiftare||[]).filter(f=>{
+    // Shifta SOLO le fasi il cui inizio previsto è DOPO la data di sospensione
+    // Le fasi già iniziate (anche se non verificate) non vengono toccate
+    return f.data_inizio_prev && f.data_inizio_prev > dataSosp;
+  });
+
+  // Funzione per aggiungere giorni a una data stringa
+  const addGiorni = (dateStr, gg) => {
+    if(!dateStr) return null;
+    const d = new Date(dateStr+'T00:00:00');
+    d.setDate(d.getDate()+gg);
+    return d.toISOString().split('T')[0];
+  };
+
+  // Shifta le fasi
+  let fasiSpostate = 0;
+  for(const f of fasiFiltrate){
+    const aggiornamento = {};
+    // data_inizio_prev: sempre da shiftare (filtro già garantisce che sia > dataSosp)
+    if(f.data_inizio_prev)
+      aggiornamento.data_inizio_prev = addGiorni(f.data_inizio_prev, giorniSosp);
+    // data_fine_prev: shifta sempre (la fase inizia dopo, quindi anche la fine va spostata)
+    if(f.data_fine_prev)
+      aggiornamento.data_fine_prev = addGiorni(f.data_fine_prev, giorniSosp);
+    // Le date effettive non si shiftano — sono dati reali già registrati
+    if(Object.keys(aggiornamento).length){
+      const {error} = await sb.from('fasi').update(aggiornamento).eq('id',f.id);
+      if(!error) fasiSpostate++;
+    }
+  }
+
+  // Aggiorna il cantiere con la nuova data di fine
+  await sb.from('cantieri').update({data_fine: nuovaFine}).eq('id',currentCantiere);
+  // Aggiorna anche il cantiere in myCantieri locale
+  const mc = myCantieri.find(r=>r.cantiere.id===currentCantiere);
+  if(mc) mc.cantiere.data_fine = nuovaFine;
+
+  // Registra la ripresa
+  const {error} = await sb.from('sospensioni').update({
+    data_ripresa: dataRipresa,
+    nuova_fine_lavori: nuovaFine,
+    giorni_sospensione: giorniSosp,
+    fasi_spostate: fasiSpostate
+  }).eq('id',sospId);
+
+  if(error){ alert(error.message); return; }
+
+  // Ricalcola data_fine_aggiornata sul cantiere
+  await ricalcolaFineLavori(currentCantiere);
+
+  // Annotazione automatica sul giornale alla data di ripresa
+  await annotaGiornale(dataRipresa, `[RIPRESA LAVORI] Ripresa dopo ${giorniSosp} giorni di sospensione. Nuova data fine lavori: ${fmt(nuovaFine)}. Fasi spostate: ${fasiSpostate}.`);
+
+  closeModal();
+  alert(`✅ Ripresa registrata.\n\nGiorni di sospensione: ${giorniSosp}\nFasi spostate: ${fasiSpostate}\nNuova fine lavori: ${fmt(nuovaFine)}`);
+  showView('sospensioni');
+}
+
+async function eliminaSospensione(id){
+  if(!confirm('Eliminare questo verbale di sospensione?\nAttenzione: le fasi eventualmente già shiftate NON vengono ripristinate automaticamente.')) return;
+  const {error} = await sb.from('sospensioni').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  showView('sospensioni');
+}
+
+
+// ============================================================
+// VARIANTI
+// ============================================================
+async function renderVarianti(){
+  if(!currentCantiere) return noCantiere();
+  const c = getCantiereObj();
+
+  let html = `<div class="section-header">
+    <div>
+      <div class="page-title">Varianti</div>
+      <div class="page-subtitle">${esc(c?.nome||'')} — registro varianti contrattuali</div>
+    </div>
+    ${can('write')?`<button class="btn btn-primary" onclick="openModalNuovaVariante()">+ Nuova variante</button>`:''}
+  </div>
+  <div class="alert alert-warning" style="font-size:12px">
+    ⚠️ <strong>Registro interno:</strong> le varianti vengono trasmesse ufficialmente via PEC alla Stazione Appaltante.
+    La registrazione della nuova data di fine lavori aggiorna automaticamente la scheda cantiere.
+  </div>`;
+
+  const {data:varianti, error} = await sb.from('varianti').select('*').eq('cantiere_id',currentCantiere).order('numero');
+  if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
+
+  if(!varianti||!varianti.length){
+    return html + `<div class="empty"><div class="empty-icon">📝</div><h3>Nessuna variante registrata</h3><p>Registra le varianti contrattuali del cantiere.</p></div>`;
+  }
+
+  const tipoAttoLabel = {
+    atto_sottomissione: 'Atto di sottomissione',
+    atto_aggiuntivo:    'Atto aggiuntivo'
+  };
+  const tipoAttoBadge = {
+    atto_sottomissione: 'badge-blue',
+    atto_aggiuntivo:    'badge-yellow'
+  };
+
+  html += `<div class="card" style="padding:0"><table>
+    <thead><tr>
+      <th style="width:50px">N.</th>
+      <th style="width:95px">Data</th>
+      <th>Motivo variante</th>
+      <th>Tipo atto</th>
+      <th style="width:80px">Giorni</th>
+      <th style="width:100px">Data firma</th>
+      <th style="width:110px">Data approv.</th>
+      <th>Estremi approvazione</th>
+      <th style="width:80px"></th>
+    </tr></thead><tbody>`;
+
+  varianti.forEach(v=>{
+    html += `<tr>
+      <td style="text-align:center"><strong>V${v.numero}</strong></td>
+      <td>${fmt(v.data)}</td>
+      <td style="font-size:12px">${esc(v.motivo||'—')}</td>
+      <td><span class="badge ${tipoAttoBadge[v.tipo_atto]||'badge-grey'}">${tipoAttoLabel[v.tipo_atto]||v.tipo_atto}</span></td>
+      <td style="text-align:center">${v.giorni_concessi!=null?`<strong>+${v.giorni_concessi} gg</strong>`:'—'}</td>
+      <td>${v.data_firma ? fmt(v.data_firma) : '<span style="color:var(--muted);font-size:11px">Non firmato</span>'}</td>
+      <td>${v.data_approvazione ? fmt(v.data_approvazione) : '<span style="color:var(--muted);font-size:11px">—</span>'}</td>
+      <td style="font-size:11px">${esc(v.estremi_approvazione||'—')}</td>
+      <td>
+        ${can('write')?`<div class="btn-group">
+          <button class="btn btn-secondary btn-sm" onclick="openModalEditVariante('${v.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="eliminaVariante('${v.id}','${v.numero}')">🗑️</button>
+        </div>`:'—'}
+      </td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+
+function aggiornaNuovaFineVariante(){
+  const giorni = parseInt(document.getElementById('nv_giorni')?.value)||0;
+  const baseEl = document.getElementById('nv_fine_calc');
+  if(!baseEl) return;
+  const c = getCantiereObj();
+  const base = c?.data_fine_aggiornata || c?.data_fine_contratto || c?.data_fine;
+  if(!base||!giorni){ baseEl.value = base||''; return; }
+  const d = new Date(base+'T00:00:00');
+  d.setDate(d.getDate()+giorni);
+  baseEl.value = d.toISOString().split('T')[0];
+}
+
+async function openModalNuovaVariante(){
+  // Calcola numero variante successivo
+  const {count} = await sb.from('varianti').select('id',{count:'exact',head:true}).eq('cantiere_id',currentCantiere);
+  const nextNum = (count||0)+1;
+  const c = getCantiereObj();
+
+  openModal('Nuova Variante', `
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">N. variante *</label>
+        <input class="form-control" type="number" id="nv_num" value="${nextNum}" min="1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data variante *</label>
+        <input class="form-control" type="date" id="nv_data" value="${today()}">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Motivo variante *</label>
+        <div class="form-hint">Descrivi sinteticamente la causa e l'oggetto della variante.</div>
+        <textarea class="form-control" id="nv_motivo" rows="4"
+          placeholder="Es: Variante per sopravvenute esigenze tecniche relative al consolidamento delle fondazioni del corpo B, resesi necessarie a seguito di indagini geognostiche integrative..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo atto *</label>
+        <select class="form-control" id="nv_tipo">
+          <option value="atto_sottomissione">Atto di sottomissione</option>
+          <option value="atto_aggiuntivo">Atto aggiuntivo</option>
+        </select>
+        <div class="form-hint">Atto di sottomissione: entro il quinto d'obbligo — Atto aggiuntivo: oltre il quinto d'obbligo</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data firma atto</label>
+        <input class="form-control" type="date" id="nv_firma">
+        <div class="form-hint">Lascia vuoto se non ancora firmato</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Giorni concessi in variante</label>
+        <input class="form-control" type="number" id="nv_giorni" min="0" placeholder="es. 45" oninput="aggiornaNuovaFineVariante()">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Giorni da aggiungere alla data fine aggiornata attuale</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nuova data fine (calcolata)</label>
+        <input class="form-control" type="date" id="nv_fine_calc" readonly style="background:#f8f9fa;color:var(--muted)" value="${c?.data_fine_aggiornata||c?.data_fine||''}">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Calcolata automaticamente — non modificare</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data approvazione variante</label>
+        <input class="form-control" type="date" id="nv_data_approv">
+        <div class="form-hint">Data del provvedimento di approvazione della SA</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Estremi atto di approvazione</label>
+        <input class="form-control" id="nv_estremi_approv" placeholder="Es: Determinazione n. 123 del 01/01/2025">
+        <div class="form-hint">Tipo atto, numero e data del provvedimento approvativo</div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaVariante()">Salva variante</button>
+    </div>`);
+}
+
+async function salvaVariante(){
+  const num = parseInt(document.getElementById('nv_num').value);
+  const data = document.getElementById('nv_data').value;
+  const motivo = document.getElementById('nv_motivo').value.trim();
+  if(!num||!data||!motivo){ alert('Numero, data e motivo obbligatori'); return; }
+
+  const giorniConcessi = parseInt(document.getElementById('nv_giorni').value)||0;
+  const dataFirma = document.getElementById('nv_firma').value||null;
+
+  const {error} = await sb.from('varianti').insert({
+    cantiere_id: currentCantiere,
+    numero: num,
+    data,
+    motivo,
+    tipo_atto: document.getElementById('nv_tipo').value,
+    data_firma: dataFirma,
+    giorni_concessi: giorniConcessi||null,
+    nuova_fine_lavori: document.getElementById('nv_fine_calc').value||null,
+    data_approvazione: document.getElementById('nv_data_approv').value||null,
+    estremi_approvazione: document.getElementById('nv_estremi_approv').value.trim()||null,
+    created_by: currentUser.id
+  });
+  if(error){ alert(error.message); return; }
+
+  // Ricalcola data_fine_aggiornata includendo questa variante
+  const nuovaFineCalc = await ricalcolaFineLavori(currentCantiere);
+  await loadMyCantieri();
+
+  // Annotazione automatica sul giornale
+  const dataAnnot = dataFirma || data;
+  const tipoAttoVar = document.getElementById('nv_tipo').value === 'atto_sottomissione' ? 'Atto di sottomissione' : 'Atto aggiuntivo';
+  await annotaGiornale(dataAnnot, `[VARIANTE V${num}] ${tipoAttoVar} — ${motivo}${giorniConcessi?' — '+giorniConcessi+' giorni concessi':''}`);
+
+  closeModal();
+  showView('varianti');
+}
+
+async function openModalEditVariante(id){
+  const {data:v} = await sb.from('varianti').select('*').eq('id',id).single();
+  if(!v) return;
+
+  openModal(`Modifica Variante V${v.numero}`, `
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">N. variante</label>
+        <input class="form-control" type="number" id="ev_num" value="${v.numero}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data variante</label>
+        <input class="form-control" type="date" id="ev_data" value="${v.data||''}">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Motivo variante</label>
+        <textarea class="form-control" id="ev_motivo" rows="4">${esc(v.motivo||'')}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo atto</label>
+        <select class="form-control" id="ev_tipo">
+          <option value="atto_sottomissione"${v.tipo_atto==='atto_sottomissione'?' selected':''}>Atto di sottomissione</option>
+          <option value="atto_aggiuntivo"${v.tipo_atto==='atto_aggiuntivo'?' selected':''}>Atto aggiuntivo</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data firma atto</label>
+        <input class="form-control" type="date" id="ev_firma" value="${v.data_firma||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Giorni concessi in variante</label>
+        <input class="form-control" type="number" id="ev_giorni" value="${v.giorni_concessi||0}" min="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data approvazione variante</label>
+        <input class="form-control" type="date" id="ev_data_approv" value="${v.data_approvazione||''}">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Estremi atto di approvazione</label>
+        <input class="form-control" id="ev_estremi_approv" value="${esc(v.estremi_approvazione||'')}" placeholder="Es: Determinazione n. 123 del 01/01/2025">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaEditVariante('${id}')">Salva modifiche</button>
+    </div>`);
+}
+
+async function salvaEditVariante(id){
+  const giorniConcessiEdit = parseInt(document.getElementById('ev_giorni').value)||0;
+  const {error} = await sb.from('varianti').update({
+    numero: parseInt(document.getElementById('ev_num').value),
+    data: document.getElementById('ev_data').value,
+    motivo: document.getElementById('ev_motivo').value.trim(),
+    tipo_atto: document.getElementById('ev_tipo').value,
+    data_firma: document.getElementById('ev_firma').value||null,
+    giorni_concessi: giorniConcessiEdit||null,
+    data_approvazione: document.getElementById('ev_data_approv').value||null,
+    estremi_approvazione: document.getElementById('ev_estremi_approv').value.trim()||null
+  }).eq('id',id);
+  if(error){ alert(error.message); return; }
+
+  // Ricalcola data_fine_aggiornata
+  await ricalcolaFineLavori(currentCantiere);
+  await loadMyCantieri();
+
+  closeModal();
+  showView('varianti');
+}
+
+async function eliminaVariante(id, numero){
+  if(!confirm(`Eliminare la Variante V${numero}?`)) return;
+  const {error} = await sb.from('varianti').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  showView('varianti');
+}
+
+
+// ============================================================
+// DITTE PRESENTI IN CANTIERE
+// ============================================================
+async function renderDitte(){
+  if(!currentCantiere) return noCantiere();
+  const c = getCantiereObj();
+
+  let html = `<div class="section-header">
+    <div>
+      <div class="page-title">Ditte presenti in cantiere</div>
+      <div class="page-subtitle">${esc(c?.nome||'')} — appaltatrice, subappaltatrici, subaffidatarie</div>
+    </div>
+    ${(currentRole==='dl'||currentRole==='do')?`<button class="btn btn-primary" onclick="openModalNuovaDitta()">+ Aggiungi ditta</button>`:''}
+  </div>`;
+
+  const {data:ditte, error} = await sb.from('ditte').select('*').eq('cantiere_id',currentCantiere).order('tipo').order('nome');
+  if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
+
+  const tipoLabel = {appaltatrice:'Appaltatrice',subappaltatrice:'Subappaltatrice',subaffidataria:'Subaffidataria'};
+  const tipoBadge = {
+    appaltatrice:'badge-blue',
+    subappaltatrice:'badge-yellow',
+    subaffidataria:'badge-grey'
+  };
+
+  if(!ditte||!ditte.length){
+    return html + `<div class="empty"><div class="empty-icon">🏢</div><h3>Nessuna ditta registrata</h3><p>Aggiungi le ditte presenti in cantiere. Serviranno per la compilazione del Giornale dei Lavori.</p></div>`;
+  }
+
+  html += `<div class="card" style="padding:0">
+    <table>
+      <thead><tr><th>Ragione sociale</th><th>Partita IVA</th><th>Tipo</th><th></th></tr></thead>
+      <tbody>`;
+
+  ditte.forEach(d=>{
+    html += `<tr>
+      <td><strong>${esc(d.nome)}</strong></td>
+      <td><code style="font-size:12px">${esc(d.piva||'—')}</code></td>
+      <td><span class="badge ${tipoBadge[d.tipo]||'badge-grey'}">${tipoLabel[d.tipo]||d.tipo}</span></td>
+      <td style="text-align:right">
+        ${(currentRole==='dl'||currentRole==='do')?`
+          <div class="btn-group" style="justify-content:flex-end">
+            <button class="btn btn-secondary btn-sm" onclick="openModalEditDitta('${d.id}')">✏️</button>
+            <button class="btn btn-danger btn-sm" onclick="eliminaDitta('${d.id}','${esc(d.nome)}')">Rimuovi</button>
+          </div>`:'—'}
+      </td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+
+  // Legenda
+  html += `<div class="alert alert-info" style="margin-top:16px;font-size:12px">
+    <strong>Appaltatrice</strong> — impresa principale contraente con la SA &nbsp;|&nbsp;
+    <strong>Subappaltatrice</strong> — lavora in subappalto autorizzato &nbsp;|&nbsp;
+    <strong>Subaffidataria</strong> — fornitura o nolo con posa in opera
+  </div>`;
+
+  return html;
+}
+
+function openModalNuovaDitta(){
+  openModal('Aggiungi Ditta', `
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Ragione sociale *</label>
+      <input class="form-control" id="nd_nome" placeholder="Es. Costruzioni Rossi S.r.l.">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Partita IVA</label>
+      <input class="form-control" id="nd_piva" placeholder="Es. 01234567890" maxlength="11">
+      <div class="form-hint">Solo cifre, 11 caratteri</div>
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Tipo *</label>
+      <select class="form-control" id="nd_tipo">
+        <option value="appaltatrice">Appaltatrice</option>
+        <option value="subappaltatrice">Subappaltatrice</option>
+        <option value="subaffidataria">Subaffidataria</option>
+      </select>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaDitta()">Salva</button>
+    </div>`);
+}
+
+async function salvaDitta(){
+  const nome = document.getElementById('nd_nome').value.trim();
+  if(!nome){ alert('Ragione sociale obbligatoria'); return; }
+  const {error} = await sb.from('ditte').insert({
+    cantiere_id: currentCantiere,
+    nome,
+    piva: document.getElementById('nd_piva').value.trim()||null,
+    tipo: document.getElementById('nd_tipo').value,
+    created_by: currentUser.id
+  });
+  if(error){ alert(error.message); return; }
+  closeModal();
+  showView('ditte');
+}
+
+async function openModalEditDitta(id){
+  const {data:d} = await sb.from('ditte').select('*').eq('id',id).single();
+  if(!d) return;
+  openModal('Modifica Ditta', `
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Ragione sociale *</label>
+      <input class="form-control" id="ed_nome" value="${esc(d.nome)}">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Partita IVA</label>
+      <input class="form-control" id="ed_piva" value="${esc(d.piva||'')}" maxlength="11">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Tipo *</label>
+      <select class="form-control" id="ed_tipo">
+        <option value="appaltatrice"${d.tipo==='appaltatrice'?' selected':''}>Appaltatrice</option>
+        <option value="subappaltatrice"${d.tipo==='subappaltatrice'?' selected':''}>Subappaltatrice</option>
+        <option value="subaffidataria"${d.tipo==='subaffidataria'?' selected':''}>Subaffidataria</option>
+      </select>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaEditDitta('${id}')">Salva</button>
+    </div>`);
+}
+
+async function salvaEditDitta(id){
+  const {error} = await sb.from('ditte').update({
+    nome: document.getElementById('ed_nome').value.trim(),
+    piva: document.getElementById('ed_piva').value.trim()||null,
+    tipo: document.getElementById('ed_tipo').value
+  }).eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal();
+  showView('ditte');
+}
+
+async function eliminaDitta(id, nome){
+  if(!confirm(`Rimuovere "${nome}" dal cantiere?`)) return;
+  const {error} = await sb.from('ditte').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  showView('ditte');
+}
+
+async function renderTeam(){
+  if(!currentCantiere) return noCantiere();
+  const c = getCantiereObj();
+  let html = `<div class="section-header"><div><div class="page-title">Team Cantiere</div><div class="page-subtitle">${esc(c?.nome||'')}</div></div>
+    ${currentRole==='dl'?`<button class="btn btn-primary" onclick="openModalNuovoMembro()">+ Aggiungi membro</button>`:''}</div><div class="card" style="padding:0">
+    <table><thead><tr><th>Nome</th><th>Ruolo</th><th>Email</th><th>Telefono</th><th></th></tr></thead><tbody>`;
+  const {data:teamRaw} = await sb.from('cantiere_utenti').select('id,ruolo,telefono,utente_id').eq('cantiere_id',currentCantiere);
+  const team = teamRaw || [];
+  // carica profili separatamente per evitare errori join
+  const profili = {};
+  if(team.length){
+    const ids = team.map(t=>t.utente_id);
+    const {data:profs} = await sb.from('profiles').select('id,nome,cognome,email').in('id',ids);
+    (profs||[]).forEach(p=>{ profili[p.id]=p; });
+  }
+  if(!team.length){ html += `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--muted)">Nessun membro</td></tr>`; }
+  else team.forEach(t=>{ t.profilo = profili[t.utente_id] || {};
+    const p=t.profilo||{};
+    const nome = `${p.nome||''} ${p.cognome||''}`.trim() || p.email || '—';
+    html += `<tr><td><strong>${esc(nome)}</strong></td><td>${roleBadge(t.ruolo)}</td>
+      <td><a href="mailto:${esc(p.email||'')}" style="color:var(--accent)">${esc(p.email||'—')}</a></td><td>${esc(t.telefono||'—')}</td>
+      <td>${currentRole==='dl'&&t.utente_id!==currentUser.id?`<button class="btn btn-danger btn-sm" onclick="eliminaMembro('${t.id}','${esc(nome)}')">Rimuovi</button>`:'—'}</td></tr>`;
+  });
+  html += `</tbody></table></div>
+    <div class="alert alert-info mt-16">Per aggiungere un membro deve prima essersi registrato. Inserisci la sua email esatta e seleziona il ruolo.</div>`;
+  return html;
+}
+
+
+// ============================================================
+// VERBALI
+// ============================================================
+async function renderVerbali(){
+  if(!currentCantiere) return noCantiere();
+  const c = getCantiereObj();
+
+  let html = `<div class="section-header">
+    <div>
+      <div class="page-title">Verbali</div>
+      <div class="page-subtitle">${esc(c?.nome||'')} — registro verbali emessi</div>
+    </div>
+    ${can('write')?`<button class="btn btn-primary" onclick="openModalNuovoVerbale()">+ Nuovo verbale</button>`:''}
+  </div>
+  <div class="alert alert-info" style="font-size:12px">
+    I verbali registrati sono visibili a tutti i membri del cantiere. Per comunicazioni riservate usa la sezione <strong>Comunicazioni</strong> con visibilità impostata su "Riservata".
+  </div>`;
+
+  const {data:verbali, error} = await sb.from('verbali').select('*').eq('cantiere_id',currentCantiere).order('data',{ascending:false});
+  if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
+
+  if(!verbali||!verbali.length){
+    return html + `<div class="empty"><div class="empty-icon">📋</div><h3>Nessun verbale registrato</h3>
+      <p>Registra verbali di sopralluogo, consegna lavori, constatazione, riunione di cantiere, ecc.</p></div>`;
+  }
+
+  const tipoIcon = {
+    consegna_lavori:'🏗️', sopralluogo:'👁️', constatazione:'📝',
+    riunione:'👥', fine_lavori:'✅', altro:'📋'
+  };
+  const tipoLabel = {
+    consegna_lavori:'Consegna lavori', sopralluogo:'Sopralluogo',
+    constatazione:'Constatazione', riunione:'Riunione di cantiere',
+    fine_lavori:'Fine lavori', altro:'Altro verbale'
+  };
+
+  verbali.forEach(v=>{
+    html += `<div class="card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:20px">${tipoIcon[v.tipo]||'📋'}</span>
+            <div>
+              <div style="font-size:14px;font-weight:700;color:var(--primary)">${tipoLabel[v.tipo]||v.tipo}</div>
+              <div style="font-size:12px;color:var(--muted)">📅 ${fmt(v.data)} ${v.numero?'• N. '+esc(v.numero):''} ${v.redattore?'• '+esc(v.redattore):''}</div>
+            </div>
+          </div>
+          ${v.oggetto?`<div style="font-size:13px;font-weight:600;margin-top:6px">${esc(v.oggetto)}</div>`:''}
+        </div>
+        ${can('write')?`<div class="btn-group">
+          <button class="btn btn-secondary btn-sm" onclick="openModalEditVerbale('${v.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="eliminaVerbale('${v.id}')">🗑️</button>
+        </div>`:''}
+      </div>
+      ${v.testo?`<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;background:var(--surface);padding:12px;border-radius:4px;border-left:3px solid var(--accent)">${esc(v.testo)}</div>`:''}
+      ${v.presenti?`<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Presenti</div>
+        <div style="font-size:13px">${esc(v.presenti)}</div></div>`:''}
+      ${v.note_rup?`<div style="margin-top:10px;padding:10px;background:#EBF3FB;border-radius:4px;border-left:3px solid var(--accent)">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent);margin-bottom:4px">Annotazione RUP</div>
+        <div style="font-size:13px">${esc(v.note_rup)}</div>
+      </div>`:''}
+      ${currentRole==='rup'&&!v.note_rup?`<div style="margin-top:10px"><button class="btn btn-secondary btn-sm" onclick="openModalAnnotaRUP('${v.id}')">✏️ Aggiungi annotazione RUP</button></div>`:''}
+      ${currentRole==='rup'&&v.note_rup?`<div style="margin-top:6px"><button class="btn btn-secondary btn-sm" onclick="openModalAnnotaRUP('${v.id}')">✏️ Modifica annotazione RUP</button></div>`:''}
+    </div>`;
+  });
+
+  return html;
+}
+
+function openModalNuovoVerbale(){
+  openModal('Nuovo Verbale', `
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Tipo verbale *</label>
+        <select class="form-control" id="nv2_tipo">
+          <option value="consegna_lavori">🏗️ Consegna lavori</option>
+          <option value="sopralluogo">👁️ Sopralluogo</option>
+          <option value="constatazione">📝 Constatazione</option>
+          <option value="riunione">👥 Riunione di cantiere</option>
+          <option value="fine_lavori">✅ Fine lavori</option>
+          <option value="altro">📋 Altro verbale</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data *</label>
+        <input class="form-control" type="date" id="nv2_data" value="${today()}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">N. verbale</label>
+        <input class="form-control" id="nv2_num" placeholder="Es. 01/2025">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Redattore</label>
+        <input class="form-control" id="nv2_red" value="${(currentUser.nome||'')+' '+(currentUser.cognome||'')} (${ROLE_LABELS[currentRole]||''})">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Oggetto</label>
+        <input class="form-control" id="nv2_ogg" placeholder="Es. Verbale di consegna lavori relativi a...">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Testo del verbale</label>
+        <div class="form-hint">Descrivi sinteticamente quanto constatato, le disposizioni impartite, le decisioni assunte.</div>
+        <textarea class="form-control" id="nv2_testo" rows="6" placeholder="Es. Il giorno ... alle ore ... si sono riuniti presso il cantiere in oggetto il Direttore dei Lavori Ing. ... e il Rappresentante dell'Impresa ...&#10;&#10;Si constata che...&#10;&#10;Si dispone che..."></textarea>
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Presenti</label>
+        <input class="form-control" id="nv2_pres" placeholder="Es. Ing. Rossi (DL), Geom. Bianchi (RUP), Ing. Verdi (DT Impresa)">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaVerbale()">Salva verbale</button>
+    </div>`);
+}
+
+async function salvaVerbale(){
+  const tipo = document.getElementById('nv2_tipo').value;
+  const data = document.getElementById('nv2_data').value;
+  if(!data){ alert('Data obbligatoria'); return; }
+  const {error} = await sb.from('verbali').insert({
+    cantiere_id: currentCantiere,
+    tipo, data,
+    numero: document.getElementById('nv2_num').value.trim()||null,
+    redattore: document.getElementById('nv2_red').value.trim()||null,
+    oggetto: document.getElementById('nv2_ogg').value.trim()||null,
+    testo: document.getElementById('nv2_testo').value.trim()||null,
+    presenti: document.getElementById('nv2_pres').value.trim()||null,
+    created_by: currentUser.id
+  });
+  if(error){ alert(error.message); return; }
+  // Annotazione automatica sul giornale
+  const tipoL = {consegna_lavori:'Consegna lavori',sopralluogo:'Sopralluogo',constatazione:'Constatazione',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',altro:'Verbale'};
+  const ogg = document.getElementById('nv2_ogg').value.trim();
+  await annotaGiornale(data, `[VERBALE ${(tipoL[tipo]||tipo).toUpperCase()}]${ogg?' — '+ogg:''}`);
+  closeModal();
+  showView('verbali');
+}
+
+async function openModalEditVerbale(id){
+  const {data:v} = await sb.from('verbali').select('*').eq('id',id).single();
+  if(!v) return;
+  openModal('Modifica Verbale', `
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Tipo verbale</label>
+        <select class="form-control" id="ev2_tipo">
+          <option value="consegna_lavori"${v.tipo==='consegna_lavori'?' selected':''}>🏗️ Consegna lavori</option>
+          <option value="sopralluogo"${v.tipo==='sopralluogo'?' selected':''}>👁️ Sopralluogo</option>
+          <option value="constatazione"${v.tipo==='constatazione'?' selected':''}>📝 Constatazione</option>
+          <option value="riunione"${v.tipo==='riunione'?' selected':''}>👥 Riunione di cantiere</option>
+          <option value="fine_lavori"${v.tipo==='fine_lavori'?' selected':''}>✅ Fine lavori</option>
+          <option value="altro"${v.tipo==='altro'?' selected':''}>📋 Altro verbale</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data</label>
+        <input class="form-control" type="date" id="ev2_data" value="${v.data||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">N. verbale</label>
+        <input class="form-control" id="ev2_num" value="${esc(v.numero||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Redattore</label>
+        <input class="form-control" id="ev2_red" value="${esc(v.redattore||'')}">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Oggetto</label>
+        <input class="form-control" id="ev2_ogg" value="${esc(v.oggetto||'')}">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Testo del verbale</label>
+        <textarea class="form-control" id="ev2_testo" rows="6">${esc(v.testo||'')}</textarea>
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Presenti</label>
+        <input class="form-control" id="ev2_pres" value="${esc(v.presenti||'')}">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaEditVerbale('${id}')">Salva</button>
+    </div>`);
+}
+
+async function salvaEditVerbale(id){
+  const {error} = await sb.from('verbali').update({
+    tipo: document.getElementById('ev2_tipo').value,
+    data: document.getElementById('ev2_data').value,
+    numero: document.getElementById('ev2_num').value.trim()||null,
+    redattore: document.getElementById('ev2_red').value.trim()||null,
+    oggetto: document.getElementById('ev2_ogg').value.trim()||null,
+    testo: document.getElementById('ev2_testo').value.trim()||null,
+    presenti: document.getElementById('ev2_pres').value.trim()||null
+  }).eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal();
+  showView('verbali');
+}
+
+async function eliminaVerbale(id){
+  if(!confirm('Eliminare questo verbale?')) return;
+  const {error} = await sb.from('verbali').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  showView('verbali');
+}
+
+async function openModalAnnotaRUP(id){
+  const {data:v} = await sb.from('verbali').select('note_rup').eq('id',id).single();
+  openModal('Annotazione RUP', `
+    <div class="alert alert-info" style="font-size:12px">L'annotazione RUP è visibile a tutti i membri del cantiere come presa d'atto o osservazione sul verbale.</div>
+    <div class="form-group">
+      <label class="form-label">Annotazione RUP</label>
+      <textarea class="form-control" id="annot_rup" rows="5" placeholder="Es. Preso atto del presente verbale. Si conferma quanto disposto dal DL...">${esc(v?.note_rup||'')}</textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaAnnotaRUP('${id}')">Salva annotazione</button>
+    </div>`);
+}
+
+async function salvaAnnotaRUP(id){
+  const {error} = await sb.from('verbali').update({
+    note_rup: document.getElementById('annot_rup').value.trim()||null
+  }).eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal();
+  showView('verbali');
+}
+
+
+// ============================================================
+// SAL — STATI DI AVANZAMENTO LAVORI
+// ============================================================
+async function renderSAL(){
+  if(!currentCantiere) return noCantiere();
+  const c = getCantiereObj();
+
+  // impresa vede i SAL in sola lettura
+
+  let html = `<div class="section-header">
+    <div>
+      <div class="page-title">Stati di Avanzamento Lavori</div>
+      <div class="page-subtitle">${esc(c?.nome||'')}</div>
+    </div>
+    ${(currentRole==='dl'||currentRole==='do')?`<button class="btn btn-primary" onclick="openModalNuovoSAL()">+ Nuovo SAL</button>`:''}
+  </div>
+  <div class="alert alert-warning">⚠️ <strong>Registro interno:</strong> i SAL registrati hanno valore di archivio contabile interno. La documentazione ufficiale (certificato di pagamento, SAL firmato) viene trasmessa alla Stazione Appaltante <strong>via PEC</strong>. Il portale non sostituisce la trasmissione formale.</div>`;
+
+  const {data:sals, error} = await sb.from('sal').select('*').eq('cantiere_id',currentCantiere).order('numero',{ascending:false});
+  if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
+
+  // Totali
+  if(sals && sals.length){
+    const totLordo = sals.reduce((a,s)=>a+(s.importo_lordo||0),0);
+    const totNetto = sals.reduce((a,s)=>a+(s.netto_pagare||0),0);
+    const ultSal = sals[0];
+    html += `<div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi"><div class="kpi-label">SAL emessi</div><div class="kpi-value">${sals.length}</div><div class="kpi-sub">ultimo: SAL n. ${ultSal.numero}</div></div>
+      <div class="kpi"><div class="kpi-label">Importo lordo cumulato</div><div class="kpi-value" style="font-size:18px">${fmtEur(totLordo)}</div><div class="kpi-sub">lavori + sicurezza</div></div>
+      <div class="kpi"><div class="kpi-label">Netto a pagare cumulato</div><div class="kpi-value" style="font-size:18px;color:var(--green)">${fmtEur(totNetto)}</div><div class="kpi-sub">al netto di ritenute</div></div>
+    </div>`;
+  }
+
+  if(!sals || !sals.length){
+    return html + `<div class="empty"><div class="empty-icon">💶</div><h3>Nessun SAL registrato</h3><p>Aggiungi il primo Stato di Avanzamento Lavori.</p></div>`;
+  }
+
+  const statoSAL = {
+    bozza:        ['badge-grey','Bozza'],
+    emesso:       ['badge-blue','Emesso'],
+    approvato_rup:['badge-green','Approvato RUP'],
+    pagato:       ['badge-green','Pagato ✓']
+  };
+
+  html += `<div class="card" style="padding:0"><table>
+    <thead><tr><th>N. SAL</th><th>Periodo</th><th>Importo lordo</th><th>Ritenuta gar.</th><th>Anticipazione</th><th>Altri importi</th><th>Netto a pagare</th><th>Stato</th><th></th></tr></thead>
+    <tbody>`;
+
+  sals.forEach(s=>{
+    const [cls,label] = statoSAL[s.stato] || ['badge-grey', s.stato];
+    html += `<tr>
+      <td><strong>SAL n. ${s.numero}</strong><div style="font-size:11px;color:var(--muted)">${fmt(s.data)}</div></td>
+      <td style="font-size:12px">${fmt(s.periodo_dal)} →<br>${fmt(s.periodo_al)}</td>
+      <td>${fmtEur(s.importo_lordo)}<div style="font-size:11px;color:var(--muted)">Lav: ${fmtEur(s.importo_lavori)} + Sic: ${fmtEur(s.importo_sicurezza)}</div></td>
+      <td style="color:var(--red)">${fmtEur(s.ritenuta_garanzia)}</td>
+      <td style="color:var(--red)">${fmtEur(s.anticipazione_dedurre)}</td>
+      <td style="color:var(--red)">${fmtEur(s.altri_importi)}${s.note_altri_importi?`<div style="font-size:11px;color:var(--muted)">${esc(s.note_altri_importi)}</div>`:''}</td>
+      <td><strong style="color:var(--green);font-size:14px">${fmtEur(s.netto_pagare)}</strong></td>
+      <td><span class="badge ${cls}">${label}</span></td>
+      <td>
+        ${(currentRole==='dl'||currentRole==='do')?`<div class="btn-group">
+          <button class="btn btn-secondary btn-sm" onclick="openModalEditSAL('${s.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="eliminaSAL('${s.id}','${s.numero}')">🗑️</button>
+        </div>`:''}
+      </td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+function openModalNuovoSAL(){
+  const oggi = today();
+  openModal('Nuovo SAL — Stato di Avanzamento Lavori', `
+    <div class="alert alert-info" style="font-size:12px">I calcoli sono automatici. Il documento ufficiale viene trasmesso alla SA via PEC separatamente.</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">N. SAL *</label><input class="form-control" type="number" id="sal_num" min="1" placeholder="1"></div>
+      <div class="form-group"><label class="form-label">Data</label><input class="form-control" type="date" id="sal_data" value="${oggi}"></div>
+      <div class="form-group"><label class="form-label">Periodo dal</label><input class="form-control" type="date" id="sal_dal"></div>
+      <div class="form-group"><label class="form-label">Periodo al</label><input class="form-control" type="date" id="sal_al"></div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;margin-top:12px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:12px">IMPORTI</div>
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Importo lavori eseguiti (€)</label><input class="form-control" type="number" step="0.01" id="sal_lav" value="0" oninput="aggiornaTotaleSAL()"></div>
+        <div class="form-group"><label class="form-label">Importo sicurezza (€)</label><input class="form-control" type="number" step="0.01" id="sal_sic" value="0" oninput="aggiornaTotaleSAL()"></div>
+        <div class="form-group"><label class="form-label">Ritenuta di garanzia (€)</label><input class="form-control" type="number" step="0.01" id="sal_rit" value="0" oninput="aggiornaTotaleSAL()"></div>
+        <div class="form-group"><label class="form-label">Anticipazione da dedurre (€)</label><input class="form-control" type="number" step="0.01" id="sal_ant" value="0" oninput="aggiornaTotaleSAL()"></div>
+        <div class="form-group"><label class="form-label">Altri importi da dedurre (€)</label><input class="form-control" type="number" step="0.01" id="sal_altri" value="0" oninput="aggiornaTotaleSAL()"></div>
+        <div class="form-group"><label class="form-label">Descrizione altri importi</label><input class="form-control" id="sal_altri_note" placeholder="Es. penali, conguagli..."></div>
+      </div>
+      <div style="margin-top:16px;padding-top:12px;border-top:2px solid var(--primary)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:12px;color:var(--muted)">Importo lordo (lav + sic)</div>
+            <div style="font-size:11px;color:var(--red);margin-top:2px">- Ritenuta - Anticipazione - Altri</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:12px;color:var(--muted)" id="sal_lordo_display">€ 0,00</div>
+            <div style="font-size:20px;font-weight:700;color:var(--green)" id="sal_netto_display">NETTO: € 0,00</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="form-grid" style="margin-top:12px">
+      <div class="form-group"><label class="form-label">Stato</label>
+        <select class="form-control" id="sal_stato">
+          <option value="bozza">Bozza</option>
+          <option value="emesso">Emesso</option>
+          <option value="approvato_rup">Approvato RUP</option>
+          <option value="pagato">Pagato</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Note</label><input class="form-control" id="sal_note" placeholder="Note aggiuntive..."></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaSAL()">Salva SAL</button>
+    </div>`);
+}
+
+function aggiornaTotaleSAL(prefix='sal'){
+  const lav = parseFloat(document.getElementById(prefix+'_lav')?.value)||0;
+  const sic = parseFloat(document.getElementById(prefix+'_sic')?.value)||0;
+  const rit = parseFloat(document.getElementById(prefix+'_rit')?.value)||0;
+  const ant = parseFloat(document.getElementById(prefix+'_ant')?.value)||0;
+  const alt = parseFloat(document.getElementById(prefix+'_altri')?.value)||0;
+  const lordo = lav + sic;
+  const netto = lordo - rit - ant - alt;
+  const ld = document.getElementById(prefix+'_lordo_display');
+  const nd = document.getElementById(prefix+'_netto_display');
+  if(ld) ld.textContent = 'Lordo: ' + fmtEur(lordo);
+  if(nd) nd.textContent = 'NETTO: ' + fmtEur(netto);
+}
+
+async function salvaSAL(){
+  const num = parseInt(document.getElementById('sal_num').value);
+  if(!num){ alert('Numero SAL obbligatorio'); return; }
+  const lav = parseFloat(document.getElementById('sal_lav').value)||0;
+  const sic = parseFloat(document.getElementById('sal_sic').value)||0;
+  const {error} = await sb.from('sal').insert({
+    cantiere_id: currentCantiere,
+    numero: num,
+    data: document.getElementById('sal_data').value,
+    periodo_dal: document.getElementById('sal_dal').value || null,
+    periodo_al: document.getElementById('sal_al').value || null,
+    importo_lavori: lav,
+    importo_sicurezza: sic,
+    ritenuta_garanzia: parseFloat(document.getElementById('sal_rit').value)||0,
+    anticipazione_dedurre: parseFloat(document.getElementById('sal_ant').value)||0,
+    altri_importi: parseFloat(document.getElementById('sal_altri').value)||0,
+    note_altri_importi: document.getElementById('sal_altri_note').value,
+    stato: document.getElementById('sal_stato').value,
+    note: document.getElementById('sal_note').value,
+    created_by: currentUser.id
+  });
+  if(error){ alert(error.message); return; }
+  closeModal();
+  showView('sal');
+}
+
+async function openModalEditSAL(id){
+  const {data:s} = await sb.from('sal').select('*').eq('id',id).single();
+  if(!s) return;
+  openModal(`Modifica SAL n. ${s.numero}`, `
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">N. SAL</label><input class="form-control" type="number" id="es_num" value="${s.numero}"></div>
+      <div class="form-group"><label class="form-label">Data</label><input class="form-control" type="date" id="es_data" value="${s.data||''}"></div>
+      <div class="form-group"><label class="form-label">Periodo dal</label><input class="form-control" type="date" id="es_dal" value="${s.periodo_dal||''}"></div>
+      <div class="form-group"><label class="form-label">Periodo al</label><input class="form-control" type="date" id="es_al" value="${s.periodo_al||''}"></div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;margin-top:12px">
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Importo lavori (€)</label><input class="form-control" type="number" step="0.01" id="es_lav" value="${s.importo_lavori||0}" oninput="aggiornaTotaleSAL('es')"></div>
+        <div class="form-group"><label class="form-label">Importo sicurezza (€)</label><input class="form-control" type="number" step="0.01" id="es_sic" value="${s.importo_sicurezza||0}" oninput="aggiornaTotaleSAL('es')"></div>
+        <div class="form-group"><label class="form-label">Ritenuta garanzia (€)</label><input class="form-control" type="number" step="0.01" id="es_rit" value="${s.ritenuta_garanzia||0}" oninput="aggiornaTotaleSAL('es')"></div>
+        <div class="form-group"><label class="form-label">Anticipazione (€)</label><input class="form-control" type="number" step="0.01" id="es_ant" value="${s.anticipazione_dedurre||0}" oninput="aggiornaTotaleSAL('es')"></div>
+        <div class="form-group"><label class="form-label">Altri importi (€)</label><input class="form-control" type="number" step="0.01" id="es_altri" value="${s.altri_importi||0}" oninput="aggiornaTotaleSAL('es')"></div>
+        <div class="form-group"><label class="form-label">Descrizione altri importi</label><input class="form-control" id="es_altri_note" value="${esc(s.note_altri_importi||'')}"></div>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:2px solid var(--primary);display:flex;justify-content:space-between;align-items:center">
+        <div><div style="font-size:12px;color:var(--muted)" id="es_lordo_display">Lordo: ${fmtEur(s.importo_lordo)}</div></div>
+        <div style="font-size:20px;font-weight:700;color:var(--green)" id="es_netto_display">NETTO: ${fmtEur(s.netto_pagare)}</div>
+      </div>
+    </div>
+    <div class="form-grid" style="margin-top:12px">
+      <div class="form-group"><label class="form-label">Stato</label>
+        <select class="form-control" id="es_stato">
+          <option value="bozza"${s.stato==='bozza'?' selected':''}>Bozza</option>
+          <option value="emesso"${s.stato==='emesso'?' selected':''}>Emesso</option>
+          <option value="approvato_rup"${s.stato==='approvato_rup'?' selected':''}>Approvato RUP</option>
+          <option value="pagato"${s.stato==='pagato'?' selected':''}>Pagato</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Note</label><input class="form-control" id="es_note" value="${esc(s.note||'')}"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaEditSAL('${id}')">Salva modifiche</button>
+    </div>`);
+}
+
+async function salvaEditSAL(id){
+  const {error} = await sb.from('sal').update({
+    numero: parseInt(document.getElementById('es_num').value),
+    data: document.getElementById('es_data').value,
+    periodo_dal: document.getElementById('es_dal').value || null,
+    periodo_al: document.getElementById('es_al').value || null,
+    importo_lavori: parseFloat(document.getElementById('es_lav').value)||0,
+    importo_sicurezza: parseFloat(document.getElementById('es_sic').value)||0,
+    ritenuta_garanzia: parseFloat(document.getElementById('es_rit').value)||0,
+    anticipazione_dedurre: parseFloat(document.getElementById('es_ant').value)||0,
+    altri_importi: parseFloat(document.getElementById('es_altri').value)||0,
+    note_altri_importi: document.getElementById('es_altri_note').value,
+    stato: document.getElementById('es_stato').value,
+    note: document.getElementById('es_note').value
+  }).eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal();
+  showView('sal');
+}
+
+async function renderReport(){
+  if(!can('report')) return `<div class="empty"><div class="empty-icon">🔒</div><h3>Accesso riservato</h3><p>Report disponibili solo per DL e RUP.</p></div>`;
+  let html = `<div class="section-header"><div><div class="page-title">Report per Stazione Appaltante</div><div class="page-subtitle">Genera report ufficiali in PDF</div></div></div>`;
+  const reportCantieri = myCantieri.filter(r=>r.ruolo==='dl'||r.ruolo==='rup');
+  if(!reportCantieri.length) return html + `<div class="empty"><p>Nessun cantiere con ruolo DL/RUP.</p></div>`;
+  for(const r of reportCantieri){
+    const c=r.cantiere;
+    const [{data:fasi},{count:odsAperti}] = await Promise.all([
+      sb.from('fasi').select('stato').eq('cantiere_id',c.id).is('parent_id',null),
+      sb.from('ods').select('id',{count:'exact',head:true}).eq('cantiere_id',c.id).neq('stato','accettata')
+    ]);
+    const tot=(fasi||[]).length, ver=(fasi||[]).filter(f=>f.stato==='verificata_dl').length;
+    html += `<div class="card"><div class="card-header"><span class="card-title">${esc(c.nome)}</span><span class="badge badge-grey">${esc(c.stazione_appaltante||'')}</span></div>
+      <div class="form-grid-3" style="gap:12px;margin-bottom:16px">
+        <div><div class="form-label">Avanzamento fasi</div><div style="font-size:20px;font-weight:700;color:var(--primary)">${ver}/${tot}</div></div>
+        <div><div class="form-label">ODS aperti</div><div style="font-size:20px;font-weight:700;color:${odsAperti>0?'#856404':'#155724'}">${odsAperti||0}</div></div>
+        <div><div class="form-label">Importo</div><div style="font-size:20px;font-weight:700;color:var(--primary)">${fmtEur(c.importo)}</div></div></div>
+      <div class="btn-group"><button class="btn btn-primary" onclick="generaReportSA('${c.id}')">🖨️ Genera Report SA</button>
+      <button class="btn btn-secondary" onclick="generaReportGiornale('${c.id}')">📓 Stampa Giornale</button></div></div>`;
+  }
+  return html;
+}
+
+function noCantiere(){return `<div class="empty"><div class="empty-icon">🏗️</div><h3>Nessun cantiere selezionato</h3><p>Seleziona un cantiere dalla barra laterale.</p></div>`;}
+
+// ============================================================
+// MODALS
+// ============================================================
+function openModal(title,body){document.getElementById('modalTitle').textContent=title;document.getElementById('modalBody').innerHTML=body;document.getElementById('modalOverlay').classList.remove('hidden');}
+function closeModal(e){if(!e||e.target===document.getElementById('modalOverlay'))document.getElementById('modalOverlay').classList.add('hidden');}
+
+function openModalNuovoCantiere(){
+  openModal('Nuovo Cantiere',`<div class="alert alert-info">Creando il cantiere verrai registrato automaticamente come <strong>Direttore dei Lavori</strong>.</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Denominazione cantiere *</label>
+        <input class="form-control" id="f_nome" placeholder="Es. 2025-MC-001 oppure nome breve">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Visibile in dashboard e nel selettore — usa il codice commessa o un nome breve opaco</div>
+      </div>
+      <div class="form-group"><label class="form-label">Codice commessa</label>
+        <input class="form-control" id="f_codice" placeholder="Es. 2025-MC-001">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Codice interno opaco aggiuntivo (opzionale)</div>
+      </div>
+      <div class="form-group span-2"><label class="form-label">Descrizione lavori</label>
+        <textarea class="form-control" id="f_descr" rows="3" placeholder="Es. Riqualificazione e messa in sicurezza piazza Municipio con interventi strutturali al corpo B — Comune di Treia (MC)"></textarea>
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Visibile solo dentro la scheda cantiere, non in dashboard</div>
+      </div>
+      <div class="form-group"><label class="form-label">CIG</label><input class="form-control" id="f_cig"></div>
+      <div class="form-group"><label class="form-label">CUP</label><input class="form-control" id="f_cup"></div>
+      <div class="form-group"><label class="form-label">Stazione Appaltante *</label><input class="form-control" id="f_sa"></div>
+      <div class="form-group"><label class="form-label">Impresa esecutrice</label><input class="form-control" id="f_impresa"></div>
+      <div class="form-group"><label class="form-label">Importo contrattuale (€) *</label><input class="form-control" type="number" id="f_importo"></div>
+      <div class="form-group"><label class="form-label">Stato</label><select class="form-control" id="f_stato"><option value="attivo">Attivo</option><option value="sospeso">Sospeso</option><option value="concluso">Concluso</option></select></div>
+      <div class="form-group"><label class="form-label">Data consegna lavori</label><input class="form-control" type="date" id="f_dc"></div>
+      <div class="form-group"><label class="form-label">Data fine lavori da contratto *</label>
+        <input class="form-control" type="date" id="f_df">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Data originaria — non viene mai modificata</div>
+      </div>
+      <div class="form-group span-2"><label class="form-label">Estremi del contratto</label>
+        <input class="form-control" id="f_estremi" placeholder="Es. Rep. n. 123 del 01/01/2024 — Registro Particolare n. 456">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Repertorio, data stipula, CIG, riferimento atto</div>
+      </div></div>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" id="saveCantBtn" onclick="salvaCantiere()">Salva cantiere</button></div>`);
+}
+
+async function salvaCantiere(){
+  const nome=document.getElementById('f_nome').value.trim();
+  const codice=document.getElementById('f_codice').value.trim()||null;
+  const descr=document.getElementById('f_descr').value.trim()||null;
+  const cig=document.getElementById('f_cig').value.trim();
+  const sa=document.getElementById('f_sa').value.trim();
+  const importo=parseFloat(document.getElementById('f_importo').value)||0;
+  if(!nome){alert('Denominazione cantiere obbligatoria');return;}
+  const btn=document.getElementById('saveCantBtn');btn.disabled=true;btn.textContent='Salvataggio…';
+  const {data:cant,error} = await sb.from('cantieri').insert({
+    nome,codice_commessa:codice,descrizione:descr,cig,cup:document.getElementById('f_cup').value.trim(),stazione_appaltante:sa,
+    impresa:document.getElementById('f_impresa').value.trim(),importo,
+    stato:document.getElementById('f_stato').value,
+    estremi_contratto:document.getElementById('f_estremi').value.trim()||null,
+    data_consegna:document.getElementById('f_dc').value||null,
+    data_fine_contratto:document.getElementById('f_df').value||null,
+    data_fine_aggiornata:document.getElementById('f_df').value||null,
+    data_fine:document.getElementById('f_df').value||null,
+    created_by:currentUser.id
+  }).select().single();
+  if(error){alert('Errore: '+error.message);btn.disabled=false;btn.textContent='Salva cantiere';return;}
+  // auto-assegnazione come DL
+  const {error:e2} = await sb.from('cantiere_utenti').insert({cantiere_id:cant.id,utente_id:currentUser.id,ruolo:'dl'});
+  if(e2){alert('Cantiere creato ma errore assegnazione DL: '+e2.message);}
+  closeModal();
+  await loadMyCantieri();
+  showView('cantieri');
+}
+
+function openModalEditCantiere(id){
+  const c=getCantiereObj(id);if(!c)return;
+  openModal('Modifica Cantiere',`
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Denominazione cantiere *</label>
+        <input class="form-control" id="e_nome" value="${esc(c.nome)}">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Visibile in dashboard e nel selettore — es. codice commessa o nome breve</div>
+      </div>
+      <div class="form-group"><label class="form-label">Codice commessa</label>
+        <input class="form-control" id="e_codice" value="${esc(c.codice_commessa||'')}">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Codice interno opaco (es. 2025-MC-001)</div>
+      </div>
+      <div class="form-group span-2"><label class="form-label">Descrizione lavori</label>
+        <textarea class="form-control" id="e_descr" rows="3">${esc(c.descrizione||'')}</textarea>
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Visibile solo dentro la scheda cantiere, non in dashboard</div>
+      </div>
+      <div class="form-group"><label class="form-label">CIG</label><input class="form-control" id="e_cig" value="${esc(c.cig||'')}"></div>
+      <div class="form-group"><label class="form-label">CUP</label><input class="form-control" id="e_cup" value="${esc(c.cup||'')}"></div>
+      <div class="form-group"><label class="form-label">Stazione Appaltante</label><input class="form-control" id="e_sa" value="${esc(c.stazione_appaltante||'')}"></div>
+      <div class="form-group"><label class="form-label">Impresa</label><input class="form-control" id="e_impresa" value="${esc(c.impresa||'')}"></div>
+      <div class="form-group"><label class="form-label">Importo (€)</label><input class="form-control" type="number" id="e_importo" value="${c.importo||0}"></div>
+      <div class="form-group"><label class="form-label">Stato</label>
+        <select class="form-control" id="e_stato">
+          <option value="attivo"${c.stato==='attivo'?' selected':''}>Attivo</option>
+          <option value="sospeso"${c.stato==='sospeso'?' selected':''}>Sospeso</option>
+          <option value="concluso"${c.stato==='concluso'?' selected':''}>Concluso</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Data consegna lavori</label>
+        <input class="form-control" type="date" id="e_dc" value="${c.data_consegna||''}">
+      </div>
+      <div class="form-group"><label class="form-label">Data fine lavori da contratto</label>
+        <input class="form-control" type="date" id="e_dfc" value="${c.data_fine_contratto||c.data_fine||''}">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Data originaria — non modificare se già impostata</div>
+      </div>
+      <div class="form-group"><label class="form-label">Data fine aggiornata</label>
+        <input class="form-control" type="date" id="e_dfa" value="${c.data_fine_aggiornata||c.data_fine||''}" readonly style="background:#f8f9fa;color:var(--muted)">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Calcolata automaticamente da sospensioni e proroghe</div>
+      </div>
+      <div class="form-group span-2"><label class="form-label">Estremi del contratto</label>
+        <input class="form-control" id="e_estremi" value="${esc(c.estremi_contratto||'')}" placeholder="Es. Rep. n. 123 del 01/01/2024">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaEditCantiere('${id}')">Salva</button>
+    </div>`);
+}
+async function salvaEditCantiere(id){
+  const {error}=await sb.from('cantieri').update({
+    nome: document.getElementById('e_nome').value.trim(),
+    codice_commessa: document.getElementById('e_codice').value.trim()||null,
+    descrizione: document.getElementById('e_descr').value.trim()||null,
+    cig: document.getElementById('e_cig').value.trim(),
+    cup: document.getElementById('e_cup').value.trim(),
+    stazione_appaltante: document.getElementById('e_sa').value.trim(),
+    impresa: document.getElementById('e_impresa').value.trim(),
+    importo: parseFloat(document.getElementById('e_importo').value)||0,
+    stato: document.getElementById('e_stato').value,
+    data_consegna: document.getElementById('e_dc').value||null,
+    data_fine_contratto: document.getElementById('e_dfc').value||null,
+    estremi_contratto: document.getElementById('e_estremi').value.trim()||null
+  }).eq('id',id);
+  if(error){alert(error.message);return;}
+  closeModal();await loadMyCantieri();showView('cantieri');
+}
+
+function openModalNuovaFase(parentId){
+  openModal(parentId?'Nuova Subfase':'Nuova Macrofase',`<div class="form-grid">
+    <div class="form-group span-2"><label class="form-label">Nome fase *</label><input class="form-control" id="ff_nome"></div>
+    <div class="form-group"><label class="form-label">Importo (€)</label><input class="form-control" type="number" id="ff_importo"></div>
+    <div class="form-group"><label class="form-label">Ordine</label><input class="form-control" type="number" id="ff_ordine" value="1"></div>
+    <div class="form-group"><label class="form-label">Data inizio prevista</label><input class="form-control" type="date" id="ff_dip"></div>
+    <div class="form-group"><label class="form-label">Data fine prevista</label><input class="form-control" type="date" id="ff_dfp"></div>
+    <div class="form-group span-2"><label class="form-label">Descrizione</label><textarea class="form-control" id="ff_desc" rows="3"></textarea></div></div>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaFase('${parentId||''}')">Salva fase</button></div>`);
+}
+async function salvaFase(parentId){
+  const nome=document.getElementById('ff_nome').value.trim();
+  if(!nome){alert('Nome obbligatorio');return;}
+  const {error}=await sb.from('fasi').insert({
+    cantiere_id:currentCantiere,parent_id:parentId||null,nome,
+    importo:parseFloat(document.getElementById('ff_importo').value)||0,
+    ordine:parseInt(document.getElementById('ff_ordine').value)||1,
+    descrizione:document.getElementById('ff_desc').value,stato:'attesa',
+    data_inizio_prev:document.getElementById('ff_dip').value||null,
+    data_fine_prev:document.getElementById('ff_dfp').value||null
+  });
+  if(error){alert(error.message);return;}
+  closeModal();showView('fasi');
+}
+
+
+// ---- MODIFICA FASE ----
+async function openModalEditFase(id){
+  const {data:f} = await sb.from('fasi').select('*').eq('id',id).single();
+  if(!f) return;
+  openModal(`Modifica: ${esc(f.nome)}`, `
+    <div class="form-grid">
+      <div class="form-group span-2"><label class="form-label">Nome fase *</label><input class="form-control" id="ef_nome" value="${esc(f.nome)}"></div>
+      <div class="form-group"><label class="form-label">Importo (€)</label><input class="form-control" type="number" step="0.01" id="ef_importo" value="${f.importo||0}"></div>
+      <div class="form-group"><label class="form-label">Ordine</label><input class="form-control" type="number" id="ef_ordine" value="${f.ordine||1}"></div>
+      <div class="form-group"><label class="form-label">Data inizio prevista</label><input class="form-control" type="date" id="ef_dip" value="${f.data_inizio_prev||''}"></div>
+      <div class="form-group"><label class="form-label">Data fine prevista</label><input class="form-control" type="date" id="ef_dfp" value="${f.data_fine_prev||''}"></div>
+      <div class="form-group"><label class="form-label">Data inizio effettiva</label><input class="form-control" type="date" id="ef_die" value="${f.data_inizio_eff||''}"></div>
+      <div class="form-group"><label class="form-label">Data fine effettiva</label><input class="form-control" type="date" id="ef_dfe" value="${f.data_fine_eff||''}"></div>
+      <div class="form-group"><label class="form-label">Stato</label>
+        <select class="form-control" id="ef_stato">
+          <option value="attesa"${f.stato==='attesa'?' selected':''}>In attesa</option>
+          <option value="in_corso"${f.stato==='in_corso'?' selected':''}>In corso</option>
+          <option value="completata"${f.stato==='completata'?' selected':''}>Completata</option>
+          <option value="verificata_dl"${f.stato==='verificata_dl'?' selected':''}>Verificata DL ✅</option>
+        </select>
+      </div>
+      <div class="form-group span-2"><label class="form-label">Descrizione</label><textarea class="form-control" id="ef_desc" rows="3">${esc(f.descrizione||'')}</textarea></div>
+      <div class="form-group span-2"><label class="form-label">Note DL</label><textarea class="form-control" id="ef_note" rows="2">${esc(f.note_dl||'')}</textarea></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaEditFase('${id}')">Salva modifiche</button>
+    </div>`);
+}
+
+async function salvaEditFase(id){
+  const nome = document.getElementById('ef_nome').value.trim();
+  if(!nome){ alert('Nome obbligatorio'); return; }
+  const {error} = await sb.from('fasi').update({
+    nome,
+    importo: parseFloat(document.getElementById('ef_importo').value)||0,
+    ordine: parseInt(document.getElementById('ef_ordine').value)||1,
+    stato: document.getElementById('ef_stato').value,
+    descrizione: document.getElementById('ef_desc').value,
+    note_dl: document.getElementById('ef_note').value,
+    data_inizio_prev: document.getElementById('ef_dip').value||null,
+    data_fine_prev: document.getElementById('ef_dfp').value||null,
+    data_inizio_eff: document.getElementById('ef_die').value||null,
+    data_fine_eff: document.getElementById('ef_dfe').value||null
+  }).eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal();
+  showView('fasi');
+}
+
+// ---- ELIMINA FASE ----
+async function eliminaFase(id, nome){
+  if(!confirm('Eliminare la fase "'+nome+'"?\nSe ha subfasi verranno eliminate anche quelle.')) return;
+  // Elimina prima le subfasi
+  await sb.from('fasi').delete().eq('parent_id',id);
+  const {error} = await sb.from('fasi').delete().eq('id',id);
+  if(error){ alert('Errore: '+error.message); return; }
+  showView('fasi');
+}
+
+async function openModalStatoFase(id){
+  const {data:f}=await sb.from('fasi').select('*').eq('id',id).single();
+  if(!f)return;
+  openModal(`Aggiorna stato: ${f.nome}`,`<div class="form-group" style="margin-bottom:16px"><label class="form-label">Nuovo stato</label>
+    <select class="form-control" id="sf_stato">
+      <option value="attesa"${f.stato==='attesa'?' selected':''}>In attesa</option>
+      <option value="in_corso"${f.stato==='in_corso'?' selected':''}>In corso</option>
+      <option value="completata"${f.stato==='completata'?' selected':''}>Completata (da verificare)</option>
+      <option value="verificata_dl"${f.stato==='verificata_dl'?' selected':''}>Verificata DL ✅</option></select></div>
+    <div class="form-grid"><div class="form-group"><label class="form-label">Data inizio effettiva</label><input class="form-control" type="date" id="sf_die" value="${f.data_inizio_eff||''}"></div>
+    <div class="form-group"><label class="form-label">Data fine effettiva</label><input class="form-control" type="date" id="sf_dfe" value="${f.data_fine_eff||''}"></div></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Note DL</label><textarea class="form-control" id="sf_note" rows="3">${esc(f.note_dl||'')}</textarea></div>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaStatoFase('${id}')">Aggiorna</button></div>`);
+}
+async function salvaStatoFase(id){
+  const {error}=await sb.from('fasi').update({
+    stato:document.getElementById('sf_stato').value,
+    data_inizio_eff:document.getElementById('sf_die').value||null,
+    data_fine_eff:document.getElementById('sf_dfe').value||null,
+    note_dl:document.getElementById('sf_note').value
+  }).eq('id',id);
+  if(error){alert(error.message);return;}
+  closeModal();showView('fasi');
+}
+
+async function openModalNuovoODS(){
+  const {count}=await sb.from('ods').select('id',{count:'exact',head:true}).eq('cantiere_id',currentCantiere);
+  const numStr='ODS-'+String((count||0)+1).padStart(2,'0')+'/'+new Date().getFullYear();
+  openModal('Nuovo Ordine di Servizio',`<div class="form-grid">
+    <div class="form-group"><label class="form-label">Numero ODS</label><input class="form-control" id="ods_num" value="${numStr}"></div>
+    <div class="form-group"><label class="form-label">Data</label><input class="form-control" type="date" id="ods_data" value="${today()}"></div>
+    <div class="form-group span-2"><label class="form-label">Oggetto *</label><input class="form-control" id="ods_ogg"></div>
+    <div class="form-group span-2"><label class="form-label">Testo dell'ordine *</label><textarea class="form-control" id="ods_corpo" rows="6" placeholder="Si ordina all'impresa di…"></textarea></div></div>
+    <div class="alert alert-info" style="margin-top:12px;font-size:12px">L'ODS sarà emesso con tua firma. Il RUP riceverà per presa visione, l'impresa per accettazione.</div>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaODS()">Emetti ODS</button></div>`);
+}
+async function salvaODS(){
+  const oggetto=document.getElementById('ods_ogg').value.trim();
+  const corpo=document.getElementById('ods_corpo').value.trim();
+  if(!oggetto||!corpo){alert('Oggetto e testo obbligatori');return;}
+  // costruisci firme dal team
+  const {data:teamOds}=await sb.from('cantiere_utenti').select('ruolo,utente_id').eq('cantiere_id',currentCantiere);
+  const idsOds=(teamOds||[]).map(t=>t.utente_id);
+  const {data:profsOds}=idsOds.length ? await sb.from('profiles').select('id,nome,cognome').in('id',idsOds) : {data:[]};
+  const profMapOds={};(profsOds||[]).forEach(p=>{profMapOds[p.id]=p;});
+  const teamConProf=(teamOds||[]).map(t=>({...t,profilo:profMapOds[t.utente_id]||{}}));
+  const nameOf=ruolo=>{const t=teamConProf.find(x=>x.ruolo===ruolo);const p=t?.profilo;return p?`${p.nome||''} ${p.cognome||''}`.trim()||ROLE_LABELS[ruolo]:ROLE_LABELS[ruolo];};
+  const firme=[
+    {ruolo:'dl',nome:nameOf('dl'),data:today(),stato:'firmato'},
+    {ruolo:'rup',nome:nameOf('rup'),data:null,stato:'in_attesa'},
+    {ruolo:'dt_impresa',nome:nameOf('dt_impresa'),data:null,stato:'in_attesa'}
+  ];
+  const {error}=await sb.from('ods').insert({
+    cantiere_id:currentCantiere,numero:document.getElementById('ods_num').value,
+    data:document.getElementById('ods_data').value,oggetto,corpo,stato:'emessa',firme,created_by:currentUser.id
+  });
+  if(error){alert(error.message);return;}
+  // Annotazione automatica sul giornale
+  await annotaGiornale(
+    document.getElementById('ods_data').value,
+    `[ODS] Emesso ${document.getElementById('ods_num').value} — ${document.getElementById('ods_ogg').value}`
+  );
+  closeModal();showView('ods');
+}
+async function accettaODS(id){
+  const {data:o}=await sb.from('ods').select('firme').eq('id',id).single();
+  const firme=(o.firme||[]).map(f=>f.ruolo==='dt_impresa'?{...f,stato:'firmato',data:today()}:f);
+  const {error}=await sb.from('ods').update({firme,stato:'accettata'}).eq('id',id);
+  if(error){alert(error.message);return;}
+  showView('ods');
+}
+async function firmaRupODS(id){
+  const {data:o}=await sb.from('ods').select('firme').eq('id',id).single();
+  const firme=(o.firme||[]).map(f=>f.ruolo==='rup'?{...f,stato:'presa_visione',data:today()}:f);
+  const {error}=await sb.from('ods').update({firme}).eq('id',id);
+  if(error){alert(error.message);return;}
+  showView('ods');
+}
+
+function openModalNuovaComunicazione(){
+  openModal('Nuova Comunicazione',`<div class="form-grid">
+    <div class="form-group"><label class="form-label">Tipo</label>
+      <select class="form-control" id="comm_tipo">
+        <option value="nota">Nota</option>
+        <option value="richiesta">Richiesta</option>
+        <option value="diffida">Diffida</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Data</label>
+      <input class="form-control" type="date" id="comm_data" value="${today()}">
+    </div>
+    <div class="form-group span-2"><label class="form-label">Oggetto *</label>
+      <input class="form-control" id="comm_ogg">
+    </div>
+    <div class="form-group span-2"><label class="form-label">Testo *</label>
+      <textarea class="form-control" id="comm_testo" rows="5"></textarea>
+    </div>
+    <div class="form-group span-2">
+      <label class="form-label">Visibilità</label>
+      <select class="form-control" id="comm_visib">
+        <option value="tutti">Tutti i membri del cantiere</option>
+        <option value="riservata">Riservata — solo DL, RUP e DO (non visibile all'impresa)</option>
+      </select>
+      <div class="form-hint" style="font-size:11px;color:#ADB5BD">Usa "Riservata" per comunicazioni interne tra DL e RUP non destinate all'impresa</div>
+    </div>
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+    <button class="btn btn-primary" onclick="salvaComunicazione()">Invia</button>
+  </div>`);
+}
+async function salvaComunicazione(){
+  const oggetto=document.getElementById('comm_ogg').value.trim();
+  const testo=document.getElementById('comm_testo').value.trim();
+  if(!oggetto||!testo){alert('Oggetto e testo obbligatori');return;}
+  const mittente=`${currentUser.nome||''} ${currentUser.cognome||''}`.trim()+` (${ROLE_LABELS[currentRole]})`;
+  const visib = document.getElementById('comm_visib').value;
+  const destinatari = visib==='riservata' ? ['DL','RUP','DO'] : ['DL','RUP','DT Impresa','DO'];
+  const {error}=await sb.from('comunicazioni').insert({
+    cantiere_id:currentCantiere,tipo:document.getElementById('comm_tipo').value,
+    data:document.getElementById('comm_data').value,oggetto,testo,
+    mittente,mittente_id:currentUser.id,
+    destinatari,
+    visibilita: visib,
+    letto:false
+  });
+  if(error){alert(error.message);return;}
+  closeModal();showView('comunicazioni');
+}
+async function viewComunicazione(id){
+  const {data:co}=await sb.from('comunicazioni').select('*').eq('id',id).single();
+  if(!co)return;
+  if(!co.letto) await sb.from('comunicazioni').update({letto:true}).eq('id',id);
+  openModal(co.oggetto,`<div style="border-left:3px solid var(--accent);padding:12px 16px;background:var(--surface);border-radius:0 4px 4px 0;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)"><span>Da: <strong>${esc(co.mittente||'')}</strong></span><span>${fmt(co.data)}</span></div>
+    <div style="font-size:12px;color:var(--muted);margin-top:2px">A: ${esc((co.destinatari||[]).join(', '))}</div></div>
+    <div style="white-space:pre-wrap;font-size:13px;line-height:1.7">${esc(co.testo)}</div>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Chiudi</button></div>`);
+}
+
+async function openModalNuovaRegistrazione(){
+  const {data:ditteList} = await sb.from('ditte').select('id,nome,tipo').eq('cantiere_id',currentCantiere).order('nome');
+  const tipoLabel = {appaltatrice:'App.',subappaltatrice:'Sub.',subaffidataria:'Subaff.'};
+  const ditteOptsHtml = `<option value="">— ditta —</option>`+(ditteList||[]).map(d=>`<option value="${d.id}">[${tipoLabel[d.tipo]||''}] ${esc(d.nome)}</option>`).join('');
+  window._ditteOptsHtml = ditteOptsHtml;
+  window._maeRowCount = 1;
+  window._mezzoRowCount = 1;
+
+  openModal('Nuova Registrazione — Giornale Lavori', `
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Data *</label><input class="form-control" type="date" id="gl_data" value="${today()}"></div>
+      <div class="form-group"><label class="form-label">Meteo</label>
+        <select class="form-control" id="gl_meteo"><option>Soleggiato</option><option>Parzialmente nuvoloso</option><option>Nuvoloso</option><option>Pioggia</option><option>Vento forte</option><option>Neve</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">Temp. min (°C)</label><input class="form-control" type="number" id="gl_tmin" placeholder="15"></div>
+      <div class="form-group"><label class="form-label">Temp. max (°C)</label><input class="form-control" type="number" id="gl_tmax" placeholder="28"></div>
+    </div>
+
+    <div style="margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="form-label" style="margin:0">Manodopera presente *</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiRigaMae()">+ Aggiungi riga</button>
+      </div>
+      <div class="alert alert-info" style="font-size:11px;margin-bottom:6px">Per ogni gruppo: seleziona ditta, indica qualifica, numero operai e se in distacco da altra impresa.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--primary);color:white">
+          <th style="padding:6px 8px;text-align:left;width:32%">Ditta</th>
+          <th style="padding:6px 8px;text-align:left;width:28%">Qualifica / Figura</th>
+          <th style="padding:6px 8px;text-align:center;width:10%">N. op.</th>
+          <th style="padding:6px 8px;text-align:center;width:18%">Distacco</th>
+          <th style="padding:6px 8px;width:8%"></th>
+        </tr></thead>
+        <tbody id="gl_mae_body">
+          <tr id="mae_row_0">
+            <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="mae_ditta_0">${ditteOptsHtml}</select></td>
+            <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_qual_0" placeholder="es. Muratori"></td>
+            <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px;text-align:center" type="number" min="1" id="mae_num_0" value="1"></td>
+            <td style="padding:3px;text-align:center"><label style="font-size:11px;display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer"><input type="checkbox" id="mae_dist_0"> Sì</label></td>
+            <td style="padding:3px;text-align:center"><button type="button" onclick="rimuoviRigaMae(0)" class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:11px">✕</button></td>
+          </tr>
+        </tbody>
+      </table>
+      ${!ditteList||!ditteList.length ? '<div style="font-size:11px;color:var(--yellow);margin-top:4px">⚠️ Nessuna ditta registrata. Aggiungile dalla sezione <strong>Ditte presenti</strong> prima di compilare il giornale.</div>' : ''}
+    </div>
+
+    <div style="margin-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="form-label" style="margin:0">Mezzi e attrezzature</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiRigaMezzo()">+ Aggiungi mezzo</button>
+      </div>
+      <div id="gl_mezzi_body">
+        <div style="display:flex;gap:6px;margin-bottom:5px" id="mezzo_row_0">
+          <input class="form-control" style="font-size:12px" id="mezzo_0" placeholder="es. Gru a torre 40m — specifica tipo, portata, targa">
+          <button type="button" onclick="rimuoviRigaMezzo(0)" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-top:14px">
+      <label class="form-label">Lavorazioni eseguite *</label>
+      <div class="form-hint">Zona di intervento, tipo di lavoro, quantità eseguite.</div>
+      <textarea class="form-control" id="gl_lav" rows="4" placeholder="Es: Posa casserature travi copertura asse B-C. Completata armatura trave T1-B3..."></textarea>
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label class="form-label">Osservazioni DL</label>
+      <div class="form-hint">Verifica DPI, controlli qualità, ordini verbali impartiti.</div>
+      <textarea class="form-control" id="gl_oss" rows="2" placeholder="Es: Verificata presenza DPI. Impartito ordine verbale di..."></textarea>
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label class="form-label">Anomalie / Non conformità</label>
+      <div class="form-hint">Difformità rispetto al progetto, incidenti, sospensioni.</div>
+      <textarea class="form-control" id="gl_ano" rows="2" placeholder="Es: Riscontrata posa armatura non conforme..."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaRegistrazione()">Salva registrazione</button>
+    </div>`);
+}
+
+function aggiungiRigaMae(){
+  const n = window._maeRowCount||1;
+  const tbody = document.getElementById('gl_mae_body');
+  if(!tbody) return;
+  const tr = document.createElement('tr');
+  tr.id = 'mae_row_'+n;
+  tr.innerHTML = `
+    <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="mae_ditta_${n}">${window._ditteOptsHtml||''}</select></td>
+    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_qual_${n}" placeholder="es. Carpentieri"></td>
+    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px;text-align:center" type="number" min="1" id="mae_num_${n}" value="1"></td>
+    <td style="padding:3px;text-align:center"><label style="font-size:11px;display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer"><input type="checkbox" id="mae_dist_${n}"> Sì</label></td>
+    <td style="padding:3px;text-align:center"><button type="button" onclick="rimuoviRigaMae(${n})" class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:11px">✕</button></td>`;
+  tbody.appendChild(tr);
+  window._maeRowCount = n+1;
+}
+
+function rimuoviRigaMae(n){ const r=document.getElementById('mae_row_'+n); if(r) r.remove(); }
+
+function aggiungiRigaMezzo(){
+  const n = window._mezzoRowCount||1;
+  const body = document.getElementById('gl_mezzi_body');
+  if(!body) return;
+  const div = document.createElement('div');
+  div.style.cssText='display:flex;gap:6px;margin-bottom:5px';
+  div.id='mezzo_row_'+n;
+  div.innerHTML=`<input class="form-control" style="font-size:12px" id="mezzo_${n}" placeholder="es. Autobetoniera targa XX000XX"><button type="button" onclick="rimuoviRigaMezzo(${n})" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button>`;
+  body.appendChild(div);
+  window._mezzoRowCount = n+1;
+}
+
+function rimuoviRigaMezzo(n){ const r=document.getElementById('mezzo_row_'+n); if(r) r.remove(); }
+
+async function salvaRegistrazione(){
+  const lavorazioni=document.getElementById('gl_lav').value.trim();
+  if(!lavorazioni){alert('Campo lavorazioni obbligatorio');return;}
+  // Raccoglie righe manodopera
+  const maestranze=[];
+  for(let i=0;i<(window._maeRowCount||1);i++){
+    const qualEl=document.getElementById('mae_qual_'+i);
+    const numEl=document.getElementById('mae_num_'+i);
+    const dittaEl=document.getElementById('mae_ditta_'+i);
+    const distEl=document.getElementById('mae_dist_'+i);
+    if(!qualEl) continue;
+    const qual=qualEl.value.trim();
+    if(!qual) continue;
+    // Trova nome ditta dal select
+    const dittaSelect=dittaEl;
+    const dittaNome=dittaSelect&&dittaSelect.selectedIndex>0?dittaSelect.options[dittaSelect.selectedIndex].text:'';
+    maestranze.push({
+      figura:qual,
+      num:parseInt(numEl?.value)||0,
+      ditta_id:dittaEl?.value||null,
+      ditta_nome:dittaNome,
+      distacco:distEl?.checked||false
+    });
+  }
+  if(!maestranze.length){alert('Inserire almeno una riga di manodopera');return;}
+  // Raccoglie mezzi
+  const mezzi=[];
+  for(let i=0;i<(window._mezzoRowCount||1);i++){
+    const el=document.getElementById('mezzo_'+i);
+    if(el&&el.value.trim()) mezzi.push(el.value.trim());
+  }
+  const redattore=`${currentUser.nome||''} ${currentUser.cognome||''}`.trim()+` (${ROLE_LABELS[currentRole]})`;
+  const {error}=await sb.from('giornale_lavori').insert({
+    cantiere_id:currentCantiere,
+    data:document.getElementById('gl_data').value,
+    redattore,
+    meteo:document.getElementById('gl_meteo').value,
+    temp_min:parseInt(document.getElementById('gl_tmin').value)||null,
+    temp_max:parseInt(document.getElementById('gl_tmax').value)||null,
+    maestranze,mezzi,lavorazioni,
+    osservazioni:document.getElementById('gl_oss').value,
+    anomalie:document.getElementById('gl_ano').value,
+    created_by:currentUser.id
+  });
+  if(error){alert(error.message);return;}
+  closeModal();showView('giornale');
+}
+async function eliminaRegistrazione(id, data){
+  const d = new Date(data+'T00:00:00').toLocaleDateString('it-IT',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  if(!confirm('Eliminare la registrazione del '+d+'?\nQuesta operazione non è reversibile.')) return;
+  const {error} = await sb.from('giornale_lavori').delete().eq('id',id);
+  if(error){ alert('Errore: '+error.message); return; }
+  showView('giornale');
+}
+
+async function openModalEditGiornale(id){
+  const {data:g}=await sb.from('giornale_lavori').select('*').eq('id',id).single();
+  if(!g)return;
+  const maeStr=(g.maestranze||[]).map(m=>`${m.figura}, ${m.num}`).join('\n');
+  const mezStr=(g.mezzi||[]).join('\n');
+  openModal('Modifica Registrazione',`<div class="form-grid">
+    <div class="form-group"><label class="form-label">Data</label><input class="form-control" type="date" id="eg_data" value="${g.data}"></div>
+    <div class="form-group"><label class="form-label">Meteo</label><input class="form-control" id="eg_meteo" value="${esc(g.meteo||'')}"></div>
+    <div class="form-group"><label class="form-label">Temp min</label><input class="form-control" type="number" id="eg_tmin" value="${g.temp_min??''}"></div>
+    <div class="form-group"><label class="form-label">Temp max</label><input class="form-control" type="number" id="eg_tmax" value="${g.temp_max??''}"></div></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Maestranze</label><textarea class="form-control" id="eg_mae" rows="4">${esc(maeStr)}</textarea></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Mezzi</label><textarea class="form-control" id="eg_mez" rows="3">${esc(mezStr)}</textarea></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Lavorazioni</label><textarea class="form-control" id="eg_lav" rows="5">${esc(g.lavorazioni||'')}</textarea></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Osservazioni</label><textarea class="form-control" id="eg_oss" rows="3">${esc(g.osservazioni||'')}</textarea></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Anomalie</label><textarea class="form-control" id="eg_ano" rows="2">${esc(g.anomalie||'')}</textarea></div>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaEditGiornale('${id}')">Salva</button></div>`);
+}
+async function salvaEditGiornale(id){
+  const maestranze=document.getElementById('eg_mae').value.split('\n').filter(r=>r.trim()).map(r=>{const p=r.split(',');return{figura:(p[0]||'').trim(),num:parseInt(p[1])||0};});
+  const mezzi=document.getElementById('eg_mez').value.split('\n').filter(r=>r.trim()).map(r=>r.trim());
+  const {error}=await sb.from('giornale_lavori').update({
+    data:document.getElementById('eg_data').value,meteo:document.getElementById('eg_meteo').value,
+    temp_min:parseInt(document.getElementById('eg_tmin').value)||null,temp_max:parseInt(document.getElementById('eg_tmax').value)||null,
+    maestranze,mezzi,lavorazioni:document.getElementById('eg_lav').value,
+    osservazioni:document.getElementById('eg_oss').value,anomalie:document.getElementById('eg_ano').value
+  }).eq('id',id);
+  if(error){alert(error.message);return;}
+  closeModal();showView('giornale');
+}
+
+function openModalNuovoMembro(){
+  openModal('Aggiungi Membro Team',`<div class="alert alert-info">Il membro deve essersi già registrato all'app con la sua email.</div>
+    <div class="form-grid">
+    <div class="form-group span-2"><label class="form-label">Email utente registrato *</label><input class="form-control" type="email" id="tm_email"></div>
+    <div class="form-group"><label class="form-label">Ruolo *</label><select class="form-control" id="tm_ruolo"><option value="dl">Direttore Lavori</option><option value="rup">RUP</option><option value="dt_impresa">DT Impresa</option><option value="do">Direttore Operativo</option></select></div>
+    <div class="form-group"><label class="form-label">Telefono</label><input class="form-control" id="tm_tel"></div></div>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaMembro()">Aggiungi</button></div>`);
+}
+async function salvaMembro(){
+  const email=document.getElementById('tm_email').value.trim();
+  if(!email){alert('Email obbligatoria');return;}
+  const {data:prof,error:e1}=await sb.from('profiles').select('id').eq('email',email).single();
+  if(e1||!prof){alert('Nessun utente registrato con questa email. Deve prima registrarsi.');return;}
+  const {error}=await sb.from('cantiere_utenti').insert({
+    cantiere_id:currentCantiere,utente_id:prof.id,
+    ruolo:document.getElementById('tm_ruolo').value,telefono:document.getElementById('tm_tel').value
+  });
+  if(error){alert(error.message.includes('duplicate')?'Utente già nel team':error.message);return;}
+  closeModal();showView('team');
+}
+
+async function eliminaMembro(membroId, nomeMembro){
+  if(!confirm(`Rimuovere ${nomeMembro} dal team di questo cantiere?`)) return;
+  const {error} = await sb.from('cantiere_utenti').delete().eq('id', membroId);
+  if(error){ alert('Errore: ' + error.message); return; }
+  showView('team');
+}
+
+
+// ============================================================
+// ANNOTAZIONE AUTOMATICA SUL GIORNALE
+// Chiamata quando si registra: ODS, sospensione, ripresa, variante
+// ============================================================
+async function annotaGiornale(data, testo){
+  // Cerca se esiste già una registrazione per quel giorno
+  const {data:esistente} = await sb.from('giornale_lavori')
+    .select('id,osservazioni')
+    .eq('cantiere_id', currentCantiere)
+    .eq('data', data)
+    .single();
+
+  const redattore = `${currentUser.nome||''} ${currentUser.cognome||''}`.trim()+` (${ROLE_LABELS[currentRole]}) — annotazione automatica`;
+
+  if(esistente){
+    // Aggiunge l'annotazione alle osservazioni esistenti
+    const nuoveOss = (esistente.osservazioni ? esistente.osservazioni + '\n\n' : '') + testo;
+    await sb.from('giornale_lavori').update({ osservazioni: nuoveOss }).eq('id', esistente.id);
+  } else {
+    // Crea una nuova registrazione minima con solo l'annotazione
+    await sb.from('giornale_lavori').insert({
+      cantiere_id: currentCantiere,
+      data,
+      redattore,
+      meteo: '—',
+      maestranze: [],
+      mezzi: [],
+      lavorazioni: '(Nessuna lavorazione registrata)',
+      osservazioni: testo,
+      created_by: currentUser.id
+    });
+  }
+}
+
+
+// ============================================================
+// FUNZIONI ELIMINA / MODIFICA MANCANTI
+// ============================================================
+
+// ---- ODS ----
+async function openModalEditODS(id){
+  const {data:o} = await sb.from('ods').select('*').eq('id',id).single();
+  if(!o) return;
+  openModal(`Modifica ODS: ${esc(o.numero)}`, `
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Numero ODS</label>
+        <input class="form-control" id="eo_num" value="${esc(o.numero)}">
+      </div>
+      <div class="form-group"><label class="form-label">Data</label>
+        <input class="form-control" type="date" id="eo_data" value="${o.data||''}">
+      </div>
+      <div class="form-group span-2"><label class="form-label">Oggetto *</label>
+        <input class="form-control" id="eo_ogg" value="${esc(o.oggetto)}">
+      </div>
+      <div class="form-group span-2"><label class="form-label">Testo</label>
+        <textarea class="form-control" id="eo_corpo" rows="6">${esc(o.corpo||'')}</textarea>
+      </div>
+      <div class="form-group"><label class="form-label">Stato</label>
+        <select class="form-control" id="eo_stato">
+          <option value="bozza"${o.stato==='bozza'?' selected':''}>Bozza</option>
+          <option value="emessa"${o.stato==='emessa'?' selected':''}>Emessa</option>
+          <option value="ricevuta"${o.stato==='ricevuta'?' selected':''}>Ricevuta</option>
+          <option value="accettata"${o.stato==='accettata'?' selected':''}>Accettata</option>
+          <option value="contestata"${o.stato==='contestata'?' selected':''}>Contestata</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaEditODS('${id}')">Salva</button>
+    </div>`);
+}
+
+async function salvaEditODS(id){
+  const {error} = await sb.from('ods').update({
+    numero: document.getElementById('eo_num').value.trim(),
+    data: document.getElementById('eo_data').value,
+    oggetto: document.getElementById('eo_ogg').value.trim(),
+    corpo: document.getElementById('eo_corpo').value.trim(),
+    stato: document.getElementById('eo_stato').value
+  }).eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal(); showView('ods');
+}
+
+async function eliminaODS(id, numero){
+  if(!confirm(`Eliminare l'ODS ${numero}?\nQuesta operazione non è reversibile.`)) return;
+  const {error} = await sb.from('ods').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  showView('ods');
+}
+
+// ---- COMUNICAZIONI ----
+async function openModalEditComunicazione(id){
+  const {data:co} = await sb.from('comunicazioni').select('*').eq('id',id).single();
+  if(!co) return;
+  openModal('Modifica Comunicazione', `
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Tipo</label>
+        <select class="form-control" id="eco_tipo">
+          <option value="nota"${co.tipo==='nota'?' selected':''}>Nota</option>
+          <option value="richiesta"${co.tipo==='richiesta'?' selected':''}>Richiesta</option>
+          <option value="diffida"${co.tipo==='diffida'?' selected':''}>Diffida</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Data</label>
+        <input class="form-control" type="date" id="eco_data" value="${co.data||''}">
+      </div>
+      <div class="form-group span-2"><label class="form-label">Oggetto *</label>
+        <input class="form-control" id="eco_ogg" value="${esc(co.oggetto||'')}">
+      </div>
+      <div class="form-group span-2"><label class="form-label">Testo *</label>
+        <textarea class="form-control" id="eco_testo" rows="5">${esc(co.testo||'')}</textarea>
+      </div>
+      <div class="form-group span-2"><label class="form-label">Visibilità</label>
+        <select class="form-control" id="eco_visib">
+          <option value="tutti"${co.visibilita!=='riservata'?' selected':''}>Tutti i membri del cantiere</option>
+          <option value="riservata"${co.visibilita==='riservata'?' selected':''}>Riservata — solo DL, RUP e DO</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaEditComunicazione('${id}')">Salva</button>
+    </div>`);
+}
+
+async function salvaEditComunicazione(id){
+  const visib = document.getElementById('eco_visib').value;
+  const destinatari = visib==='riservata' ? ['DL','RUP','DO'] : ['DL','RUP','DT Impresa','DO'];
+  const {error} = await sb.from('comunicazioni').update({
+    tipo: document.getElementById('eco_tipo').value,
+    data: document.getElementById('eco_data').value,
+    oggetto: document.getElementById('eco_ogg').value.trim(),
+    testo: document.getElementById('eco_testo').value.trim(),
+    visibilita: visib,
+    destinatari
+  }).eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal(); showView('comunicazioni');
+}
+
+async function eliminaComunicazione(id){
+  if(!confirm('Eliminare questa comunicazione?')) return;
+  const {error} = await sb.from('comunicazioni').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  showView('comunicazioni');
+}
+
+// ---- SAL ----
+async function eliminaSAL(id, numero){
+  if(!confirm(`Eliminare il SAL n. ${numero}?`)) return;
+  const {error} = await sb.from('sal').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  showView('sal');
+}
+
+// ---- SOSPENSIONI ----
+async function openModalEditSospensione(id){
+  const {data:s} = await sb.from('sospensioni').select('*').eq('id',id).single();
+  if(!s) return;
+  openModal('Modifica Sospensione', `
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Data sospensione *</label>
+      <input class="form-control" type="date" id="es2_data" value="${s.data||''}">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Motivo sospensione</label>
+      <textarea class="form-control" id="es2_motivo" rows="4">${esc(s.motivo||'')}</textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaEditSospensione('${id}')">Salva</button>
+    </div>`);
+}
+
+async function salvaEditSospensione(id){
+  const {error} = await sb.from('sospensioni').update({
+    data: document.getElementById('es2_data').value,
+    motivo: document.getElementById('es2_motivo').value.trim()
+  }).eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal(); showView('sospensioni');
+}
+
+// ============================================================
+// PRINT / EXPORT
+// ============================================================
+async function stampaODS(id){
+  const {data:o}=await sb.from('ods').select('*').eq('id',id).single();
+  if(!o)return;
+  const c=getCantiereObj(o.cantiere_id);
+  const firme=o.firme||[];
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(o.numero)}</title>
+  <style>body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:13px;margin:40px;color:#212529}
+  .header{text-align:center;margin-bottom:32px;border-bottom:2px solid #1F3864;padding-bottom:16px}
+  .meta-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;font-size:12px}
+  .label{font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#6C757D}
+  .body-text{margin:24px 0;line-height:1.8;white-space:pre-wrap}
+  .firma-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-top:40px}
+  .firma-box{border:1px solid #dee2e6;padding:16px;text-align:center;min-height:80px}
+  @media print{body{margin:20px}}</style></head><body>
+  <div class="header"><h2 style="margin:0;color:#1F3864">ORDINE DI SERVIZIO</h2>
+  <div style="font-size:16px;margin-top:4px">${esc(o.numero)}</div><div style="font-size:12px;color:#6C757D">Data: ${fmt(o.data)}</div></div>
+  <div class="meta-row">
+    <div><div class="label">Lavori</div><strong>${esc(c?.nome||'—')}</strong></div>
+    <div><div class="label">Stazione Appaltante</div>${esc(c?.stazione_appaltante||'—')}</div>
+    <div><div class="label">CIG</div>${esc(c?.cig||'—')}</div>
+    <div><div class="label">CUP</div>${esc(c?.cup||'—')}</div>
+    <div><div class="label">Impresa</div>${esc(c?.impresa||'—')}</div>
+    <div><div class="label">Stato</div>${o.stato.toUpperCase()}</div></div>
+  <div><div class="label">Oggetto</div><strong style="font-size:14px">${esc(o.oggetto)}</strong></div>
+  <div class="body-text">${esc(o.corpo)}</div>
+  <div class="firma-grid">${firme.map(f=>`<div class="firma-box"><div class="label">${ROLE_LABELS[f.ruolo]||f.ruolo}</div>
+    <div style="margin-top:8px;font-size:12px">${esc(f.nome)}</div>
+    <div style="font-size:11px;color:#6C757D;margin-top:4px">${f.stato==='firmato'?'✅ Firmato '+fmt(f.data):f.stato==='presa_visione'?'👁️ Presa visione '+fmt(f.data):'⏳ In attesa'}</div></div>`).join('')}</div>
+  <script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+
+async function generaReportSA(cantiereId){
+  const c=getCantiereObj(cantiereId);
+
+  // Carica tutti i dati in parallelo
+  const [
+    {data:fasi}, {data:fasiTutte}, {data:ods}, {data:giornale},
+    {data:sospensioni}, {data:varianti}, {data:ditte}, {data:sal}, {data:teamRaw}
+  ] = await Promise.all([
+    sb.from('fasi').select('*').eq('cantiere_id',cantiereId).is('parent_id',null).order('ordine'),
+    sb.from('fasi').select('*').eq('cantiere_id',cantiereId).order('ordine'),
+    sb.from('ods').select('*').eq('cantiere_id',cantiereId).order('data'),
+    sb.from('giornale_lavori').select('data,redattore,lavorazioni,maestranze,anomalie').eq('cantiere_id',cantiereId).order('data'),
+    sb.from('sospensioni').select('*').eq('cantiere_id',cantiereId).order('data'),
+    sb.from('varianti').select('*').eq('cantiere_id',cantiereId).order('numero'),
+    sb.from('ditte').select('*').eq('cantiere_id',cantiereId).order('tipo').order('nome'),
+    sb.from('sal').select('*').eq('cantiere_id',cantiereId).order('numero'),
+    sb.from('cantiere_utenti').select('ruolo,utente_id').eq('cantiere_id',cantiereId)
+  ]);
+
+  // Carica profili team
+  const teamIds=(teamRaw||[]).map(t=>t.utente_id);
+  const {data:profili}=teamIds.length?await sb.from('profiles').select('id,nome,cognome,email').in('id',teamIds):{data:[]};
+  const profMap={};(profili||[]).forEach(p=>{profMap[p.id]=p;});
+  const team=(teamRaw||[]).map(t=>({...t,profilo:profMap[t.utente_id]||{}}));
+  const nameOf=ruolo=>{const t=team.find(x=>x.ruolo===ruolo);const p=t?.profilo;return p?`${p.nome||''} ${p.cognome||''}`.trim()||'—':'—';};
+
+  const statoLabel={attesa:'In attesa',in_corso:'In corso',completata:'Completata',verificata_dl:'Verificata DL'};
+  const tipoAttoLabel={atto_sottomissione:'Atto di sottomissione',atto_aggiuntivo:'Atto aggiuntivo'};
+  const tipoDittaLabel={appaltatrice:'Appaltatrice',subappaltatrice:'Subappaltatrice',subaffidataria:'Subaffidataria'};
+  const roleLabel={dl:'Direttore dei Lavori',rup:'RUP',dt_impresa:'DT Impresa',do:'Direttore Operativo'};
+
+  // Totali manodopera
+  const totOpGiornale=(giornale||[]).reduce((a,g)=>{const mae=g.maestranze||[];return a+mae.reduce((b,m)=>b+(m.num||0),0);},0);
+  const giorniRegistrati=(giornale||[]).length;
+  const giorniAnomalie=(giornale||[]).filter(g=>g.anomalie&&g.anomalie.trim()).length;
+  const totSalLordo=(sal||[]).reduce((a,s)=>a+(s.importo_lordo||0),0);
+  const totSalNetto=(sal||[]).reduce((a,s)=>a+(s.netto_pagare||0),0);
+
+  const now=new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
+
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Report SA — ${esc(c?.nome||'')}</title>
+  <style>
+    body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12px;margin:40px;color:#212529;line-height:1.5}
+    h1{font-size:20px;color:#1F3864;margin-bottom:4px}
+    h2{font-size:13px;color:#1F3864;border-bottom:2px solid #1F3864;padding-bottom:5px;margin-top:28px;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.04em}
+    h3{font-size:11px;color:#2E75B6;margin:14px 0 6px;text-transform:uppercase;letter-spacing:0.04em}
+    table{width:100%;border-collapse:collapse;margin-top:6px;font-size:11px}
+    th{background:#1F3864;color:white;padding:6px 9px;text-align:left;font-weight:500}
+    td{padding:6px 9px;border-bottom:1px solid #dee2e6;vertical-align:top}
+    tr:nth-child(even) td{background:#F8F9FA}
+    .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}
+    .kpi{border:1px solid #dee2e6;padding:10px 12px;border-radius:4px;border-left:3px solid #2E75B6}
+    .kpi-label{font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:#6C757D;margin-bottom:3px}
+    .kpi-value{font-size:18px;font-weight:700;color:#1F3864}
+    .kpi-sub{font-size:10px;color:#6C757D;margin-top:1px}
+    .meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin:12px 0;font-size:12px}
+    .meta-label{font-size:10px;text-transform:uppercase;color:#6C757D;font-weight:600}
+    .badge{display:inline-block;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700}
+    .badge-green{background:#D4EDDA;color:#155724}
+    .badge-yellow{background:#FFF3CD;color:#856404}
+    .badge-blue{background:#D1ECF1;color:#0C5460}
+    .badge-red{background:#F8D7DA;color:#721C24}
+    .badge-grey{background:#E9ECEF;color:#495057}
+    .alert-box{background:#FFF8E7;border-left:3px solid #FFC107;padding:8px 12px;margin:8px 0;font-size:11px;border-radius:0 4px 4px 0}
+    .page-break{page-break-before:always}
+    .footer{margin-top:40px;padding-top:12px;border-top:1px solid #dee2e6;font-size:10px;color:#6C757D;display:flex;justify-content:space-between}
+    @media print{body{margin:20px}.page-break{page-break-before:always}}
+  </style></head><body>
+
+  <div style="border-bottom:3px solid #1F3864;padding-bottom:14px;margin-bottom:20px">
+    <h1>REPORT AVANZAMENTO LAVORI</h1>
+    <div style="font-size:13px;color:#2E75B6;font-weight:600">${esc(c?.nome||'')}</div>
+    <div style="font-size:11px;color:#6C757D;margin-top:3px">Generato il ${now} — GestioneCantiere SCS</div>
+  </div>
+
+  <div class="meta-grid">
+    <div><div class="meta-label">Stazione Appaltante</div><div>${esc(c?.stazione_appaltante||'—')}</div></div>
+    <div><div class="meta-label">Impresa appaltatrice</div><div>${esc(c?.impresa||'—')}</div></div>
+    <div><div class="meta-label">CIG</div><div><strong>${esc(c?.cig||'—')}</strong></div></div>
+    <div><div class="meta-label">CUP</div><div><strong>${esc(c?.cup||'—')}</strong></div></div>
+    <div><div class="meta-label">Consegna lavori</div><div>${fmt(c?.data_consegna)}</div></div>
+    <div><div class="meta-label">Fine contrattuale (aggiornata)</div><div><strong>${fmt(c?.data_fine)}</strong></div></div>
+    <div><div class="meta-label">Importo contrattuale</div><div><strong>${fmtEur(c?.importo)}</strong></div></div>
+    <div><div class="meta-label">Stato cantiere</div><div>${c?.stato?.toUpperCase()||'—'}</div></div>
+  </div>
+
+  <h2>Quadro riepilogativo</h2>
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-label">Fasi verificate DL</div><div class="kpi-value">${(fasi||[]).filter(f=>f.stato==='verificata_dl').length}/${(fasi||[]).length}</div><div class="kpi-sub">macrofasi</div></div>
+    <div class="kpi"><div class="kpi-label">Giorni lavorati</div><div class="kpi-value">${giorniRegistrati}</div><div class="kpi-sub">${giorniAnomalie} con anomalie</div></div>
+    <div class="kpi"><div class="kpi-label">SAL emessi</div><div class="kpi-value">${(sal||[]).length}</div><div class="kpi-sub">netto: ${fmtEur(totSalNetto)}</div></div>
+    <div class="kpi"><div class="kpi-label">ODS emessi</div><div class="kpi-value">${(ods||[]).length}</div><div class="kpi-sub">${(ods||[]).filter(o=>o.stato==='accettata').length} accettati</div></div>
+  </div>
+  <div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
+    <div class="kpi"><div class="kpi-label">Sospensioni</div><div class="kpi-value">${(sospensioni||[]).filter(s=>s.tipo==='sospensione').length}</div><div class="kpi-sub">tot. ${(sospensioni||[]).reduce((a,s)=>a+(s.giorni_sospensione||0),0)} giorni</div></div>
+    <div class="kpi"><div class="kpi-label">Varianti</div><div class="kpi-value">${(varianti||[]).length}</div><div class="kpi-sub">${(varianti||[]).filter(v=>v.data_firma).length} firmate</div></div>
+    <div class="kpi"><div class="kpi-label">Ditte in cantiere</div><div class="kpi-value">${(ditte||[]).length}</div><div class="kpi-sub">${(ditte||[]).filter(d=>d.tipo==='subappaltatrice').length} subappaltatrici</div></div>
+  </div>
+
+  <h2>Team di progetto</h2>
+  <table><thead><tr><th>Ruolo</th><th>Nome</th><th>Email</th></tr></thead><tbody>
+  ${team.map(t=>{const p=t.profilo;const nome=`${p.nome||''} ${p.cognome||''}`.trim()||p.email||'—';
+    return `<tr><td><strong>${roleLabel[t.ruolo]||t.ruolo}</strong></td><td>${esc(nome)}</td><td>${esc(p.email||'—')}</td></tr>`;
+  }).join('')}
+  </tbody></table>
+
+  <h2>Ditte presenti in cantiere</h2>
+  <table><thead><tr><th>Ragione sociale</th><th>Partita IVA</th><th>Tipo</th></tr></thead><tbody>
+  ${(ditte||[]).map(d=>`<tr><td><strong>${esc(d.nome)}</strong></td><td>${esc(d.piva||'—')}</td><td>${tipoDittaLabel[d.tipo]||d.tipo}</td></tr>`).join('')||'<tr><td colspan="3" style="color:#6C757D">Nessuna ditta registrata</td></tr>'}
+  </tbody></table>
+
+  <h2>Stato avanzamento fasi</h2>
+  <table><thead><tr><th>N.</th><th>Fase</th><th>Importo</th><th>Inizio prev.</th><th>Fine prev.</th><th>Inizio eff.</th><th>Fine eff.</th><th>Stato</th></tr></thead><tbody>
+  ${(fasi||[]).map(f=>{
+    const subs=(fasiTutte||[]).filter(s=>s.parent_id===f.id);
+    const rows=[`<tr style="background:#EBF3FB"><td>${f.ordine}</td><td><strong>${esc(f.nome)}</strong></td><td>${fmtEur(f.importo)}</td><td>${fmt(f.data_inizio_prev)}</td><td>${fmt(f.data_fine_prev)}</td><td>${fmt(f.data_inizio_eff)}</td><td>${fmt(f.data_fine_eff)}</td><td>${statoLabel[f.stato]||f.stato}</td></tr>`];
+    subs.forEach(s=>rows.push(`<tr><td style="padding-left:20px">↳</td><td style="padding-left:20px;font-size:11px">${esc(s.nome)}</td><td style="font-size:11px">${fmtEur(s.importo)}</td><td style="font-size:11px">${fmt(s.data_inizio_prev)}</td><td style="font-size:11px">${fmt(s.data_fine_prev)}</td><td style="font-size:11px">${fmt(s.data_inizio_eff)}</td><td style="font-size:11px">${fmt(s.data_fine_eff)}</td><td style="font-size:11px">${statoLabel[s.stato]||s.stato}</td></tr>`));
+    return rows.join('');
+  }).join('')}
+  </tbody></table>
+
+  <h2>Sospensioni e riprese lavori</h2>
+  ${(sospensioni||[]).length===0?'<p style="color:#6C757D">Nessuna sospensione registrata.</p>':`
+  <table><thead><tr><th>Tipo</th><th>Data</th><th>Motivo</th><th>Data ripresa</th><th>Giorni sosp.</th><th>Nuova fine lavori</th><th>Fasi spostate</th></tr></thead><tbody>
+  ${(sospensioni||[]).map(s=>`<tr>
+    <td>${s.tipo==='sospensione'?'Sospensione':'Ripresa'}</td>
+    <td>${fmt(s.data)}</td>
+    <td style="font-size:11px">${esc(s.motivo||'—')}</td>
+    <td>${s.data_ripresa?fmt(s.data_ripresa):'<em>In corso</em>'}</td>
+    <td style="text-align:center">${s.giorni_sospensione!=null?s.giorni_sospensione+'gg':'—'}</td>
+    <td>${s.nuova_fine_lavori?fmt(s.nuova_fine_lavori):'—'}</td>
+    <td style="text-align:center">${s.fasi_spostate!=null?s.fasi_spostate:'—'}</td>
+  </tr>`).join('')}
+  </tbody></table>`}
+
+  <h2>Varianti contrattuali</h2>
+  ${(varianti||[]).length===0?'<p style="color:#6C757D">Nessuna variante registrata.</p>':`
+  <table><thead><tr><th>N.</th><th>Data</th><th>Motivo</th><th>Tipo atto</th><th>Data firma</th><th>Data approv.</th><th>Estremi approvazione</th><th>Nuova fine</th></tr></thead><tbody>
+  ${(varianti||[]).map(v=>`<tr>
+    <td style="text-align:center"><strong>V${v.numero}</strong></td>
+    <td>${fmt(v.data)}</td>
+    <td style="font-size:11px">${esc(v.motivo||'—')}</td>
+    <td style="font-size:11px">${tipoAttoLabel[v.tipo_atto]||v.tipo_atto}</td>
+    <td>${v.data_firma?fmt(v.data_firma):'<em style="color:#6C757D">Non firmato</em>'}</td>
+    <td>${v.data_approvazione?fmt(v.data_approvazione):'—'}</td>
+    <td style="font-size:11px">${esc(v.estremi_approvazione||'—')}</td>
+    <td>${v.nuova_fine_lavori?`<strong>${fmt(v.nuova_fine_lavori)}</strong>`:'—'}</td>
+  </tr>`).join('')}
+  </tbody></table>`}
+
+  <h2>Stati di avanzamento lavori (SAL)</h2>
+  ${(sal||[]).length===0?'<p style="color:#6C757D">Nessun SAL registrato.</p>':`
+  <table><thead><tr><th>N. SAL</th><th>Data</th><th>Periodo</th><th>Imp. lordo</th><th>Ritenuta</th><th>Anticipazione</th><th>Altri</th><th>Netto a pagare</th><th>Stato</th></tr></thead><tbody>
+  ${(sal||[]).map(s=>`<tr>
+    <td style="text-align:center"><strong>SAL ${s.numero}</strong></td>
+    <td>${fmt(s.data)}</td>
+    <td style="font-size:11px">${fmt(s.periodo_dal)} → ${fmt(s.periodo_al)}</td>
+    <td>${fmtEur(s.importo_lordo)}</td>
+    <td style="color:#721C24">${fmtEur(s.ritenuta_garanzia)}</td>
+    <td style="color:#721C24">${fmtEur(s.anticipazione_dedurre)}</td>
+    <td style="color:#721C24">${fmtEur(s.altri_importi)}</td>
+    <td><strong style="color:#155724">${fmtEur(s.netto_pagare)}</strong></td>
+    <td style="font-size:11px">${s.stato?.toUpperCase()||'—'}</td>
+  </tr>`).join('')}
+  <tr style="background:#EBF3FB;font-weight:700">
+    <td colspan="3">TOTALE</td>
+    <td>${fmtEur(totSalLordo)}</td>
+    <td colspan="3"></td>
+    <td style="color:#155724">${fmtEur(totSalNetto)}</td>
+    <td></td>
+  </tr>
+  </tbody></table>`}
+
+  <h2>Ordini di servizio</h2>
+  <table><thead><tr><th>N.</th><th>Data</th><th>Oggetto</th><th>Stato</th><th>Firme</th></tr></thead><tbody>
+  ${(ods||[]).map(o=>{
+    const firme=(o.firme||[]).map(f=>`${f.nome}: ${f.stato==='firmato'?'✓ Firmato':f.stato==='presa_visione'?'✓ Presa visione':'⏳ In attesa'}`).join(' | ');
+    return `<tr><td><strong>${esc(o.numero)}</strong></td><td>${fmt(o.data)}</td><td>${esc(o.oggetto)}</td><td style="font-size:11px">${o.stato?.toUpperCase()}</td><td style="font-size:10px;color:#6C757D">${firme}</td></tr>`;
+  }).join('')||'<tr><td colspan="5" style="color:#6C757D">Nessun ODS</td></tr>'}
+  </tbody></table>
+
+  <h2>Giornale lavori — sintesi</h2>
+  <p style="font-size:11px;color:#6C757D;margin-bottom:8px">Registrazioni totali: <strong>${giorniRegistrati}</strong> • Operatori-giornata complessivi: <strong>${totOpGiornale}</strong> • Giornate con anomalie: <strong>${giorniAnomalie}</strong></p>
+  <table><thead><tr><th style="width:95px">Data</th><th>Lavorazioni eseguite</th><th style="width:60px">Operai</th><th style="width:50px">Anomalie</th></tr></thead><tbody>
+  ${(giornale||[]).map(g=>{
+    const totOp=(g.maestranze||[]).reduce((a,m)=>a+(m.num||0),0);
+    return `<tr>
+      <td>${fmt(g.data)}<div style="font-size:10px;color:#6C757D">${esc(g.redattore||'')}</div></td>
+      <td style="font-size:11px">${esc((g.lavorazioni||'').substring(0,150))}${(g.lavorazioni||'').length>150?'…':''}</td>
+      <td style="text-align:center">${totOp||'—'}</td>
+      <td style="text-align:center">${g.anomalie&&g.anomalie.trim()?'⚠️':'—'}</td>
+    </tr>`;
+  }).join('')||'<tr><td colspan="4" style="color:#6C757D">Nessuna registrazione</td></tr>'}
+  </tbody></table>
+
+  <div class="footer">
+    <div>GestioneCantiere — Studio Tecnico SCS S.r.l. tra Professionisti</div>
+    <div>DL: ${esc(nameOf('dl'))} | RUP: ${esc(nameOf('rup'))} | Generato il ${now}</div>
+  </div>
+
+  <script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+
+async function generaReportGiornale(cantiereId){
+  const c=getCantiereObj(cantiereId);
+  const {data:giornale}=await sb.from('giornale_lavori').select('*').eq('cantiere_id',cantiereId).order('data');
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Giornale Lavori — ${esc(c?.nome||'')}</title>
+  <style>body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12px;margin:40px;color:#212529}
+  h1{font-size:16px;color:#1F3864}.entry{margin-bottom:24px;border:1px solid #dee2e6;border-radius:4px;page-break-inside:avoid}
+  .entry-header{background:#1F3864;color:white;padding:8px 14px;font-size:13px;font-weight:600;display:flex;justify-content:space-between}
+  .entry-body{padding:14px}table{border-collapse:collapse;font-size:11px}td,th{padding:4px 8px;border:1px solid #dee2e6}
+  th{background:#f8f9fa}h3{font-size:11px;text-transform:uppercase;color:#6C757D;margin:10px 0 4px}@media print{body{margin:20px}}</style></head><body>
+  <h1>GIORNALE DEI LAVORI</h1><p><strong>${esc(c?.nome||'')}</strong> | CIG: ${esc(c?.cig||'')} | SA: ${esc(c?.stazione_appaltante||'')}</p><hr style="margin:12px 0">
+  ${(giornale||[]).map(g=>`<div class="entry"><div class="entry-header"><span>📅 ${fmt(g.data)}</span><span>${esc(g.redattore||'')}</span></div>
+    <div class="entry-body"><p>☁️ ${esc(g.meteo||'')} | 🌡️ min ${g.temp_min??'—'}°C / max ${g.temp_max??'—'}°C</p>
+    <h3>Maestranze</h3><table><tr><th>Figura</th><th>N.</th></tr>${(g.maestranze||[]).map(m=>`<tr><td>${esc(m.figura)}</td><td>${m.num}</td></tr>`).join('')}</table>
+    <h3>Mezzi</h3><p>${(g.mezzi||[]).map(esc).join(', ')}</p>
+    <h3>Lavorazioni eseguite</h3><p style="white-space:pre-wrap">${esc(g.lavorazioni||'')}</p>
+    ${g.osservazioni?`<h3>Osservazioni DL</h3><p>${esc(g.osservazioni)}</p>`:''}
+    ${g.anomalie?`<h3>⚠️ Anomalie</h3><p style="color:#721C24">${esc(g.anomalie)}</p>`:''}</div></div>`).join('')}
+  <script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+
+// ============================================================
+// INIT — ripristina sessione se presente
+// ============================================================
+(async ()=>{
+  const {data:{session}} = await sb.auth.getSession();
+  if(session){ await onLoggedIn(); }
+})();
+</script>
+</body>
+</html>
