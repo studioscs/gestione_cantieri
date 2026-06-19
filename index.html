@@ -1894,71 +1894,98 @@ async function salvaAnnotaRUP(id){
 async function renderListe(){
   if(!currentCantiere) return noCantiere();
   const c = getCantiereObj();
-  const canEdit = currentRole==='dl'||currentRole==='do'||currentRole==='dt_impresa';
+  const canCreate = currentRole==='dl'||currentRole==='do'||currentRole==='dt_impresa';
 
   let html = `<div class="section-header">
     <div>
       <div class="page-title">Liste Settimanali</div>
       <div class="page-subtitle">${esc(c?.nome||'')} — rendiconto manodopera, mezzi e lavorazioni</div>
     </div>
-    ${canEdit?`<button class="btn btn-primary" onclick="openModalNuovaLista()">+ Nuova lista settimanale</button>`:''}
+    ${canCreate?`<button class="btn btn-primary" onclick="openModalNuovaLista()">+ Nuova lista settimanale</button>`:''}
   </div>
   <div class="alert alert-info" style="font-size:12px">
-    Le liste settimanali sono compilate dall'impresa e verificate dal DL. Una volta verificata, la lista aggiorna automaticamente il Giornale dei Lavori.
+    L'impresa compila una riga per ogni giorno lavorato. Quando la settimana e' completa, clicca <strong>"Invia al DL"</strong>.
+    Il DL verifica e autorizza — dopo la verifica la lista non e' piu' modificabile dall'impresa.
   </div>`;
 
-  const {data:liste,error} = await sb.from('liste_settimanali').select('*')
+  // Carica liste e righe in parallelo
+  const {data:liste, error} = await sb.from('liste_settimanali').select('*')
     .eq('cantiere_id',currentCantiere).order('settimana_dal',{ascending:false});
   if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
 
   if(!liste||!liste.length){
-    return html + `<div class="empty"><div class="empty-icon">📅</div><h3>Nessuna lista settimanale</h3>
-      <p>L'impresa può creare le liste settimanali con il rendiconto delle lavorazioni eseguite.</p></div>`;
+    return html + `<div class="empty"><div class="empty-icon">&#128197;</div><h3>Nessuna lista settimanale</h3>
+      <p>Crea la prima lista settimanale per iniziare a registrare le lavorazioni giornaliere.</p></div>`;
   }
 
+  // Carica tutte le righe in una sola query
+  const listaIds = liste.map(l=>l.id);
+  const {data:tutteRighe} = await sb.from('liste_righe').select('*')
+    .in('lista_id', listaIds).order('data');
+
+  // Raggruppa righe per lista_id
+  const righePerLista = {};
+  (tutteRighe||[]).forEach(r=>{
+    if(!righePerLista[r.lista_id]) righePerLista[r.lista_id]=[];
+    righePerLista[r.lista_id].push(r);
+  });
+
   liste.forEach(ls=>{
+    const righe = righePerLista[ls.id]||[];
     const isVerificata = ls.stato==='verificata_dl';
-    html += `<div class="card" style="margin-bottom:12px">
+    const canEditDL = currentRole==='dl'||currentRole==='do';
+    const canEditImp = !isVerificata && ls.stato!=='inviata_dl' && currentRole==='dt_impresa';
+    const totGiorni = righe.length;
+    const compilati = righe.filter(r=>r.lavorazioni&&r.lavorazioni.trim()).length;
+
+    html += `<div class="card" style="margin-bottom:16px">
       <div class="card-header">
         <div>
           <div class="card-title">Settimana ${fmt(ls.settimana_dal)} — ${fmt(ls.settimana_al)}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">Creata il ${fmt(ls.created_at)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">
+            ${compilati}/${totGiorni} giorni compilati
+          </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           ${isVerificata
-            ? `<span class="badge badge-green">✅ Verificata DL</span>`
-            : `<span class="badge badge-yellow">⏳ In attesa verifica DL</span>`}
-          ${(currentRole==='dl'||currentRole==='do')||(!isVerificata&&(currentRole==='dt_impresa'))?`<button class="btn btn-secondary btn-sm" onclick="openModalEditLista('${ls.id}')">✏️ Modifica</button>`:''}
-          ${(currentRole==='dl'||currentRole==='do')||(!isVerificata&&currentRole==='dt_impresa')?`<button class="btn btn-danger btn-sm" onclick="eliminaLista('${ls.id}')">🗑️</button>`:''}
-          ${!isVerificata&&(currentRole==='dl'||currentRole==='do')?`<button class="btn btn-primary btn-sm" onclick="verificaLista('${ls.id}')">✅ Verifica DL</button>`:''}
-          ${isVerificata&&(currentRole==='dl'||currentRole==='do')?`<span class="badge badge-green" style="font-size:11px">✅ Verificata — DL può ancora modificare</span>`:''}
+            ? `<span class="badge badge-green">&#10003; Verificata DL</span>`
+            : ls.stato==='inviata_dl'
+              ? `<span class="badge badge-blue">&#128233; Inviata al DL</span>`
+              : `<span class="badge badge-yellow">Bozza</span>`}
+          ${canEditDL||canEditImp?`<button class="btn btn-secondary btn-sm" onclick="openModalEditLista('${ls.id}')">&#9998;</button>`:''}
+          ${canEditDL||canEditImp?`<button class="btn btn-danger btn-sm" onclick="eliminaLista('${ls.id}')">&#128465;</button>`:''}
+          ${!isVerificata&&ls.stato!=='inviata_dl'&&currentRole==='dt_impresa'?`<button class="btn btn-primary btn-sm" onclick="inviaAlDL('${ls.id}')">&#128233; Invia al DL</button>`:''}
+          ${!isVerificata&&canEditDL?`<button class="btn btn-primary btn-sm" onclick="verificaLista('${ls.id}')">&#10003; Verifica DL</button>`:''}
         </div>
       </div>
       ${ls.note_generali?`<div style="font-size:12px;color:var(--muted);margin-bottom:12px;font-style:italic">${esc(ls.note_generali)}</div>`:''}
-      <div id="righe_${ls.id}">
-        <div class="loading"><div class="spinner"></div></div>
-      </div>
+      ${renderRigheTabella(righe, isVerificata, ls.id)}
     </div>`;
   });
-
-  html += `<script>
-    // Carica righe per ogni lista
-    (async()=>{
-      for(const ls of ${JSON.stringify(liste)}){
-        const {data:righe} = await sb.from('liste_righe').select('*').eq('lista_id',ls.id).order('data');
-        const el = document.getElementById('righe_'+ls.id);
-        if(!el) continue;
-        el.innerHTML = renderRigheTabella(righe||[], ls.stato==='verificata_dl', ls.id);
-      }
-    })();
-  <\/script>`;
 
   return html;
 }
 
+async function inviaAlDL(listaId){
+  if(!confirm('Inviare la lista al DL per la verifica?\nAssicurati di aver compilato tutti i giorni.')) return;
+  // Marca la lista come "in attesa verifica" — il DL riceve notifica visiva
+  const {error} = await sb.from('liste_settimanali').update({
+    stato: 'inviata_dl'
+  }).eq('id',listaId);
+  if(error){ alert(error.message); return; }
+  alert('Lista inviata al DL per la verifica.');
+  showView('liste');
+}
+
+
+
 function renderRigheTabella(righe, isVerificata, listaId){
   const canEditDL  = currentRole==='dl' || currentRole==='do';
-  const canEditAll = !isVerificata && (currentRole==='dl'||currentRole==='do'||currentRole==='dt_impresa');
+  // Impresa bloccata se lista inviata al DL o verificata
+  // DL/DO sempre liberi
+  const isInviata = false; // stato gestito dalla card, qui passiamo solo isVerificata
+  // impresa bloccata se verificata; DL/DO sempre liberi
+  const canEditAll = !isVerificata && (currentRole==='dl'||currentRole==='do'||(currentRole==='dt_impresa'));
   const canEdit    = canEditDL || canEditAll;
 
   if(!righe.length){
