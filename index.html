@@ -235,7 +235,7 @@ let currentRole = null;       // ruolo nel cantiere selezionato
 let myCantieri = [];          // [{cantiere, ruolo}]
 let authMode = 'login';
 
-const ROLE_LABELS = {dl:'Direttore Lavori',rup:'RUP',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato'};
+const ROLE_LABELS = {dl:'Direttore Lavori',rup:'RUP / Committente',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato'};
 
 // permessi: cosa può fare un ruolo (la sicurezza VERA è lato DB/RLS; qui è solo UI)
 const ROLE_PERMS = {
@@ -378,7 +378,7 @@ function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').repla
 function statoFaseBadge(s){const m={attesa:['badge-grey','In attesa'],in_corso:['badge-yellow','In corso'],completata:['badge-blue','Completata'],verificata_dl:['badge-green','Verificata DL']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function odsStatoBadge(s){const m={bozza:['badge-grey','Bozza'],emessa:['badge-blue','Emessa'],ricevuta:['badge-yellow','Ricevuta'],accettata:['badge-green','Accettata'],contestata:['badge-red','Contestata']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function commTipoBadge(t){const m={nota:['badge-blue','📋 Nota'],richiesta:['badge-yellow','❓ Richiesta'],diffida:['badge-red','⚠️ Diffida']};const[c,l]=m[t]||['badge-grey',t];return`<span class="badge ${c}">${l}</span>`;}
-function roleBadge(r){const m={dl:['badge-blue','DL'],rup:['badge-green','RUP'],dt_impresa:['badge-yellow','DT Impresa'],do:['badge-grey','DO'],committente:['badge-blue','Committente']};const[c,l]=m[r]||['badge-grey',r];return`<span class="badge ${c}">${l}</span>`;}
+function roleBadge(r){const m={dl:['badge-blue','DL'],rup:['badge-green','RUP / Committente'],dt_impresa:['badge-yellow','DT Impresa'],do:['badge-grey','DO'],committente:['badge-blue','Committente']};const[c,l]=m[r]||['badge-grey',r];return`<span class="badge ${c}">${l}</span>`;}
 function getCantiereObj(id){return myCantieri.find(x=>x.cantiere.id===(id||currentCantiere))?.cantiere;}
 
 // ============================================================
@@ -1715,11 +1715,11 @@ async function renderVerbali(){
       ${v.presenti?`<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Presenti</div>
         <div style="font-size:13px">${esc(v.presenti)}</div></div>`:''}
       ${v.note_rup?`<div style="margin-top:10px;padding:10px;background:#EBF3FB;border-radius:4px;border-left:3px solid var(--accent)">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent);margin-bottom:4px">Annotazione RUP</div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent);margin-bottom:4px">Annotazione RUP/Committente</div>
         <div style="font-size:13px">${esc(v.note_rup)}</div>
       </div>`:''}
-      ${currentRole==='rup'&&!v.note_rup?`<div style="margin-top:10px"><button class="btn btn-secondary btn-sm" onclick="openModalAnnotaRUP('${v.id}')">✏️ Aggiungi annotazione RUP</button></div>`:''}
-      ${currentRole==='rup'&&v.note_rup?`<div style="margin-top:6px"><button class="btn btn-secondary btn-sm" onclick="openModalAnnotaRUP('${v.id}')">✏️ Modifica annotazione RUP</button></div>`:''}
+      ${currentRole==='rup'&&!v.note_rup?`<div style="margin-top:10px"><button class="btn btn-secondary btn-sm" onclick="openModalAnnotaRUP('${v.id}')">✏️ Aggiungi annotazione RUP/Committente</button></div>`:''}
+      ${currentRole==='rup'&&v.note_rup?`<div style="margin-top:6px"><button class="btn btn-secondary btn-sm" onclick="openModalAnnotaRUP('${v.id}')">✏️ Modifica annotazione RUP/Committente</button></div>`:''}
     </div>`;
   });
 
@@ -1763,7 +1763,7 @@ function openModalNuovoVerbale(){
       </div>
       <div class="form-group span-2">
         <label class="form-label">Presenti</label>
-        <input class="form-control" id="nv2_pres" placeholder="Es. Ing. Rossi (DL), Geom. Bianchi (RUP), Ing. Verdi (DT Impresa)">
+        <input class="form-control" id="nv2_pres" placeholder="Es. Ing. Rossi (DL), Geom. Bianchi (RUP/Committente), Ing. Verdi (DT Impresa)">
       </div>
     </div>
     <div class="form-actions">
@@ -1866,10 +1866,10 @@ async function eliminaVerbale(id){
 
 async function openModalAnnotaRUP(id){
   const {data:v} = await sb.from('verbali').select('note_rup').eq('id',id).single();
-  openModal('Annotazione RUP', `
-    <div class="alert alert-info" style="font-size:12px">L'annotazione RUP è visibile a tutti i membri del cantiere come presa d'atto o osservazione sul verbale.</div>
+  openModal('Annotazione RUP/Committente', `
+    <div class="alert alert-info" style="font-size:12px">L'annotazione RUP/Committente è visibile a tutti i membri del cantiere come presa d'atto o osservazione sul verbale.</div>
     <div class="form-group">
-      <label class="form-label">Annotazione RUP</label>
+      <label class="form-label">Annotazione RUP/Committente</label>
       <textarea class="form-control" id="annot_rup" rows="5" placeholder="Es. Preso atto del presente verbale. Si conferma quanto disposto dal DL...">${esc(v?.note_rup||'')}</textarea>
     </div>
     <div class="form-actions">
@@ -2605,10 +2605,10 @@ async function salvaEditSAL(id){
 }
 
 async function renderReport(){
-  if(!can('report')) return `<div class="empty"><div class="empty-icon">🔒</div><h3>Accesso riservato</h3><p>Report disponibili solo per DL e RUP.</p></div>`;
+  if(!can('report')) return `<div class="empty"><div class="empty-icon">🔒</div><h3>Accesso riservato</h3><p>Report disponibili solo per DL e RUP/Committente.</p></div>`;
   let html = `<div class="section-header"><div><div class="page-title">Report per Stazione Appaltante</div><div class="page-subtitle">Genera report ufficiali in PDF</div></div></div>`;
   const reportCantieri = myCantieri.filter(r=>r.ruolo==='dl'||r.ruolo==='rup');
-  if(!reportCantieri.length) return html + `<div class="empty"><p>Nessun cantiere con ruolo DL/RUP.</p></div>`;
+  if(!reportCantieri.length) return html + `<div class="empty"><p>Nessun cantiere con ruolo DL/RUP-Committente.</p></div>`;
   for(const r of reportCantieri){
     const c=r.cantiere;
     const [{data:fasi},{count:odsAperti}] = await Promise.all([
@@ -2883,7 +2883,7 @@ async function openModalNuovoODS(){
     <div class="form-group"><label class="form-label">Data</label><input class="form-control" type="date" id="ods_data" value="${today()}"></div>
     <div class="form-group span-2"><label class="form-label">Oggetto *</label><input class="form-control" id="ods_ogg"></div>
     <div class="form-group span-2"><label class="form-label">Testo dell'ordine *</label><textarea class="form-control" id="ods_corpo" rows="6" placeholder="Si ordina all'impresa di…"></textarea></div></div>
-    <div class="alert alert-info" style="margin-top:12px;font-size:12px">L'ODS sarà emesso con tua firma. Il RUP riceverà per presa visione, l'impresa per accettazione.</div>
+    <div class="alert alert-info" style="margin-top:12px;font-size:12px">L'ODS sarà emesso con tua firma. Il RUP/Committente riceverà per presa visione, l'impresa per accettazione.</div>
     <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaODS()">Emetti ODS</button></div>`);
 }
 async function salvaODS(){
@@ -2953,7 +2953,7 @@ function openModalNuovaComunicazione(){
         <option value="tutti">Tutti i membri del cantiere</option>
         <option value="riservata">Riservata — solo DL, RUP e DO (non visibile all'impresa)</option>
       </select>
-      <div class="form-hint" style="font-size:11px;color:#ADB5BD">Usa "Riservata" per comunicazioni interne tra DL e RUP non destinate all'impresa</div>
+      <div class="form-hint" style="font-size:11px;color:#ADB5BD">Usa "Riservata" per comunicazioni interne tra DL e RUP/Committente non destinate all'impresa</div>
     </div>
   </div>
   <div class="form-actions">
@@ -2967,7 +2967,7 @@ async function salvaComunicazione(){
   if(!oggetto||!testo){alert('Oggetto e testo obbligatori');return;}
   const mittente=`${currentUser.nome||''} ${currentUser.cognome||''}`.trim()+` (${ROLE_LABELS[currentRole]})`;
   const visib = document.getElementById('comm_visib').value;
-  const destinatari = visib==='riservata' ? ['DL','RUP','DO'] : ['DL','RUP','DT Impresa','DO'];
+  const destinatari = visib==='riservata' ? ['DL','RUP/Committente','DO'] : ['DL','RUP/Committente','DT Impresa','DO'];
   const {error}=await sb.from('comunicazioni').insert({
     cantiere_id:currentCantiere,tipo:document.getElementById('comm_tipo').value,
     data:document.getElementById('comm_data').value,oggetto,testo,
@@ -3192,7 +3192,7 @@ function openModalNuovoMembro(){
     <div class="form-group span-2"><label class="form-label">Email utente registrato *</label><input class="form-control" type="email" id="tm_email"></div>
     <div class="form-group"><label class="form-label">Ruolo *</label><select class="form-control" id="tm_ruolo">
         <option value="dl">Direttore Lavori</option>
-        <option value="rup">RUP</option>
+        <option value="rup">RUP / Committente</option>
         <option value="dt_impresa">DT Impresa</option>
         <option value="do">Direttore Operativo</option>
         <option value="committente">Committente Privato</option>
@@ -3350,7 +3350,7 @@ async function openModalEditComunicazione(id){
 
 async function salvaEditComunicazione(id){
   const visib = document.getElementById('eco_visib').value;
-  const destinatari = visib==='riservata' ? ['DL','RUP','DO'] : ['DL','RUP','DT Impresa','DO'];
+  const destinatari = visib==='riservata' ? ['DL','RUP/Committente','DO'] : ['DL','RUP/Committente','DT Impresa','DO'];
   const {error} = await sb.from('comunicazioni').update({
     tipo: document.getElementById('eco_tipo').value,
     data: document.getElementById('eco_data').value,
@@ -3471,7 +3471,7 @@ async function generaReportSA(cantiereId){
   const statoLabel={attesa:'In attesa',in_corso:'In corso',completata:'Completata',verificata_dl:'Verificata DL'};
   const tipoAttoLabel={atto_sottomissione:'Atto di sottomissione',atto_aggiuntivo:'Atto aggiuntivo'};
   const tipoDittaLabel={appaltatrice:'Appaltatrice',subappaltatrice:'Subappaltatrice',subaffidataria:'Subaffidataria'};
-  const roleLabel={dl:'Direttore dei Lavori',rup:'RUP',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato'};
+  const roleLabel={dl:'Direttore dei Lavori',rup:'RUP / Committente',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato'};
 
   // Totali manodopera
   const totOpGiornale=(giornale||[]).reduce((a,g)=>{const mae=g.maestranze||[];return a+mae.reduce((b,m)=>b+(m.num||0),0);},0);
