@@ -235,14 +235,15 @@ let currentRole = null;       // ruolo nel cantiere selezionato
 let myCantieri = [];          // [{cantiere, ruolo}]
 let authMode = 'login';
 
-const ROLE_LABELS = {dl:'Direttore Lavori',rup:'RUP',dt_impresa:'DT Impresa',do:'Direttore Operativo'};
+const ROLE_LABELS = {dl:'Direttore Lavori',rup:'RUP',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato'};
 
 // permessi: cosa può fare un ruolo (la sicurezza VERA è lato DB/RLS; qui è solo UI)
 const ROLE_PERMS = {
-  dl:        {write:true, giornale:true, ods:true, report:true},
-  rup:       {write:false,giornale:'read',ods:false,report:true},
-  dt_impresa:{write:false,giornale:'read',ods:false,report:false},
-  do:        {write:true, giornale:true, ods:true, report:false}
+  dl:          {write:true, giornale:true, ods:true, report:true},
+  rup:         {write:false,giornale:'read',ods:false,report:true},
+  dt_impresa:  {write:false,giornale:'read',ods:false,report:false},
+  do:          {write:true, giornale:true, ods:true, report:false},
+  committente: {write:false,giornale:'read',ods:false,report:true}
 };
 function can(p){ if(!currentRole) return false; return !!ROLE_PERMS[currentRole]?.[p]; }
 function giornaleAccess(){ return ROLE_PERMS[currentRole]?.giornale; } // true|false|'read'
@@ -377,7 +378,7 @@ function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').repla
 function statoFaseBadge(s){const m={attesa:['badge-grey','In attesa'],in_corso:['badge-yellow','In corso'],completata:['badge-blue','Completata'],verificata_dl:['badge-green','Verificata DL']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function odsStatoBadge(s){const m={bozza:['badge-grey','Bozza'],emessa:['badge-blue','Emessa'],ricevuta:['badge-yellow','Ricevuta'],accettata:['badge-green','Accettata'],contestata:['badge-red','Contestata']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function commTipoBadge(t){const m={nota:['badge-blue','📋 Nota'],richiesta:['badge-yellow','❓ Richiesta'],diffida:['badge-red','⚠️ Diffida']};const[c,l]=m[t]||['badge-grey',t];return`<span class="badge ${c}">${l}</span>`;}
-function roleBadge(r){const m={dl:['badge-blue','DL'],rup:['badge-green','RUP'],dt_impresa:['badge-yellow','DT Impresa'],do:['badge-grey','DO']};const[c,l]=m[r]||['badge-grey',r];return`<span class="badge ${c}">${l}</span>`;}
+function roleBadge(r){const m={dl:['badge-blue','DL'],rup:['badge-green','RUP'],dt_impresa:['badge-yellow','DT Impresa'],do:['badge-grey','DO'],committente:['badge-blue','Committente']};const[c,l]=m[r]||['badge-grey',r];return`<span class="badge ${c}">${l}</span>`;}
 function getCantiereObj(id){return myCantieri.find(x=>x.cantiere.id===(id||currentCantiere))?.cantiere;}
 
 // ============================================================
@@ -662,7 +663,7 @@ async function renderODS(){
         <span style="opacity:0.7">${f.data?fmt(f.data):'in attesa'}</span></div>`).join('')}</div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
         ${(currentRole==='dt_impresa'&&o.stato!=='accettata')?`<button class="btn btn-primary btn-sm" onclick="accettaODS('${o.id}')">✅ Accetta ODS</button>`:''}
-        ${(currentRole==='rup'&&firme.find(f=>f.ruolo==='rup'&&f.stato==='in_attesa'))?`<button class="btn btn-primary btn-sm" onclick="firmaRupODS('${o.id}')">👁️ Presa visione</button>`:''}
+        ${((currentRole==='rup'||currentRole==='committente')&&firme.find(f=>f.ruolo==='rup'&&f.stato==='in_attesa'))?`<button class="btn btn-primary btn-sm" onclick="firmaRupODS('${o.id}')">👁️ Presa visione</button>`:''}
         <button class="btn btn-secondary btn-sm" onclick="stampaODS('${o.id}')">🖨️ Stampa / PDF</button>
         ${can('ods')?`<button class="btn btn-secondary btn-sm" onclick="openModalEditODS('${o.id}')">✏️</button>`:''}
         ${can('ods')?`<button class="btn btn-danger btn-sm" onclick="eliminaODS('${o.id}','${esc(o.numero)}')">🗑️</button>`:''}
@@ -3498,7 +3499,7 @@ async function generaReportSA(cantiereId){
   const statoLabel={attesa:'In attesa',in_corso:'In corso',completata:'Completata',verificata_dl:'Verificata DL'};
   const tipoAttoLabel={atto_sottomissione:'Atto di sottomissione',atto_aggiuntivo:'Atto aggiuntivo'};
   const tipoDittaLabel={appaltatrice:'Appaltatrice',subappaltatrice:'Subappaltatrice',subaffidataria:'Subaffidataria'};
-  const roleLabel={dl:'Direttore dei Lavori',rup:'RUP',dt_impresa:'DT Impresa',do:'Direttore Operativo'};
+  const roleLabel={dl:'Direttore dei Lavori',rup:'RUP',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato'};
 
   // Totali manodopera
   const totOpGiornale=(giornale||[]).reduce((a,g)=>{const mae=g.maestranze||[];return a+mae.reduce((b,m)=>b+(m.num||0),0);},0);
