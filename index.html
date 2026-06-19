@@ -1957,49 +1957,74 @@ async function renderListe(){
 }
 
 function renderRigheTabella(righe, isVerificata, listaId){
-  if(!righe.length) return `<div style="padding:12px;color:var(--muted);font-size:13px;text-align:center">Nessuna riga inserita. ${(currentRole==='dl'||currentRole==='do')||(!isVerificata&&currentRole==='dt_impresa')?`<button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga('${listaId}')">+ Aggiungi giorno</button>`:''}`;
-
-  // DL e DO possono sempre modificare (anche dopo verifica)
-  // L'impresa può modificare SOLO finché non è verificata
   const canEditDL  = currentRole==='dl' || currentRole==='do';
   const canEditAll = !isVerificata && (currentRole==='dl'||currentRole==='do'||currentRole==='dt_impresa');
-  let t = `<table style="font-size:12px">
-    <thead><tr>
-      <th style="width:90px">Data</th>
-      <th>Manodopera</th>
-      <th style="width:160px">Mezzi</th>
-      <th>Lavorazioni eseguite</th>
-      <th style="width:140px">Attrezzature / Noli</th>
-      <th style="width:80px">Note</th>
-      <th style="width:90px"></th>
-    </tr></thead><tbody>`;
+  const canEdit    = canEditDL || canEditAll;
 
+  if(!righe.length){
+    return `<div style="padding:16px;color:var(--muted);font-size:13px;text-align:center">
+      Nessun giorno. ${canEdit?`<button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga('${listaId}')">+ Aggiungi giorno</button>`:''}
+    </div>`;
+  }
+
+  let html = `<div style="padding:4px 0">`;
   righe.forEach(r=>{
-    const mae = r.manodopera||[];
+    const mae   = r.manodopera||[];
     const mezzi = r.mezzi||[];
-    const totOp = mae.length;
-    const maeHtml = mae.map(m=>`<div style="margin-bottom:2px"><strong>${esc(m.nominativo)}</strong><div style="font-size:10px;color:var(--muted)">${esc(m.qualifica||'')} — ${esc(m.ditta_nome||'')}</div></div>`).join('');
-    const mezziHtml = mezzi.map(m=>`<div style="font-size:11px">🔧 ${esc(m.descrizione)}</div>`).join('');
-    t += `<tr>
-      <td><strong>${fmt(r.data)}</strong></td>
-      <td>${maeHtml||'<span style="color:var(--muted)">—</span>'}<div style="font-size:10px;color:var(--muted);margin-top:3px">Tot: ${totOp} operatori</div></td>
-      <td>${mezziHtml||'<span style="color:var(--muted)">—</span>'}</td>
-      <td style="font-size:12px">${esc(r.lavorazioni||'—')}</td>
-      <td style="font-size:11px;color:var(--muted)">${esc(r.attrezzature||'')}${r.noli?`<br>Nolo: ${esc(r.noli)}`:''}</td>
-      <td style="font-size:11px;color:var(--muted)">${esc(r.note||'—')}</td>
-      <td>${canEditDL||canEditAll?`<div class="btn-group">
-        ${canEditDL||canEditAll?`<button class="btn btn-secondary btn-sm" onclick="openModalEditRiga('${r.id}','${listaId}')">✏️</button>`:''}
-        ${canEditDL||canEditAll?`<button class="btn btn-danger btn-sm" onclick="eliminaRiga('${r.id}','${listaId}')">🗑️</button>`:''}
-      </div>`:'—'}</td>
-    </tr>`;
+    const hasData = r.lavorazioni && r.lavorazioni.trim();
+    const d = new Date(r.data+'T00:00:00');
+    const gg = d.toLocaleDateString('it-IT',{weekday:'long'});
+    const dataFmt = d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const isFestivo = d.getDay()===0||d.getDay()===6;
+
+    html += `<div style="border:1px solid ${hasData?'var(--accent)':'var(--border)'};border-radius:6px;margin-bottom:8px;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;
+        background:${hasData?'#EBF3FB':isFestivo?'#FAFAFA':'var(--surface)'}">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:13px;font-weight:700;color:var(--primary)">${dataFmt}</div>
+          <div style="font-size:12px;color:var(--muted);text-transform:capitalize">${gg}</div>
+          ${hasData
+            ? `<span class="badge badge-green" style="font-size:10px">&#10003; Compilato</span>`
+            : `<span class="badge badge-grey" style="font-size:10px">Da compilare</span>`}
+        </div>
+        ${canEdit?`<div class="btn-group">
+          <button class="btn btn-secondary btn-sm" onclick="openModalEditRiga('${r.id}','${listaId}')">&#9998; Compila</button>
+          <button class="btn btn-danger btn-sm" onclick="eliminaRiga('${r.id}','${listaId}')">&#128465;</button>
+        </div>`:''}
+      </div>
+      ${hasData?`<div style="padding:10px 14px;font-size:12px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Manodopera (${mae.length} operatori)</div>
+            ${mae.length ? mae.map(m=>`<div style="margin-bottom:2px"><strong>${esc(m.nominativo)}</strong> <span style="color:var(--muted);font-size:11px">${esc(m.qualifica||'')} - ${esc(m.ditta_nome||'')}</span></div>`).join('') : '<span style="color:var(--muted)">--</span>'}
+          </div>
+          <div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Mezzi</div>
+            ${mezzi.length ? mezzi.map(m=>`<div>${esc(m.descrizione)}</div>`).join('') : '<span style="color:var(--muted)">--</span>'}
+          </div>
+        </div>
+        <div style="margin-top:8px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Lavorazioni eseguite</div>
+          <div style="white-space:pre-wrap">${esc(r.lavorazioni)}</div>
+        </div>
+        ${r.attrezzature||r.noli?`<div style="margin-top:6px;font-size:11px;color:var(--muted)">
+          ${r.attrezzature?`Attrezzature: ${esc(r.attrezzature)} `:''}${r.noli?`Noli: ${esc(r.noli)}`:''}
+        </div>`:''}
+        ${r.note?`<div style="margin-top:4px;font-size:11px;color:var(--muted)">Note: ${esc(r.note)}</div>`:''}
+      </div>`:''}
+    </div>`;
   });
 
-  t += `</tbody></table>`;
-  if(canEditDL||canEditAll){
-    t += `<div style="padding:8px 0"><button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga('${listaId}')">+ Aggiungi giorno</button></div>`;
+  if(canEdit){
+    html += `<div style="padding:4px 0">
+      <button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga('${listaId}')">+ Aggiungi giorno</button>
+    </div>`;
   }
-  return t;
+
+  html += `</div>`;
+  return html;
 }
+
 
 // ---- NUOVA LISTA ----
 function openModalNuovaLista(){
@@ -2041,15 +2066,37 @@ async function salvaLista(){
   const dal = document.getElementById('nl_dal').value;
   const al  = document.getElementById('nl_al').value;
   if(!dal||!al){ alert('Date obbligatorie'); return; }
-  const {error} = await sb.from('liste_settimanali').insert({
+
+  const {data:ls, error} = await sb.from('liste_settimanali').insert({
     cantiere_id: currentCantiere,
     settimana_dal: dal,
     settimana_al: al,
     note_generali: document.getElementById('nl_note').value.trim()||null,
     stato: 'bozza',
     created_by: currentUser.id
-  });
+  }).select().single();
   if(error){ alert(error.message); return; }
+
+  // Crea automaticamente una riga per ogni giorno della settimana (lun-dom)
+  const righe = [];
+  const cur = new Date(dal+'T00:00:00');
+  const fine = new Date(al+'T00:00:00');
+  while(cur <= fine){
+    righe.push({
+      lista_id: ls.id,
+      cantiere_id: currentCantiere,
+      data: cur.toISOString().split('T')[0],
+      manodopera: [],
+      mezzi: [],
+      lavorazioni: ''
+    });
+    cur.setDate(cur.getDate()+1);
+  }
+  if(righe.length){
+    const {error:e2} = await sb.from('liste_righe').insert(righe);
+    if(e2){ alert('Lista creata ma errore nelle righe: '+e2.message); }
+  }
+
   closeModal();
   showView('liste');
 }
