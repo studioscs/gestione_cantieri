@@ -2413,7 +2413,7 @@ async function renderSAL(){
   // Totali
   if(sals && sals.length){
     const totLordo = sals.reduce((a,s)=>a+(s.importo_lavori||0)+(s.importo_sicurezza||0),0);
-    const totNetto = sals.reduce((a,s)=>a+(s.netto_pagare||0),0);
+    const totNetto = sals.reduce((a,s)=>a+((s.netto_calcolato||s.netto_pagare||0)||0),0);
     const ultSal = sals[0];
     html += `<div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
       <div class="kpi"><div class="kpi-label">SAL emessi</div><div class="kpi-value">${sals.length}</div><div class="kpi-sub">ultimo: SAL n. ${ultSal.numero}</div></div>
@@ -2446,9 +2446,9 @@ async function renderSAL(){
       <td style="color:var(--red)">${fmtEur(s.ritenuta_garanzia)}</td>
       <td style="color:var(--red)">${fmtEur(s.anticipazione_dedurre)}</td>
       <td style="color:var(--red)">${fmtEur(s.altri_importi)}${s.note_altri_importi?'<div style="font-size:10px;color:var(--muted)">'+esc(s.note_altri_importi)+'</div>':''}</td>
-      <td><strong style="color:var(--green);font-size:14px">${fmtEur(s.netto_pagare)}</strong></td>
-      <td style="font-size:12px;color:var(--muted)">${s.iva_percentuale?s.iva_percentuale+'%<br>'+fmtEur(s.importo_iva||0):'—'}</td>
-      <td><strong style="color:var(--primary);font-size:14px">${fmtEur(s.netto_iva_inclusa||s.netto_pagare||0)}</strong></td>
+      <td><strong style="color:var(--green);font-size:14px">${fmtEur((s.netto_calcolato||s.netto_pagare||0))}</strong></td>
+      <td style="font-size:12px;color:var(--muted)">${s.iva_percentuale?s.iva_percentuale+'%<br>'+fmtEur((s.importo_iva_calcolata||s.importo_iva||0)||0):'—'}</td>
+      <td><strong style="color:var(--primary);font-size:14px">${fmtEur((s.netto_iva_calcolato||s.netto_iva_inclusa||s.netto_calcolato||s.netto_pagare||0)||(s.netto_calcolato||s.netto_pagare||0)||0)}</strong></td>
       <td><span class="badge ${cls}">${label}</span></td>
       <td>
         ${(currentRole==='dl'||currentRole==='do')?`<div class="btn-group">
@@ -2641,9 +2641,9 @@ async function salvaSAL(){
     note_altri_importi: det.voci.map(v=>v.note+': '+fmtEur(v.imp)).join(' | '),
     detrazioni_dettaglio: JSON.stringify(det.voci),
     iva_percentuale: ivaPerc,
-    importo_iva: iva,
-    netto_pagare: netto,
-    netto_iva_inclusa: netto + iva,
+    importo_iva_calcolata: iva,
+    netto_calcolato: netto,
+    netto_iva_calcolato: netto + iva,
     stato: document.getElementById('sal_stato').value,
     note: document.getElementById('sal_note').value,
     created_by: currentUser.id
@@ -2717,11 +2717,11 @@ async function openModalEditSAL(id){
         </div>
         <div>
           <div style="font-size:11px;color:var(--muted);margin-bottom:4px">NETTO (senza IVA)</div>
-          <div style="font-size:16px;font-weight:700;color:var(--green)" id="es_netto_display">${fmtEur(s.netto_pagare||0)}</div>
+          <div style="font-size:16px;font-weight:700;color:var(--green)" id="es_netto_display">${fmtEur((s.netto_calcolato||s.netto_pagare||0)||0)}</div>
         </div>
         <div style="background:white;border-radius:4px;padding:8px">
           <div style="font-size:11px;color:var(--muted);margin-bottom:4px">NETTO + IVA</div>
-          <div style="font-size:18px;font-weight:700;color:var(--primary)" id="es_netto_iva_display">${fmtEur(s.netto_iva_inclusa||s.netto_pagare||0)}</div>
+          <div style="font-size:18px;font-weight:700;color:var(--primary)" id="es_netto_iva_display">${fmtEur((s.netto_iva_calcolato||s.netto_iva_inclusa||s.netto_calcolato||s.netto_pagare||0)||(s.netto_calcolato||s.netto_pagare||0)||0)}</div>
         </div>
       </div>
     </div>
@@ -2766,9 +2766,9 @@ async function salvaEditSAL(id){
     note_altri_importi: det.voci.map(v=>v.note+': '+fmtEur(v.imp)).join(' | '),
     detrazioni_dettaglio: JSON.stringify(det.voci),
     iva_percentuale: ivaPerc,
-    importo_iva: iva,
-    netto_pagare: netto,
-    netto_iva_inclusa: netto + iva,
+    importo_iva_calcolata: iva,
+    netto_calcolato: netto,
+    netto_iva_calcolato: netto + iva,
     stato: document.getElementById('es_stato').value,
     note: document.getElementById('es_note').value
   }).eq('id',id);
@@ -3667,7 +3667,7 @@ async function generaReportSA(cantiereId){
   const giorniRegistrati=(giornale||[]).length;
   const giorniAnomalie=(giornale||[]).filter(g=>g.anomalie&&g.anomalie.trim()).length;
   const totSalLordo=(sal||[]).reduce((a,s)=>a+(s.importo_lordo||0),0);
-  const totSalNetto=(sal||[]).reduce((a,s)=>a+(s.netto_pagare||0),0);
+  const totSalNetto=(sal||[]).reduce((a,s)=>a+((s.netto_calcolato||s.netto_pagare||0)||0),0);
 
   const now=new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
 
@@ -3794,7 +3794,7 @@ async function generaReportSA(cantiereId){
     <td style="color:#721C24">${fmtEur(s.ritenuta_garanzia)}</td>
     <td style="color:#721C24">${fmtEur(s.anticipazione_dedurre)}</td>
     <td style="color:#721C24">${fmtEur(s.altri_importi)}</td>
-    <td><strong style="color:#155724">${fmtEur(s.netto_pagare)}</strong></td>
+    <td><strong style="color:#155724">${fmtEur((s.netto_calcolato||s.netto_pagare||0))}</strong></td>
     <td style="font-size:11px">${s.stato?.toUpperCase()||'—'}</td>
   </tr>`).join('')}
   <tr style="background:#EBF3FB;font-weight:700">
