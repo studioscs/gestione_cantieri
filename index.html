@@ -2434,7 +2434,7 @@ async function renderSAL(){
   };
 
   html += `<div class="card" style="padding:0"><table>
-    <thead><tr><th>N. SAL</th><th>Periodo</th><th>Importo lordo</th><th>Ritenuta gar.</th><th>Anticipazione</th><th>Altri importi</th><th>Netto a pagare</th><th>Stato</th><th></th></tr></thead>
+    <thead><tr><th>N. SAL</th><th>Periodo</th><th>Importo lordo</th><th>Ritenuta gar.</th><th>Anticipazione</th><th>Detrazioni</th><th>Netto</th><th>IVA</th><th>Netto + IVA</th><th>Stato</th><th></th></tr></thead>
     <tbody>`;
 
   sals.forEach(s=>{
@@ -2445,8 +2445,10 @@ async function renderSAL(){
       <td>${fmtEur(s.importo_lordo)}<div style="font-size:11px;color:var(--muted)">Lav: ${fmtEur(s.importo_lavori)} + Sic: ${fmtEur(s.importo_sicurezza)}</div></td>
       <td style="color:var(--red)">${fmtEur(s.ritenuta_garanzia)}</td>
       <td style="color:var(--red)">${fmtEur(s.anticipazione_dedurre)}</td>
-      <td style="color:var(--red)">${fmtEur(s.altri_importi)}${s.note_altri_importi?`<div style="font-size:11px;color:var(--muted)">${esc(s.note_altri_importi)}</div>`:''}</td>
+      <td style="color:var(--red)">${fmtEur(s.altri_importi)}${s.note_altri_importi?'<div style="font-size:10px;color:var(--muted)">'+esc(s.note_altri_importi)+'</div>':''}</td>
       <td><strong style="color:var(--green);font-size:14px">${fmtEur(s.netto_pagare)}</strong></td>
+      <td style="font-size:12px;color:var(--muted)">${s.iva_percentuale?s.iva_percentuale+'%<br>'+fmtEur(s.importo_iva||0):'—'}</td>
+      <td><strong style="color:var(--primary);font-size:14px">${fmtEur(s.netto_iva_inclusa||s.netto_pagare||0)}</strong></td>
       <td><span class="badge ${cls}">${label}</span></td>
       <td>
         ${(currentRole==='dl'||currentRole==='do')?`<div class="btn-group">
@@ -2471,29 +2473,69 @@ function openModalNuovoSAL(){
       <div class="form-group"><label class="form-label">Periodo dal</label><input class="form-control" type="date" id="sal_dal"></div>
       <div class="form-group"><label class="form-label">Periodo al</label><input class="form-control" type="date" id="sal_al"></div>
     </div>
+
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;margin-top:12px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:12px">IMPORTI</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:12px">IMPORTI LORDI</div>
       <div class="form-grid">
         <div class="form-group"><label class="form-label">Importo lavori eseguiti (€)</label><input class="form-control" type="number" step="0.01" id="sal_lav" value="0" oninput="aggiornaTotaleSAL()"></div>
         <div class="form-group"><label class="form-label">Importo sicurezza (€)</label><input class="form-control" type="number" step="0.01" id="sal_sic" value="0" oninput="aggiornaTotaleSAL()"></div>
+      </div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;margin-top:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)">DETRAZIONI</div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiDetrazione('sal')">+ Detrazione</button>
+      </div>
+      <div class="form-grid">
         <div class="form-group"><label class="form-label">Ritenuta di garanzia (€)</label><input class="form-control" type="number" step="0.01" id="sal_rit" value="0" oninput="aggiornaTotaleSAL()"></div>
         <div class="form-group"><label class="form-label">Anticipazione da dedurre (€)</label><input class="form-control" type="number" step="0.01" id="sal_ant" value="0" oninput="aggiornaTotaleSAL()"></div>
-        <div class="form-group"><label class="form-label">Altri importi da dedurre (€)</label><input class="form-control" type="number" step="0.01" id="sal_altri" value="0" oninput="aggiornaTotaleSAL()"></div>
-        <div class="form-group"><label class="form-label">Descrizione altri importi</label><input class="form-control" id="sal_altri_note" placeholder="Es. penali, conguagli..."></div>
       </div>
-      <div style="margin-top:16px;padding-top:12px;border-top:2px solid var(--primary)">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-size:12px;color:var(--muted)">Importo lordo (lav + sic)</div>
-            <div style="font-size:11px;color:var(--red);margin-top:2px">- Ritenuta - Anticipazione - Altri</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:12px;color:var(--muted)" id="sal_lordo_display">€ 0,00</div>
-            <div style="font-size:20px;font-weight:700;color:var(--green)" id="sal_netto_display">NETTO: € 0,00</div>
-          </div>
+      <div id="sal_detrazioni_extra">
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-bottom:6px" id="sal_det_0">
+          <div class="form-group" style="margin:0"><label class="form-label">Importo certificati pagamento precedenti (€)</label><input class="form-control" type="number" step="0.01" id="sal_det_imp_0" value="0" oninput="aggiornaTotaleSAL()"></div>
+          <div class="form-group" style="margin:0"><label class="form-label">Descrizione</label><input class="form-control" id="sal_det_note_0" value="Importi certificati pagamento precedenti" placeholder="Es. Imp. cert. pagamento precedenti, penali..."></div>
+          <button type="button" class="btn btn-secondary btn-sm" style="margin-bottom:0" onclick="rimuoviDetrazione('sal',0)">✕</button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Esempi: importi certificati pagamento precedenti, penali contrattuali, conguagli, trattenute varie</div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;margin-top:10px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:12px">IVA</div>
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Aliquota IVA</label>
+          <select class="form-control" id="sal_iva_perc" oninput="aggiornaTotaleSAL()">
+            <option value="0">Esente / Non applicabile</option>
+            <option value="4">4%</option>
+            <option value="5">5%</option>
+            <option value="10" selected>10%</option>
+            <option value="22">22%</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Importo IVA (€)</label>
+          <input class="form-control" type="text" id="sal_iva_display" readonly style="background:#f8f9fa;font-weight:600">
         </div>
       </div>
     </div>
+
+    <div style="margin-top:14px;padding:14px;border:2px solid var(--primary);border-radius:6px;background:#EBF3FB">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center">
+        <div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">IMPORTO LORDO</div>
+          <div style="font-size:16px;font-weight:700;color:var(--primary)" id="sal_lordo_display">€ 0,00</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">NETTO (senza IVA)</div>
+          <div style="font-size:16px;font-weight:700;color:var(--green)" id="sal_netto_display">€ 0,00</div>
+        </div>
+        <div style="background:white;border-radius:4px;padding:8px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">NETTO + IVA</div>
+          <div style="font-size:18px;font-weight:700;color:var(--primary)" id="sal_netto_iva_display">€ 0,00</div>
+        </div>
+      </div>
+    </div>
+
     <div class="form-grid" style="margin-top:12px">
       <div class="form-group"><label class="form-label">Stato</label>
         <select class="form-control" id="sal_stato">
@@ -2509,6 +2551,43 @@ function openModalNuovoSAL(){
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaSAL()">Salva SAL</button>
     </div>`);
+  window._salDetN = 1;
+}
+
+let _salDetN = 1;
+function aggiungiDetrazione(prefix){
+  const n = window[prefix+'_detN'] || 1;
+  const body = document.getElementById(prefix+'_detrazioni_extra');
+  if(!body) return;
+  const div = document.createElement('div');
+  div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-bottom:6px';
+  div.id = prefix+'_det_'+n;
+  div.innerHTML = `<div class="form-group" style="margin:0"><label class="form-label">Importo (€)</label><input class="form-control" type="number" step="0.01" id="${prefix}_det_imp_${n}" value="0" oninput="aggiornaTotaleSAL('${prefix}')"></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Descrizione</label><input class="form-control" id="${prefix}_det_note_${n}" placeholder="Es. penali, conguagli..."></div>
+    <button type="button" class="btn btn-danger btn-sm" style="margin-bottom:0" onclick="rimuoviDetrazione('${prefix}',${n})">✕</button>`;
+  body.appendChild(div);
+  window[prefix+'_detN'] = n+1;
+  aggiornaTotaleSAL(prefix);
+}
+
+function rimuoviDetrazione(prefix, n){
+  const el = document.getElementById(prefix+'_det_'+n);
+  if(el){ el.remove(); aggiornaTotaleSAL(prefix); }
+}
+
+function raccogliDetrazioni(prefix){
+  const out = { totale: 0, voci: [] };
+  let i = 0;
+  while(true){
+    const el = document.getElementById(prefix+'_det_imp_'+i);
+    if(!el) break;
+    const imp = parseFloat(el.value)||0;
+    const note = document.getElementById(prefix+'_det_note_'+i)?.value||'';
+    out.totale += imp;
+    if(imp || note) out.voci.push({imp, note});
+    i++;
+  }
+  return out;
 }
 
 function aggiornaTotaleSAL(prefix='sal'){
@@ -2516,13 +2595,23 @@ function aggiornaTotaleSAL(prefix='sal'){
   const sic = parseFloat(document.getElementById(prefix+'_sic')?.value)||0;
   const rit = parseFloat(document.getElementById(prefix+'_rit')?.value)||0;
   const ant = parseFloat(document.getElementById(prefix+'_ant')?.value)||0;
-  const alt = parseFloat(document.getElementById(prefix+'_altri')?.value)||0;
+  const det = raccogliDetrazioni(prefix);
+  const ivaPerc = parseFloat(document.getElementById(prefix+'_iva_perc')?.value)||0;
+
   const lordo = lav + sic;
-  const netto = lordo - rit - ant - alt;
+  const netto = lordo - rit - ant - det.totale;
+  const iva = netto * ivaPerc / 100;
+  const nettoIva = netto + iva;
+
   const ld = document.getElementById(prefix+'_lordo_display');
   const nd = document.getElementById(prefix+'_netto_display');
-  if(ld) ld.textContent = 'Lordo: ' + fmtEur(lordo);
-  if(nd) nd.textContent = 'NETTO: ' + fmtEur(netto);
+  const ni = document.getElementById(prefix+'_netto_iva_display');
+  const id = document.getElementById(prefix+'_iva_display');
+
+  if(ld) ld.textContent = fmtEur(lordo);
+  if(nd) nd.textContent = fmtEur(netto);
+  if(ni) ni.textContent = fmtEur(nettoIva);
+  if(id) id.value = ivaPerc>0 ? fmtEur(iva)+' ('+ivaPerc+'%)' : '—';
 }
 
 async function salvaSAL(){
@@ -2530,18 +2619,32 @@ async function salvaSAL(){
   if(!num){ alert('Numero SAL obbligatorio'); return; }
   const lav = parseFloat(document.getElementById('sal_lav').value)||0;
   const sic = parseFloat(document.getElementById('sal_sic').value)||0;
+  const rit = parseFloat(document.getElementById('sal_rit').value)||0;
+  const ant = parseFloat(document.getElementById('sal_ant').value)||0;
+  const det = raccogliDetrazioni('sal');
+  const ivaPerc = parseFloat(document.getElementById('sal_iva_perc').value)||0;
+  const lordo = lav + sic;
+  const netto = lordo - rit - ant - det.totale;
+  const iva = netto * ivaPerc / 100;
+
   const {error} = await sb.from('sal').insert({
     cantiere_id: currentCantiere,
     numero: num,
     data: document.getElementById('sal_data').value,
-    periodo_dal: document.getElementById('sal_dal').value || null,
-    periodo_al: document.getElementById('sal_al').value || null,
+    periodo_dal: document.getElementById('sal_dal').value||null,
+    periodo_al: document.getElementById('sal_al').value||null,
     importo_lavori: lav,
     importo_sicurezza: sic,
-    ritenuta_garanzia: parseFloat(document.getElementById('sal_rit').value)||0,
-    anticipazione_dedurre: parseFloat(document.getElementById('sal_ant').value)||0,
-    altri_importi: parseFloat(document.getElementById('sal_altri').value)||0,
-    note_altri_importi: document.getElementById('sal_altri_note').value,
+    importo_lordo: lordo,
+    ritenuta_garanzia: rit,
+    anticipazione_dedurre: ant,
+    altri_importi: det.totale,
+    note_altri_importi: det.voci.map(v=>v.note+': '+fmtEur(v.imp)).join(' | '),
+    detrazioni_dettaglio: JSON.stringify(det.voci),
+    iva_percentuale: ivaPerc,
+    importo_iva: iva,
+    netto_pagare: netto,
+    netto_iva_inclusa: netto + iva,
     stato: document.getElementById('sal_stato').value,
     note: document.getElementById('sal_note').value,
     created_by: currentUser.id
@@ -2551,10 +2654,21 @@ async function salvaSAL(){
   showView('sal');
 }
 
+
 async function openModalEditSAL(id){
   const {data:s} = await sb.from('sal').select('*').eq('id',id).single();
   if(!s) return;
-  openModal(`Modifica SAL n. ${s.numero}`, `
+  const ivaSel = s.iva_percentuale||0;
+  const detrVoci = s.detrazioni_dettaglio ? JSON.parse(s.detrazioni_dettaglio) : [{imp:s.altri_importi||0,note:s.note_altri_importi||'Importi certificati pagamento precedenti'}];
+  const detrRows = detrVoci.map((v,i)=>`
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-bottom:6px" id="es_det_${i}">
+      <div class="form-group" style="margin:0"><label class="form-label">Importo (€)</label><input class="form-control" type="number" step="0.01" id="es_det_imp_${i}" value="${v.imp||0}" oninput="aggiornaTotaleSAL('es')"></div>
+      <div class="form-group" style="margin:0"><label class="form-label">Descrizione</label><input class="form-control" id="es_det_note_${i}" value="${esc(v.note||'')}"></div>
+      <button type="button" class="btn btn-danger btn-sm" style="margin-bottom:0" onclick="rimuoviDetrazione('es',${i})">✕</button>
+    </div>`).join('');
+  window.es_detN = detrVoci.length;
+
+  openModal('Modifica SAL n. '+s.numero, `
     <div class="form-grid">
       <div class="form-group"><label class="form-label">N. SAL</label><input class="form-control" type="number" id="es_num" value="${s.numero}"></div>
       <div class="form-group"><label class="form-label">Data</label><input class="form-control" type="date" id="es_data" value="${s.data||''}"></div>
@@ -2562,17 +2676,54 @@ async function openModalEditSAL(id){
       <div class="form-group"><label class="form-label">Periodo al</label><input class="form-control" type="date" id="es_al" value="${s.periodo_al||''}"></div>
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;margin-top:12px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:12px">IMPORTI LORDI</div>
       <div class="form-grid">
         <div class="form-group"><label class="form-label">Importo lavori (€)</label><input class="form-control" type="number" step="0.01" id="es_lav" value="${s.importo_lavori||0}" oninput="aggiornaTotaleSAL('es')"></div>
         <div class="form-group"><label class="form-label">Importo sicurezza (€)</label><input class="form-control" type="number" step="0.01" id="es_sic" value="${s.importo_sicurezza||0}" oninput="aggiornaTotaleSAL('es')"></div>
+      </div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;margin-top:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)">DETRAZIONI</div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiDetrazione('es')">+ Detrazione</button>
+      </div>
+      <div class="form-grid">
         <div class="form-group"><label class="form-label">Ritenuta garanzia (€)</label><input class="form-control" type="number" step="0.01" id="es_rit" value="${s.ritenuta_garanzia||0}" oninput="aggiornaTotaleSAL('es')"></div>
         <div class="form-group"><label class="form-label">Anticipazione (€)</label><input class="form-control" type="number" step="0.01" id="es_ant" value="${s.anticipazione_dedurre||0}" oninput="aggiornaTotaleSAL('es')"></div>
-        <div class="form-group"><label class="form-label">Altri importi (€)</label><input class="form-control" type="number" step="0.01" id="es_altri" value="${s.altri_importi||0}" oninput="aggiornaTotaleSAL('es')"></div>
-        <div class="form-group"><label class="form-label">Descrizione altri importi</label><input class="form-control" id="es_altri_note" value="${esc(s.note_altri_importi||'')}"></div>
       </div>
-      <div style="margin-top:12px;padding-top:12px;border-top:2px solid var(--primary);display:flex;justify-content:space-between;align-items:center">
-        <div><div style="font-size:12px;color:var(--muted)" id="es_lordo_display">Lordo: ${fmtEur(s.importo_lordo)}</div></div>
-        <div style="font-size:20px;font-weight:700;color:var(--green)" id="es_netto_display">NETTO: ${fmtEur(s.netto_pagare)}</div>
+      <div id="es_detrazioni_extra">${detrRows}</div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;margin-top:10px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:12px">IVA</div>
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Aliquota IVA</label>
+          <select class="form-control" id="es_iva_perc" oninput="aggiornaTotaleSAL('es')">
+            <option value="0"${ivaSel===0?' selected':''}>Esente / Non applicabile</option>
+            <option value="4"${ivaSel===4?' selected':''}>4%</option>
+            <option value="5"${ivaSel===5?' selected':''}>5%</option>
+            <option value="10"${ivaSel===10?' selected':''}>10%</option>
+            <option value="22"${ivaSel===22?' selected':''}>22%</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Importo IVA</label>
+          <input class="form-control" type="text" id="es_iva_display" readonly style="background:#f8f9fa;font-weight:600">
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding:14px;border:2px solid var(--primary);border-radius:6px;background:#EBF3FB">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center">
+        <div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">IMPORTO LORDO</div>
+          <div style="font-size:16px;font-weight:700;color:var(--primary)" id="es_lordo_display">${fmtEur(s.importo_lordo||0)}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">NETTO (senza IVA)</div>
+          <div style="font-size:16px;font-weight:700;color:var(--green)" id="es_netto_display">${fmtEur(s.netto_pagare||0)}</div>
+        </div>
+        <div style="background:white;border-radius:4px;padding:8px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">NETTO + IVA</div>
+          <div style="font-size:18px;font-weight:700;color:var(--primary)" id="es_netto_iva_display">${fmtEur(s.netto_iva_inclusa||s.netto_pagare||0)}</div>
+        </div>
       </div>
     </div>
     <div class="form-grid" style="margin-top:12px">
@@ -2590,20 +2741,36 @@ async function openModalEditSAL(id){
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaEditSAL('${id}')">Salva modifiche</button>
     </div>`);
+  setTimeout(()=>aggiornaTotaleSAL('es'),50);
 }
 
 async function salvaEditSAL(id){
+  const lav = parseFloat(document.getElementById('es_lav').value)||0;
+  const sic = parseFloat(document.getElementById('es_sic').value)||0;
+  const rit = parseFloat(document.getElementById('es_rit').value)||0;
+  const ant = parseFloat(document.getElementById('es_ant').value)||0;
+  const det = raccogliDetrazioni('es');
+  const ivaPerc = parseFloat(document.getElementById('es_iva_perc').value)||0;
+  const lordo = lav + sic;
+  const netto = lordo - rit - ant - det.totale;
+  const iva = netto * ivaPerc / 100;
   const {error} = await sb.from('sal').update({
     numero: parseInt(document.getElementById('es_num').value),
     data: document.getElementById('es_data').value,
-    periodo_dal: document.getElementById('es_dal').value || null,
-    periodo_al: document.getElementById('es_al').value || null,
-    importo_lavori: parseFloat(document.getElementById('es_lav').value)||0,
-    importo_sicurezza: parseFloat(document.getElementById('es_sic').value)||0,
-    ritenuta_garanzia: parseFloat(document.getElementById('es_rit').value)||0,
-    anticipazione_dedurre: parseFloat(document.getElementById('es_ant').value)||0,
-    altri_importi: parseFloat(document.getElementById('es_altri').value)||0,
-    note_altri_importi: document.getElementById('es_altri_note').value,
+    periodo_dal: document.getElementById('es_dal').value||null,
+    periodo_al: document.getElementById('es_al').value||null,
+    importo_lavori: lav,
+    importo_sicurezza: sic,
+    importo_lordo: lordo,
+    ritenuta_garanzia: rit,
+    anticipazione_dedurre: ant,
+    altri_importi: det.totale,
+    note_altri_importi: det.voci.map(v=>v.note+': '+fmtEur(v.imp)).join(' | '),
+    detrazioni_dettaglio: JSON.stringify(det.voci),
+    iva_percentuale: ivaPerc,
+    importo_iva: iva,
+    netto_pagare: netto,
+    netto_iva_inclusa: netto + iva,
     stato: document.getElementById('es_stato').value,
     note: document.getElementById('es_note').value
   }).eq('id',id);
@@ -2611,6 +2778,7 @@ async function salvaEditSAL(id){
   closeModal();
   showView('sal');
 }
+
 
 async function renderReport(){
   if(!can('report')) return `<div class="empty"><div class="empty-icon">🔒</div><h3>Accesso riservato</h3><p>Report disponibili solo per DL e RUP/Committente.</p></div>`;
