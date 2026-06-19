@@ -1971,14 +1971,14 @@ function renderGiorniLista(righe, listaId, isVerificata, isInviata){
   const canEdit = canEditDL || canEditImp;
 
   if(!righe.length){
-    return `<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">
-      Nessun giorno presente. ${canEdit?`<button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga('${listaId}')">+ Aggiungi giorno</button>`:''}
-    </div>`;
+    return '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Nessun giorno. '+
+      (canEdit?'<button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga(\''+listaId+'\')">+ Aggiungi giorno</button>':'')+
+    '</div>';
   }
 
-  let h = `<div>`;
+  let h = '<div>';
   righe.forEach(r=>{
-    const mae = r.manodopera||[];
+    const mae   = r.manodopera||[];
     const mezzi = r.mezzi||[];
     const hasData = r.lavorazioni && r.lavorazioni.trim();
     const d = new Date(r.data+'T00:00:00');
@@ -1986,46 +1986,97 @@ function renderGiorniLista(righe, listaId, isVerificata, isInviata){
     const dataFmt = d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
     const festivo = d.getDay()===0 || d.getDay()===6;
 
-    h += `<div style="border:1px solid ${hasData?'var(--accent)':'var(--border)'};border-radius:6px;margin-bottom:8px;overflow:hidden">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:${hasData?'#EBF3FB':festivo?'#FAFAFA':'var(--surface)'}">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="font-size:13px;font-weight:700;color:var(--primary)">${dataFmt}</span>
-          <span style="font-size:12px;color:var(--muted);text-transform:capitalize">${gg}</span>
-          ${hasData?`<span class="badge badge-green" style="font-size:10px">Compilato</span>`:`<span class="badge badge-grey" style="font-size:10px">Da compilare</span>`}
-        </div>
-        ${canEdit?`<div class="btn-group">
-          <button class="btn btn-secondary btn-sm" onclick="openModalEditRiga('${r.id}','${listaId}')">&#9998; Compila</button>
-          <button class="btn btn-danger btn-sm" onclick="eliminaRiga('${r.id}','${listaId}')">&#128465;</button>
-        </div>`:''}
-      </div>
-      ${hasData?`<div style="padding:10px 14px;font-size:12px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div>
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Manodopera (${mae.length})</div>
-            ${mae.length?mae.map(m=>`<div style="margin-bottom:2px"><strong>${esc(m.nominativo)}</strong> <span style="color:var(--muted);font-size:11px">${esc(m.qualifica||'')}${m.ditta_nome?' — '+esc(m.ditta_nome):''}</span></div>`).join(''):'<span style="color:var(--muted)">—</span>'}
-          </div>
-          <div>
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Mezzi</div>
-            ${mezzi.length?mezzi.map(m=>`<div>${esc(m.descrizione)}</div>`).join(''):'<span style="color:var(--muted)">—</span>'}
-          </div>
-        </div>
-        <div style="margin-top:8px">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Lavorazioni eseguite</div>
-          <div style="white-space:pre-wrap">${esc(r.lavorazioni)}</div>
-        </div>
-        ${(r.attrezzature||r.noli)?`<div style="margin-top:6px;font-size:11px;color:var(--muted)">${r.attrezzature?'Attrezzature: '+esc(r.attrezzature)+'  ':''}${r.noli?'Noli: '+esc(r.noli):''}</div>`:''}
-        ${r.note?`<div style="margin-top:4px;font-size:11px;color:var(--muted)">Note: ${esc(r.note)}</div>`:''}
-        '+(r.note_cse?'<div style="margin-top:6px;padding:6px 10px;background:#FFF3CD;border-left:3px solid #FFC107;border-radius:0 4px 4px 0;font-size:11px"><strong>Annotazione CSE:</strong> '+esc(r.note_cse)+'</div>':'')+'
-      </div>`:''}
-    </div>`;
+    let pannello = '<div style="border:1px solid '+(hasData?'var(--accent)':'var(--border)')+
+      ';border-radius:6px;margin-bottom:8px;overflow:hidden">';
+
+    // Header giorno
+    pannello += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;'+
+      'background:'+(hasData?'#EBF3FB':festivo?'#FAFAFA':'var(--surface)')+'">'+
+      '<div style="display:flex;align-items:center;gap:10px">'+
+        '<span style="font-size:13px;font-weight:700;color:var(--primary)">'+dataFmt+'</span>'+
+        '<span style="font-size:12px;color:var(--muted);text-transform:capitalize">'+gg+'</span>'+
+        (hasData
+          ? '<span class="badge badge-green" style="font-size:10px">Compilato</span>'
+          : '<span class="badge badge-grey" style="font-size:10px">Da compilare</span>')+
+      '</div>'+
+      (canEdit
+        ? '<div class="btn-group">'+
+            '<button class="btn btn-secondary btn-sm" onclick="openModalEditRiga(\''+r.id+'\',\''+listaId+'\')">&#9998; Compila</button>'+
+            '<button class="btn btn-danger btn-sm" onclick="eliminaRiga(\''+r.id+'\',\''+listaId+'\')">&#128465;</button>'+
+          '</div>'
+        : '')+
+    '</div>';
+
+    // Corpo giorno (solo se ha dati)
+    if(hasData){
+      pannello += '<div style="padding:10px 14px;font-size:12px">';
+
+      // Manodopera e mezzi su due colonne
+      pannello += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+      pannello += '<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Manodopera ('+mae.length+')</div>';
+      if(mae.length){
+        mae.forEach(m=>{
+          pannello += '<div style="margin-bottom:2px"><strong>'+esc(m.nominativo)+'</strong>'+
+            (m.qualifica||m.ditta_nome?' <span style="color:var(--muted);font-size:11px">'+esc(m.qualifica||'')+
+            (m.ditta_nome?' — '+esc(m.ditta_nome):'')+' </span>':'')+
+          '</div>';
+        });
+      } else {
+        pannello += '<span style="color:var(--muted)">—</span>';
+      }
+      pannello += '</div>';
+
+      pannello += '<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Mezzi</div>';
+      if(mezzi.length){
+        mezzi.forEach(m=>{ pannello += '<div>'+esc(m.descrizione)+'</div>'; });
+      } else {
+        pannello += '<span style="color:var(--muted)">—</span>';
+      }
+      pannello += '</div></div>';
+
+      // Lavorazioni
+      pannello += '<div style="margin-top:8px">'+
+        '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Lavorazioni eseguite</div>'+
+        '<div style="white-space:pre-wrap">'+esc(r.lavorazioni)+'</div>'+
+      '</div>';
+
+      // Attrezzature e noli
+      if(r.attrezzature||r.noli){
+        pannello += '<div style="margin-top:6px;font-size:11px;color:var(--muted)">'+
+          (r.attrezzature?'Attrezzature: '+esc(r.attrezzature)+'  ':'')+
+          (r.noli?'Noli: '+esc(r.noli):'')+
+        '</div>';
+      }
+
+      // Note generali
+      if(r.note){
+        pannello += '<div style="margin-top:4px;font-size:11px;color:var(--muted)">Note: '+esc(r.note)+'</div>';
+      }
+
+      // Annotazione CSE — sezione separata in evidenza
+      if(r.note_cse){
+        pannello += '<div style="margin-top:10px;padding:10px 12px;background:#FFF3CD;'+
+          'border-left:4px solid #FFC107;border-radius:0 4px 4px 0">'+
+          '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'+
+          'color:#856404;margin-bottom:4px">&#128203; Annotazione CSE — Sicurezza</div>'+
+          '<div style="font-size:12px;white-space:pre-wrap">'+esc(r.note_cse)+'</div>'+
+        '</div>';
+      }
+
+      pannello += '</div>';
+    }
+
+    pannello += '</div>';
+    h += pannello;
   });
 
   if(canEdit){
-    h += `<div style="padding:4px 0"><button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga('${listaId}')">+ Aggiungi giorno</button></div>`;
+    h += '<div style="padding:4px 0"><button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga(\''+listaId+'\')">+ Aggiungi giorno</button></div>';
   }
-  h += `</div>`;
+  h += '</div>';
   return h;
 }
+
 
 // ---- NUOVA LISTA ----
 function openModalNuovaLista(){
@@ -2162,7 +2213,8 @@ async function verificaLista(listaId){
       await sb.from('giornale_lavori').insert({
         cantiere_id: currentCantiere, data:r.data, redattore, meteo:'—',
         maestranze: mae, mezzi: mezziArr, lavorazioni:r.lavorazioni,
-        osservazioni: extra?'[Lista sett.] '+extra:null, created_by:currentUser.id
+        osservazioni: [extra?'[Lista sett.] '+extra:null, r.note_cse?'[Annotazione CSE] '+r.note_cse:null].filter(Boolean).join('\n')||null,
+        created_by:currentUser.id
       });
     }
     trasferiti++;
@@ -2232,7 +2284,12 @@ async function openModalNuovaRiga(listaId){
       <div class="form-group"><label class="form-label">Attrezzature speciali</label><input class="form-control" id="nr_attr" placeholder="Ponteggio, cassaforma..."></div>
       <div class="form-group"><label class="form-label">Noli</label><input class="form-control" id="nr_noli" placeholder="Nolo gru..."></div>
     </div>
-    <div class="form-group" style="margin-top:10px"><label class="form-label">Note</label><input class="form-control" id="nr_note"></div>
+    <div class="form-group" style="margin-top:10px"><label class="form-label">Note generali</label><input class="form-control" id="nr_note"></div>
+    <div class="form-group" style="margin-top:10px">
+      <label class="form-label" style="color:#856404">Annotazione CSE &mdash; Sicurezza</label>
+      <div style="font-size:11px;color:#856404;margin-bottom:4px">Visibile solo al CSE &mdash; osservazioni su presenze, DPI, anomalie</div>
+      <textarea class="form-control" id="nr_note_cse_area" rows="3" placeholder="Es. Verificata presenza DPI per tutti gli operatori..."></textarea>
+    </div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaRiga('${listaId}')">Salva giorno</button>
@@ -2284,7 +2341,7 @@ async function salvaRiga(listaId){
   const data = document.getElementById('nr_data').value;
   const lav = document.getElementById('nr_lav').value.trim();
   if(!data||!lav){ alert('Data e lavorazioni obbligatorie'); return; }
-  const noteCse = currentRole==='cse' ? (document.getElementById('nr_note_cse')?.value.trim()||null) : null;
+  const noteCse = currentRole==='cse' ? (document.getElementById('nr_note_cse_area')?.value.trim()||null) : null;
   const {error} = await sb.from('liste_righe').insert({
     lista_id: listaId, cantiere_id: currentCantiere, data,
     manodopera: raccogliMae(), mezzi: raccogliMz(), lavorazioni: lav,
@@ -2357,7 +2414,12 @@ async function openModalEditRiga(rigaId, listaId){
       <div class="form-group"><label class="form-label">Noli</label><input class="form-control" id="nr_noli" value="${esc(r.noli||'')}"></div>
     </div>
     <div class="form-group" style="margin-top:10px"><label class="form-label">Note generali</label><input class="form-control" id="nr_note" value="${esc(r.note||'')}"></div>
-    ${(currentRole==='cse'||r.note_cse)?'<div style="margin-top:10px;background:#FFF3CD;padding:10px;border-radius:6px;border-left:3px solid #FFC107"><label class="form-label" style="color:#856404;display:block;margin-bottom:4px">Annotazione CSE (sicurezza)</label><textarea class="form-control" id="nr_note_cse" rows="3" '+( currentRole!=='cse'?'readonly style="background:#f8f9fa"':'')+'>'+(r.note_cse?esc(r.note_cse):'')+'</textarea></div>':'<input type="hidden" id="nr_note_cse" value="">'}
+    <input type="hidden" id="nr_note_cse" value="${esc(r.note_cse||'')}">
+    ${(currentRole==='cse'||r.note_cse)?`<div style="margin-top:12px;padding:12px;border-radius:6px;border-left:4px solid #FFC107;background:#FFF3CD">
+      <label class="form-label" style="color:#856404;display:block;margin-bottom:4px">&#128203; Annotazione CSE — Sicurezza</label>
+      ${currentRole!=='cse'?'<div style="font-size:11px;color:#856404;margin-bottom:6px">In sola lettura — modificabile solo dal CSE</div>':'<div style="font-size:11px;color:#856404;margin-bottom:6px">Osservazioni su presenze, DPI, anomalie</div>'}
+      <textarea class="form-control" id="nr_note_cse_edit" rows="3" ${currentRole!=='cse'?'readonly style="background:#f8f9fa"':''}>${esc(r.note_cse||'')}</textarea>
+    </div>`:''}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaEditRiga('${rigaId}')">Salva giorno</button>
@@ -2367,7 +2429,7 @@ async function openModalEditRiga(rigaId, listaId){
 async function salvaEditRiga(id){
   const lav = document.getElementById('nr_lav').value.trim();
   if(!lav){ alert('Lavorazioni obbligatorie'); return; }
-  const noteCseEdit = document.getElementById('nr_note_cse')?.value.trim()||null;
+  const noteCseEdit = (document.getElementById('nr_note_cse_edit')?.value||document.getElementById('nr_note_cse')?.value||'').trim()||null;
   const {error} = await sb.from('liste_righe').update({
     data: document.getElementById('nr_data').value,
     manodopera: raccogliMae(), mezzi: raccogliMz(), lavorazioni: lav,
@@ -3655,7 +3717,7 @@ async function generaReportSA(cantiereId){
   const {data:profili}=teamIds.length?await sb.from('profiles').select('id,nome,cognome,email').in('id',teamIds):{data:[]};
   const profMap={};(profili||[]).forEach(p=>{profMap[p.id]=p;});
   const team=(teamRaw||[]).map(t=>({...t,profilo:profMap[t.utente_id]||{}}));
-  const nameOf=ruolo=>{const t=team.find(x=>x.ruolo===ruolo);const p=t?.profilo;return p?`${p.nome||''} ${p.cognome||''}`.trim()||'—':'—';};
+  const nameOf=ruolo=>{const t=team.find(x=>x.ruolo===ruolo);const p=t?.profilo;return p?((p.nome||'')+' '+(p.cognome||'')).trim()||'—':'—';};
 
   const statoLabel={attesa:'In attesa',in_corso:'In corso',completata:'Completata',verificata_dl:'Verificata DL'};
   const tipoAttoLabel={atto_sottomissione:'Atto di sottomissione',atto_aggiuntivo:'Atto aggiuntivo'};
