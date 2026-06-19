@@ -209,7 +209,7 @@ textarea.form-control{resize:vertical;min-height:80px}
   </div>
 </div>
 
-<div class="modal-overlay hidden" id="modalOverlay" onclick="closeModal(event)">
+<div class="modal-overlay hidden" id="modalOverlay" onmousedown="closeModalOverlay(event)">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-header"><span class="modal-title" id="modalTitle">—</span><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body" id="modalBody"></div>
@@ -2633,7 +2633,21 @@ function noCantiere(){return `<div class="empty"><div class="empty-icon">🏗️
 // MODALS
 // ============================================================
 function openModal(title,body){document.getElementById('modalTitle').textContent=title;document.getElementById('modalBody').innerHTML=body;document.getElementById('modalOverlay').classList.remove('hidden');}
-function closeModal(e){if(!e||e.target===document.getElementById('modalOverlay'))document.getElementById('modalOverlay').classList.add('hidden');}
+function closeModal(){document.getElementById('modalOverlay').classList.add('hidden');}
+function closeModalOverlay(e){
+  // Chiude il modal SOLO se il mousedown parte esattamente sull'overlay (sfondo scuro)
+  // e NON se l'utente sta iniziando una selezione testo dentro il modal box
+  if(e.target===document.getElementById('modalOverlay')){
+    // Aspetta il mouseup prima di chiudere — se il mouse finisce fuori dal modal
+    // durante una selezione testo, non chiudiamo
+    const overlay = document.getElementById('modalOverlay');
+    function onMouseUp(ev){
+      overlay.removeEventListener('mouseup', onMouseUp);
+      if(ev.target === overlay) closeModal();
+    }
+    overlay.addEventListener('mouseup', onMouseUp);
+  }
+}
 
 function openModalNuovoCantiere(){
   openModal('Nuovo Cantiere',`<div class="alert alert-info">Creando il cantiere verrai registrato automaticamente come <strong>Direttore dei Lavori</strong>.</div>
