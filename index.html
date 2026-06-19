@@ -2002,6 +2002,7 @@ function renderGiorniLista(righe, listaId, isVerificata, isInviata){
       (canEdit
         ? '<div class="btn-group">'+
             '<button class="btn btn-secondary btn-sm" onclick="openModalEditRiga(\''+r.id+'\',\''+listaId+'\')">&#9998; Compila</button>'+
+            '<button class="btn btn-secondary btn-sm" onclick="copiaGiorno(\''+r.id+'\',\''+listaId+'\',\''+r.data+'\')">&#128203; Copia</button>'+
             '<button class="btn btn-danger btn-sm" onclick="eliminaRiga(\''+r.id+'\',\''+listaId+'\')">&#128465;</button>'+
           '</div>'
         : '')+
@@ -2071,7 +2072,11 @@ function renderGiorniLista(righe, listaId, isVerificata, isInviata){
   });
 
   if(canEdit){
-    h += '<div style="padding:4px 0"><button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga(\''+listaId+'\')">+ Aggiungi giorno</button></div>';
+    h += '<div style="padding:4px 0;display:flex;gap:8px">'+
+      '<button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga(\''+listaId+'\')">+ Aggiungi giorno</button>'+
+      (righe.filter(r=>r.lavorazioni&&r.lavorazioni.trim()).length>0?
+        '<button class="btn btn-secondary btn-sm" onclick="openModalNuovaRigaCopiando(\''+listaId+'\')">&#128203; Aggiungi copiando ultimo</button>':'')+
+    '</div>';
   }
   h += '</div>';
   return h;
@@ -2230,6 +2235,134 @@ async function verificaLista(listaId){
 }
 
 // ---- RIGHE GIORNALIERE ----
+
+// ============================================================
+// COPIA GIORNO — lista settimanale
+// ============================================================
+
+// Apre il modal di compilazione pre-compilato con i dati di un giorno specifico
+async function copiaGiorno(rigaId, listaId, dataOrigine){
+  const {data:r} = await sb.from('liste_righe').select('*').eq('id',rigaId).single();
+  if(!r){ alert('Impossibile caricare il giorno sorgente'); return; }
+
+  // Calcola la data del prossimo giorno non ancora compilato
+  const {data:tutteRighe} = await sb.from('liste_righe').select('*').eq('lista_id',listaId).order('data');
+  const successivi = (tutteRighe||[]).filter(x=>x.data>dataOrigine && !(x.lavorazioni&&x.lavorazioni.trim()));
+  const prossima = successivi.length ? successivi[0] : null;
+
+  // Apre il modal con i dati copiati
+  await apriModalConDati(listaId, r, prossima?.data||null, prossima?.id||null);
+}
+
+// Apre il modal "Aggiungi giorno" copiando i dati dall'ultimo giorno compilato
+async function openModalNuovaRigaCopiando(listaId){
+  const {data:righe} = await sb.from('liste_righe').select('*').eq('lista_id',listaId).order('data');
+  const compilati = (righe||[]).filter(r=>r.lavorazioni&&r.lavorazioni.trim());
+  if(!compilati.length){ openModalNuovaRiga(listaId); return; }
+  const ultimo = compilati[compilati.length-1];
+
+  // Trova il primo giorno non compilato successivo all'ultimo
+  const successivi = (righe||[]).filter(x=>x.data>ultimo.data && !(x.lavorazioni&&x.lavorazioni.trim()));
+  const prossima = successivi.length ? successivi[0] : null;
+
+  await apriModalConDati(listaId, ultimo, prossima?.data||null, prossima?.id||null);
+}
+
+// Funzione core: apre il modal pre-compilato con i dati di un giorno sorgente
+async function apriModalConDati(listaId, sorgente, dataTarget, rigaTargetId){
+  const {data:ditte} = await sb.from('ditte').select('id,nome,tipo').eq('cantiere_id',currentCantiere).order('nome');
+  const ditteMap = {};
+  (ditte||[]).forEach(d=>{ ditteMap[d.id]=d; });
+  const ditteOpts = '<option value="">— ditta —</option>'+(ditte||[]).map(d=>`<option value="${d.id}">[${(d.tipo||'').substring(0,3)}] ${esc(d.nome)}</option>`).join('');
+  window._ditteOpts = ditteOpts;
+
+  const mae = sorgente.manodopera||[];
+  const mezzi = sorgente.mezzi||[];
+  window._maeN = Math.max(mae.length, 1);
+  window._mzN = Math.max(mezzi.length, 1);
+
+  // Costruisce righe manodopera pre-compilate
+  const maeRows = (mae.length ? mae : [{}]).map((m,i)=>`
+    <tr id="mae_${i}">
+      <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_nome_${i}" value="${esc(m.nominativo||'')}" placeholder="Nome Cognome"></td>
+      <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_qual_${i}" value="${esc(m.qualifica||'')}" placeholder="Muratore"></td>
+      <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="mae_ditta_${i}">${ditteOpts.replace(`value="${m.ditta_id}"`,`value="${m.ditta_id}" selected`)}</select></td>
+      <td style="padding:3px;text-align:center"><button type="button" class="btn btn-danger btn-sm" style="padding:2px 6px" onclick="delMaeRow(${i})">&#10005;</button></td>
+    </tr>`).join('');
+
+  const mzRows = (mezzi.length ? mezzi : [{}]).map((m,i)=>`
+    <div style="display:flex;gap:6px;margin-bottom:5px" id="mz_${i}">
+      <input class="form-control" style="font-size:12px" id="mz_in_${i}" value="${esc(m.descrizione||'')}" placeholder="es. Autobetoniera...">
+      <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="delMzRow(${i})">&#10005;</button>
+    </div>`).join('');
+
+  const titolo = rigaTargetId
+    ? 'Compila giorno — ' + fmt(dataTarget) + ' (copiato da ' + fmt(sorgente.data) + ')'
+    : 'Nuovo giorno (copiato da ' + fmt(sorgente.data) + ')';
+
+  const dataInput = dataTarget
+    ? `<input class="form-control" type="date" id="nr_data" value="${dataTarget}" readonly style="background:#f8f9fa">`
+    : `<input class="form-control" type="date" id="nr_data" value="${today()}">`;
+
+  openModal(titolo, `
+    <div class="alert alert-info" style="font-size:12px">
+      &#128203; Dati copiati dal <strong>${fmt(sorgente.data)}</strong> — modifica quello che è cambiato
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Data *</label>
+      ${dataInput}
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="form-label" style="margin:0">Manodopera</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addMaeRow()">+ Operaio</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--primary);color:white">
+          <th style="padding:6px 8px;width:35%">Nominativo</th>
+          <th style="padding:6px 8px;width:25%">Qualifica</th>
+          <th style="padding:6px 8px;width:30%">Ditta</th>
+          <th style="padding:6px 8px;width:10%"></th>
+        </tr></thead>
+        <tbody id="mae_body">${maeRows}</tbody>
+      </table>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="form-label" style="margin:0">Mezzi e attrezzature</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addMzRow()">+ Mezzo</button>
+      </div>
+      <div id="mz_body">${mzRows}</div>
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">Lavorazioni eseguite *</label>
+      <textarea class="form-control" id="nr_lav" rows="4">${esc(sorgente.lavorazioni||'')}</textarea>
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Attrezzature speciali</label><input class="form-control" id="nr_attr" value="${esc(sorgente.attrezzature||'')}"></div>
+      <div class="form-group"><label class="form-label">Noli</label><input class="form-control" id="nr_noli" value="${esc(sorgente.noli||'')}"></div>
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label class="form-label">Note generali</label>
+      <input class="form-control" id="nr_note" value="${esc(sorgente.note||'')}">
+    </div>
+    <input type="hidden" id="nr_note_cse" value="">
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      ${rigaTargetId
+        ? `<button class="btn btn-primary" onclick="salvaEditRiga('${rigaTargetId}')">Salva giorno</button>`
+        : `<button class="btn btn-primary" onclick="salvaRiga('${listaId}')">Salva giorno</button>`}
+    </div>`);
+
+  // Mostra box CSE se applicabile
+  if(currentRole==='cse'){
+    setTimeout(()=>{
+      const b=document.getElementById('cse_box_new');
+      if(b) b.style.display='block';
+    },50);
+  }
+}
+
 async function openModalNuovaRiga(listaId){
   const {data:ls} = await sb.from('liste_settimanali').select('settimana_dal').eq('id',listaId).single();
   const {data:ditte} = await sb.from('ditte').select('id,nome,tipo').eq('cantiere_id',currentCantiere).order('nome');
