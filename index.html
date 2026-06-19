@@ -191,6 +191,7 @@ textarea.form-control{resize:vertical;min-height:80px}
         <div class="nav-item" onclick="showView('giornale')" data-view="giornale"><span class="nav-icon">📓</span> Giornale lavori</div>
         <div class="nav-item" onclick="showView('ods')" data-view="ods"><span class="nav-icon">📄</span> Ordini di servizio</div>
         <div class="nav-item" onclick="showView('comunicazioni')" data-view="comunicazioni"><span class="nav-icon">💬</span> Comunicazioni</div>
+        <div class="nav-item" onclick="showView('liste')" data-view="liste"><span class="nav-icon">📅</span> Liste settimanali</div>
         <div class="nav-item" onclick="showView('verbali')" data-view="verbali"><span class="nav-icon">📋</span> Verbali</div>
         <div class="nav-item" onclick="showView('sal')" data-view="sal"><span class="nav-icon">💶</span> SAL</div>
         <div class="nav-item" onclick="showView('sospensioni')" data-view="sospensioni"><span class="nav-icon">⏸️</span> Sosp. e Proroghe</div>
@@ -360,7 +361,7 @@ async function showView(view){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active', el.dataset.view===view));
   const main = document.getElementById('mainContent');
   main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  const views = {dashboard:renderDashboard,cantieri:renderCantieri,fasi:renderFasi,sospensioni:renderSospensioni,varianti:renderVarianti,giornale:renderGiornale,ods:renderODS,comunicazioni:renderComunicazioni,verbali:renderVerbali,sal:renderSAL,ditte:renderDitte,team:renderTeam,report:renderReport};
+  const views = {dashboard:renderDashboard,cantieri:renderCantieri,fasi:renderFasi,sospensioni:renderSospensioni,varianti:renderVarianti,giornale:renderGiornale,ods:renderODS,comunicazioni:renderComunicazioni,verbali:renderVerbali,liste:renderListe,sal:renderSAL,ditte:renderDitte,team:renderTeam,report:renderReport};
   try { main.innerHTML = await views[view](); }
   catch(e){ console.error(e); main.innerHTML = `<div class="alert alert-error">Errore caricamento: ${e.message}</div>`; }
 }
@@ -756,8 +757,9 @@ async function renderSospensioni(){
     const isProroga = tipoEv==='proroga';
     const tipoBadge = isProroga
       ? `<span class="badge badge-blue">📅 Proroga</span>`
-      : isAperta ? `<span class="badge badge-red">⏸️ Sospensione aperta</span>`
-      : `<span class="badge badge-green">✓ Sospensione chiusa</span>`;
+      : isAperta
+        ? (s.tipo_sospensione==='parziale'?`<span class="badge badge-yellow">⏸️ Sosp. parziale</span>`:`<span class="badge badge-red">⏸️ Sospensione aperta</span>`)
+        : (s.tipo_sospensione==='parziale'?`<span class="badge badge-yellow">✓ Sosp. parziale</span>`:`<span class="badge badge-green">✓ Sospensione chiusa</span>`);
     const dettaglio = isProroga
       ? `Richiesta: ${fmt(s.data_richiesta_proroga||s.data)}<br>Concessione: ${fmt(s.data_concessione_proroga||'')}`
       : esc(s.motivo||'—');
@@ -772,7 +774,7 @@ async function renderSospensioni(){
       <td><strong>${fmt(s.data)}</strong></td>
       <td style="font-size:11px;max-width:180px">${dettaglio}</td>
       <td>${dataRip}</td>
-      <td style="text-align:center">${giorni}</td>
+      <td style="text-align:center">${giorni}${isParziale&&s.giorni_calendario?`<div style="font-size:10px;color:var(--muted)">${s.giorni_calendario} gg cal.</div>`:''}</td>
       <td>${s.nuova_fine_lavori?fmt(s.nuova_fine_lavori):'—'}</td>
       <td style="text-align:center">${isProroga?'<span style="color:var(--muted);font-size:11px">N/A</span>':(s.fasi_spostate!=null?s.fasi_spostate:'—')}</td>
       <td>${can('write')&&isAperta?`<button class="btn btn-primary btn-sm" onclick="openModalRipresaLavori('${s.id}')">▶️ Ripresa</button>`:
@@ -792,20 +794,93 @@ function openModalNuovaSospensione(){
     <div class="alert alert-warning" style="font-size:12px">
       La registrazione attesta la sospensione dei lavori. Il verbale ufficiale va trasmesso via PEC.
     </div>
-    <div class="form-group" style="margin-bottom:12px">
-      <label class="form-label">Data sospensione *</label>
-      <input class="form-control" type="date" id="ns_data" value="${today()}">
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Tipo sospensione *</label>
+        <select class="form-control" id="ns_tipo_sosp" onchange="toggleSospParziale()">
+          <option value="totale">Sospensione totale</option>
+          <option value="parziale">Sospensione parziale</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data sospensione *</label>
+        <input class="form-control" type="date" id="ns_data" value="${today()}">
+      </div>
     </div>
     <div class="form-group" style="margin-bottom:12px">
       <label class="form-label">Motivo sospensione *</label>
       <div class="form-hint">Es: cause di forza maggiore, condizioni meteo avverse, necessità di variante, ordine dell'autorità, ecc.</div>
-      <textarea class="form-control" id="ns_motivo" rows="4"
-        placeholder="Es: Sospensione disposta per condizioni meteo avverse (precipitazioni eccezionali) che rendono impossibile la prosecuzione in sicurezza delle lavorazioni strutturali in corso..."></textarea>
+      <textarea class="form-control" id="ns_motivo" rows="3"
+        placeholder="Es: Sospensione disposta per condizioni meteo avverse..."></textarea>
     </div>
+
+    <div id="ns_parziale_section" style="display:none;border:1px solid var(--border);border-radius:6px;padding:16px;background:var(--surface);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:12px">
+        📐 Calcolo sospensione parziale
+      </div>
+      <div class="alert alert-info" style="font-size:11px;margin-bottom:12px">
+        Formula: <strong>Giorni effettivi = Giorni calendario × (Importo sospeso / Importo totale residuo)</strong>
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Importo lavorazioni sospese (€) *</label>
+          <input class="form-control" type="number" step="0.01" id="ns_imp_sospeso" placeholder="es. 120000" oninput="calcolaGiorniEffettivi()">
+          <div class="form-hint" style="font-size:11px;color:#ADB5BD">Valore delle opere interessate dalla sospensione parziale</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Importo totale lavorazioni residue (€) *</label>
+          <input class="form-control" type="number" step="0.01" id="ns_imp_totale" placeholder="es. 450000" oninput="calcolaGiorniEffettivi()">
+          <div class="form-hint" style="font-size:11px;color:#ADB5BD">Valore complessivo di tutte le opere ancora da realizzare (incluse quelle sospese)</div>
+        </div>
+      </div>
+      <div style="background:white;border:1px solid var(--border);border-radius:4px;padding:14px;margin-top:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+          <div style="text-align:center">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Rapporto</div>
+            <div style="font-size:18px;font-weight:700;color:var(--primary)" id="ns_rapporto_display">—</div>
+          </div>
+          <div style="font-size:20px;color:var(--muted)">×</div>
+          <div style="text-align:center">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Giorni calendario</div>
+            <div style="font-size:18px;font-weight:700;color:var(--primary)" id="ns_giorni_cal_display">—</div>
+            <div style="font-size:10px;color:var(--muted)">(calcolati alla ripresa)</div>
+          </div>
+          <div style="font-size:20px;color:var(--muted)">=</div>
+          <div style="text-align:center;background:var(--blue-bg);padding:10px 16px;border-radius:4px">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--blue);margin-bottom:4px">Giorni effettivi</div>
+            <div style="font-size:22px;font-weight:700;color:var(--primary)" id="ns_giorni_eff_display">—</div>
+            <div style="font-size:10px;color:var(--muted)">(arrotondati all'intero)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaSospensione()">Registra sospensione</button>
     </div>`);
+}
+
+function toggleSospParziale(){
+  const tipo = document.getElementById('ns_tipo_sosp')?.value;
+  const sec = document.getElementById('ns_parziale_section');
+  if(sec) sec.style.display = tipo==='parziale' ? 'block' : 'none';
+}
+
+function calcolaGiorniEffettivi(){
+  const sospeso = parseFloat(document.getElementById('ns_imp_sospeso')?.value)||0;
+  const totale = parseFloat(document.getElementById('ns_imp_totale')?.value)||0;
+  const rDisplay = document.getElementById('ns_rapporto_display');
+  const effDisplay = document.getElementById('ns_giorni_eff_display');
+  if(!totale||!rDisplay||!effDisplay){ return; }
+  const rapporto = sospeso/totale;
+  rDisplay.textContent = (rapporto*100).toFixed(2)+'%';
+  // I giorni calendario saranno noti solo alla ripresa
+  effDisplay.textContent = '(alla ripresa)';
+  // Salva rapporto per uso in salvaRipresa
+  window._rapportoParziale = rapporto;
+  window._impSospeso = sospeso;
+  window._impTotale = totale;
 }
 
 
@@ -915,6 +990,7 @@ async function ricalcolaFineLavori(cantiereId){
 async function salvaSospensione(){
   const data = document.getElementById('ns_data').value;
   const motivo = document.getElementById('ns_motivo').value.trim();
+  const tipoSosp = document.getElementById('ns_tipo_sosp')?.value || 'totale';
   if(!data||!motivo){ alert('Data e motivo obbligatori'); return; }
 
   // Verifica che non ci sia già una sospensione aperta
@@ -922,12 +998,25 @@ async function salvaSospensione(){
     .select('id').eq('cantiere_id',currentCantiere).eq('tipo','sospensione').is('data_ripresa',null);
   if(aperta&&aperta.length){ alert('Esiste già una sospensione aperta. Registra prima la ripresa lavori.'); return; }
 
+  const impSospeso = tipoSosp==='parziale' ? parseFloat(document.getElementById('ns_imp_sospeso')?.value)||null : null;
+  const impTotale  = tipoSosp==='parziale' ? parseFloat(document.getElementById('ns_imp_totale')?.value)||null  : null;
+  if(tipoSosp==='parziale' && (!impSospeso||!impTotale)){
+    alert('Per sospensione parziale inserisci entrambi gli importi'); return;
+  }
+
   const {error} = await sb.from('sospensioni').insert({
-    cantiere_id:currentCantiere, tipo:'sospensione', tipo_evento:'sospensione', data, motivo, created_by:currentUser.id
+    cantiere_id: currentCantiere,
+    tipo: 'sospensione',
+    tipo_evento: 'sospensione',
+    tipo_sospensione: tipoSosp,         // 'totale' | 'parziale'
+    importo_sospeso: impSospeso,
+    importo_totale_residuo: impTotale,
+    data, motivo,
+    created_by: currentUser.id
   });
   if(error){ alert(error.message); return; }
-  // Annotazione automatica sul giornale
-  await annotaGiornale(data, `[SOSPENSIONE LAVORI] ${motivo}`);
+  const tipoLabel = tipoSosp==='parziale' ? 'SOSPENSIONE PARZIALE LAVORI' : 'SOSPENSIONE LAVORI';
+  await annotaGiornale(data, `[${tipoLabel}] ${motivo}`);
   closeModal();
   showView('sospensioni');
 }
@@ -935,44 +1024,100 @@ async function salvaSospensione(){
 async function openModalRipresaLavori(sospId){
   const {data:s} = await sb.from('sospensioni').select('*').eq('id',sospId).single();
   if(!s) return;
+  const isParziale = s.tipo_sospensione === 'parziale';
+  const rapporto = isParziale && s.importo_totale_residuo ? s.importo_sospeso / s.importo_totale_residuo : 1;
 
-  // Calcola giorni minimi (da data sospensione ad oggi)
+  // Calcola giorni calendario ad oggi (stima)
   const diffMs = new Date() - new Date(s.data+'T00:00:00');
-  const diffGg = Math.ceil(diffMs/(1000*60*60*24));
+  const diffGgStima = Math.ceil(diffMs/(1000*60*60*24));
+
+  const sezioneParziale = isParziale ? `
+    <div style="border:2px solid var(--accent);border-radius:6px;padding:14px;margin-top:12px;background:#EBF3FB">
+      <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">📐 Sospensione parziale — calcolo giorni effettivi</div>
+      <div style="display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;gap:8px;text-align:center;margin-bottom:10px">
+        <div style="background:white;border:1px solid var(--border);border-radius:4px;padding:8px">
+          <div style="font-size:10px;text-transform:uppercase;color:var(--muted);margin-bottom:3px">Importo sospeso</div>
+          <div style="font-size:14px;font-weight:700">${fmtEur(s.importo_sospeso)}</div>
+        </div>
+        <div style="font-size:16px;color:var(--muted)">÷</div>
+        <div style="background:white;border:1px solid var(--border);border-radius:4px;padding:8px">
+          <div style="font-size:10px;text-transform:uppercase;color:var(--muted);margin-bottom:3px">Importo totale residuo</div>
+          <div style="font-size:14px;font-weight:700">${fmtEur(s.importo_totale_residuo)}</div>
+        </div>
+        <div style="font-size:16px;color:var(--muted)">=</div>
+        <div style="background:var(--accent);color:white;border-radius:4px;padding:8px">
+          <div style="font-size:10px;text-transform:uppercase;margin-bottom:3px;opacity:0.8">Rapporto</div>
+          <div style="font-size:18px;font-weight:700">${(rapporto*100).toFixed(2)}%</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;padding:10px;background:white;border-radius:4px;flex-wrap:wrap">
+        <div style="text-align:center;flex:1">
+          <div style="font-size:10px;text-transform:uppercase;color:var(--muted);margin-bottom:3px">Giorni calendario</div>
+          <div style="font-size:20px;font-weight:700;color:var(--primary)" id="rl_gg_cal">—</div>
+        </div>
+        <div style="font-size:18px;color:var(--muted)">×</div>
+        <div style="text-align:center;flex:1">
+          <div style="font-size:10px;text-transform:uppercase;color:var(--muted);margin-bottom:3px">Rapporto</div>
+          <div style="font-size:20px;font-weight:700;color:var(--accent)">${(rapporto*100).toFixed(2)}%</div>
+        </div>
+        <div style="font-size:18px;color:var(--muted)">=</div>
+        <div style="text-align:center;flex:1;background:var(--green-bg);padding:8px;border-radius:4px;border:2px solid #c3e6cb">
+          <div style="font-size:10px;text-transform:uppercase;color:var(--green);margin-bottom:3px">Giorni effettivi</div>
+          <div style="font-size:22px;font-weight:700;color:var(--green)" id="rl_gg_eff">—</div>
+          <div style="font-size:10px;color:var(--muted)">(arrotondati)</div>
+        </div>
+      </div>
+    </div>` : '';
 
   openModal('Verbale di Ripresa Lavori', `
     <div class="alert alert-info" style="font-size:12px">
-      Sospensione dal <strong>${fmt(s.data)}</strong> — Motivo: ${esc(s.motivo||'—')}
+      Sospensione dal <strong>${fmt(s.data)}</strong> — Tipo: <strong>${isParziale?'Parziale':'Totale'}</strong> — Motivo: ${esc(s.motivo||'—')}
     </div>
     <div class="form-grid">
       <div class="form-group">
         <label class="form-label">Data ripresa lavori *</label>
-        <input class="form-control" type="date" id="rl_data" value="${today()}" oninput="aggiornaNuovaFine()">
+        <input class="form-control" type="date" id="rl_data" value="${today()}"
+          oninput="aggiornaNuovaFine('${s.data}');aggiornaNuovaFineRipresa('${s.data}',${rapporto})">
       </div>
       <div class="form-group">
         <label class="form-label">Nuova data fine lavori *</label>
         <input class="form-control" type="date" id="rl_fine_lavori">
-        <div class="form-hint" id="rl_giorni_hint">Inserisci la data di ripresa per calcolare i giorni</div>
+        <div class="form-hint" id="rl_giorni_hint">Inserisci la data di ripresa</div>
       </div>
     </div>
+    ${sezioneParziale}
     <div class="alert alert-warning" style="margin-top:12px;font-size:12px">
-      ⚙️ <strong>Shift automatico fasi:</strong> tutte le fasi con data inizio/fine prevista successiva alla sospensione
-      e non ancora verificate dal DL verranno spostate automaticamente in avanti dei giorni di sospensione accertati.
+      ⚙️ <strong>Shift automatico fasi:</strong> le fasi con inizio previsto successivo alla sospensione verranno spostate dei giorni ${isParziale?'effettivi (calcolati con il rapporto)':'di sospensione'}.
     </div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
-      <button class="btn btn-primary" onclick="salvaRipresa('${sospId}','${s.data}')">▶️ Registra ripresa e shifta fasi</button>
+      <button class="btn btn-primary" onclick="salvaRipresa('${sospId}','${s.data}',${rapporto},${isParziale})">▶️ Registra ripresa</button>
     </div>`);
 
-  // Imposta data di fine cantiere corrente come suggerimento
+  // Suggerisci nuova fine
   const c = getCantiereObj();
   if(c?.data_fine){
-    // Suggerisci nuova fine = data_fine + giorni sospensione stimati
     const fineOrig = new Date(c.data_fine+'T00:00:00');
-    fineOrig.setDate(fineOrig.getDate() + diffGg);
+    const giorniEff = isParziale ? Math.round(diffGgStima * rapporto) : diffGgStima;
+    fineOrig.setDate(fineOrig.getDate() + giorniEff);
     document.getElementById('rl_fine_lavori').value = fineOrig.toISOString().split('T')[0];
   }
   aggiornaNuovaFine(s.data);
+  aggiornaNuovaFineRipresa(s.data, rapporto);
+}
+
+function aggiornaNuovaFineRipresa(dataSosp, rapporto){
+  const rl = document.getElementById('rl_data');
+  if(!rl||!rl.value) return;
+  const ms = new Date(rl.value+'T00:00:00') - new Date(dataSosp+'T00:00:00');
+  const ggCal = Math.ceil(ms/(1000*60*60*24));
+  const ggEff = Math.round(ggCal * rapporto);
+  const calEl = document.getElementById('rl_gg_cal');
+  const effEl = document.getElementById('rl_gg_eff');
+  const hint  = document.getElementById('rl_giorni_hint');
+  if(calEl) calEl.textContent = ggCal + ' gg';
+  if(effEl) effEl.textContent = ggEff + ' gg';
+  if(hint)  hint.textContent  = `Giorni calendario: ${ggCal} × ${(rapporto*100).toFixed(2)}% = ${ggEff} giorni effettivi`;
 }
 
 function aggiornaNuovaFine(dataSosp){
@@ -986,15 +1131,17 @@ function aggiornaNuovaFine(dataSosp){
   hint.textContent = gg > 0 ? `Giorni di sospensione accertati: ${gg}` : 'Data ripresa non valida';
 }
 
-async function salvaRipresa(sospId, dataSosp){
+async function salvaRipresa(sospId, dataSosp, rapporto=1, isParziale=false){
   const dataRipresa = document.getElementById('rl_data').value;
   const nuovaFine = document.getElementById('rl_fine_lavori').value;
   if(!dataRipresa||!nuovaFine){ alert('Data ripresa e nuova fine lavori obbligatorie'); return; }
 
-  // Calcola giorni sospensione
+  // Calcola giorni calendario
   const ms = new Date(dataRipresa+'T00:00:00') - new Date(dataSosp+'T00:00:00');
-  const giorniSosp = Math.ceil(ms/(1000*60*60*24));
-  if(giorniSosp <= 0){ alert('La data di ripresa deve essere successiva alla data di sospensione'); return; }
+  const giorniCal = Math.ceil(ms/(1000*60*60*24));
+  if(giorniCal <= 0){ alert('La data di ripresa deve essere successiva alla data di sospensione'); return; }
+  // Per parziale usa giorni effettivi (arrotondati); per totale giorni calendario
+  const giorniSosp = isParziale ? Math.round(giorniCal * rapporto) : giorniCal;
 
   // Carica fasi da shiftare: non verificate DL con date successive alla sospensione
   const {data:fasiDaShiftare} = await sb.from('fasi')
@@ -1043,7 +1190,9 @@ async function salvaRipresa(sospId, dataSosp){
   const {error} = await sb.from('sospensioni').update({
     data_ripresa: dataRipresa,
     nuova_fine_lavori: nuovaFine,
-    giorni_sospensione: giorniSosp,
+    giorni_sospensione: giorniSosp,         // giorni effettivi (per parziale = cal × rapporto)
+    giorni_calendario: giorniCal,            // giorni calendario reali
+    rapporto_parziale: isParziale ? rapporto : null,
     fasi_spostate: fasiSpostate
   }).eq('id',sospId);
 
@@ -1053,10 +1202,14 @@ async function salvaRipresa(sospId, dataSosp){
   await ricalcolaFineLavori(currentCantiere);
 
   // Annotazione automatica sul giornale alla data di ripresa
-  await annotaGiornale(dataRipresa, `[RIPRESA LAVORI] Ripresa dopo ${giorniSosp} giorni di sospensione. Nuova data fine lavori: ${fmt(nuovaFine)}. Fasi spostate: ${fasiSpostate}.`);
+  const annotText = isParziale
+    ? `[RIPRESA LAVORI PARZIALE] Ripresa dopo ${giorniCal} giorni calendario. Rapporto: ${(rapporto*100).toFixed(2)}%. Giorni effettivi: ${giorniSosp}. Nuova data fine lavori: ${fmt(nuovaFine)}. Fasi spostate: ${fasiSpostate}.`
+    : `[RIPRESA LAVORI] Ripresa dopo ${giorniSosp} giorni di sospensione. Nuova data fine lavori: ${fmt(nuovaFine)}. Fasi spostate: ${fasiSpostate}.`;
+  await annotaGiornale(dataRipresa, annotText);
 
   closeModal();
-  alert(`✅ Ripresa registrata.\n\nGiorni di sospensione: ${giorniSosp}\nFasi spostate: ${fasiSpostate}\nNuova fine lavori: ${fmt(nuovaFine)}`);
+  const dettaglioParziale = isParziale ? `\nGiorni calendario: ${giorniCal}\nRapporto: ${(rapporto*100).toFixed(2)}%\nGiorni effettivi: ${giorniSosp}` : '';
+  alert(`✅ Ripresa registrata.${dettaglioParziale}\n\nGiorni conteggiati: ${giorniSosp}\nFasi spostate: ${fasiSpostate}\nNuova fine lavori: ${fmt(nuovaFine)}`);
   showView('sospensioni');
 }
 
@@ -1731,6 +1884,533 @@ async function salvaAnnotaRUP(id){
   if(error){ alert(error.message); return; }
   closeModal();
   showView('verbali');
+}
+
+
+// ============================================================
+// LISTE SETTIMANALI
+// ============================================================
+async function renderListe(){
+  if(!currentCantiere) return noCantiere();
+  const c = getCantiereObj();
+  const canEdit = currentRole==='dl'||currentRole==='do'||currentRole==='dt_impresa';
+
+  let html = `<div class="section-header">
+    <div>
+      <div class="page-title">Liste Settimanali</div>
+      <div class="page-subtitle">${esc(c?.nome||'')} — rendiconto manodopera, mezzi e lavorazioni</div>
+    </div>
+    ${canEdit?`<button class="btn btn-primary" onclick="openModalNuovaLista()">+ Nuova lista settimanale</button>`:''}
+  </div>
+  <div class="alert alert-info" style="font-size:12px">
+    Le liste settimanali sono compilate dall'impresa e verificate dal DL. Una volta verificata, la lista aggiorna automaticamente il Giornale dei Lavori.
+  </div>`;
+
+  const {data:liste,error} = await sb.from('liste_settimanali').select('*')
+    .eq('cantiere_id',currentCantiere).order('settimana_dal',{ascending:false});
+  if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
+
+  if(!liste||!liste.length){
+    return html + `<div class="empty"><div class="empty-icon">📅</div><h3>Nessuna lista settimanale</h3>
+      <p>L'impresa può creare le liste settimanali con il rendiconto delle lavorazioni eseguite.</p></div>`;
+  }
+
+  liste.forEach(ls=>{
+    const isVerificata = ls.stato==='verificata_dl';
+    html += `<div class="card" style="margin-bottom:12px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Settimana ${fmt(ls.settimana_dal)} — ${fmt(ls.settimana_al)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Creata il ${fmt(ls.created_at)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          ${isVerificata
+            ? `<span class="badge badge-green">✅ Verificata DL</span>`
+            : `<span class="badge badge-yellow">⏳ In attesa verifica DL</span>`}
+          ${(currentRole==='dl'||currentRole==='do')||(!isVerificata&&(currentRole==='dt_impresa'))?`<button class="btn btn-secondary btn-sm" onclick="openModalEditLista('${ls.id}')">✏️ Modifica</button>`:''}
+          ${(currentRole==='dl'||currentRole==='do')||(!isVerificata&&currentRole==='dt_impresa')?`<button class="btn btn-danger btn-sm" onclick="eliminaLista('${ls.id}')">🗑️</button>`:''}
+          ${!isVerificata&&(currentRole==='dl'||currentRole==='do')?`<button class="btn btn-primary btn-sm" onclick="verificaLista('${ls.id}')">✅ Verifica DL</button>`:''}
+          ${isVerificata&&(currentRole==='dl'||currentRole==='do')?`<span class="badge badge-green" style="font-size:11px">✅ Verificata — DL può ancora modificare</span>`:''}
+        </div>
+      </div>
+      ${ls.note_generali?`<div style="font-size:12px;color:var(--muted);margin-bottom:12px;font-style:italic">${esc(ls.note_generali)}</div>`:''}
+      <div id="righe_${ls.id}">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+    </div>`;
+  });
+
+  html += `<script>
+    // Carica righe per ogni lista
+    (async()=>{
+      for(const ls of ${JSON.stringify(liste)}){
+        const {data:righe} = await sb.from('liste_righe').select('*').eq('lista_id',ls.id).order('data');
+        const el = document.getElementById('righe_'+ls.id);
+        if(!el) continue;
+        el.innerHTML = renderRigheTabella(righe||[], ls.stato==='verificata_dl', ls.id);
+      }
+    })();
+  <\/script>`;
+
+  return html;
+}
+
+function renderRigheTabella(righe, isVerificata, listaId){
+  if(!righe.length) return `<div style="padding:12px;color:var(--muted);font-size:13px;text-align:center">Nessuna riga inserita. ${(currentRole==='dl'||currentRole==='do')||(!isVerificata&&currentRole==='dt_impresa')?`<button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga('${listaId}')">+ Aggiungi giorno</button>`:''}`;
+
+  // DL e DO possono sempre modificare (anche dopo verifica)
+  // L'impresa può modificare SOLO finché non è verificata
+  const canEditDL  = currentRole==='dl' || currentRole==='do';
+  const canEditAll = !isVerificata && (currentRole==='dl'||currentRole==='do'||currentRole==='dt_impresa');
+  let t = `<table style="font-size:12px">
+    <thead><tr>
+      <th style="width:90px">Data</th>
+      <th>Manodopera</th>
+      <th style="width:160px">Mezzi</th>
+      <th>Lavorazioni eseguite</th>
+      <th style="width:140px">Attrezzature / Noli</th>
+      <th style="width:80px">Note</th>
+      <th style="width:90px"></th>
+    </tr></thead><tbody>`;
+
+  righe.forEach(r=>{
+    const mae = r.manodopera||[];
+    const mezzi = r.mezzi||[];
+    const totOp = mae.length;
+    const maeHtml = mae.map(m=>`<div style="margin-bottom:2px"><strong>${esc(m.nominativo)}</strong><div style="font-size:10px;color:var(--muted)">${esc(m.qualifica||'')} — ${esc(m.ditta_nome||'')}</div></div>`).join('');
+    const mezziHtml = mezzi.map(m=>`<div style="font-size:11px">🔧 ${esc(m.descrizione)}</div>`).join('');
+    t += `<tr>
+      <td><strong>${fmt(r.data)}</strong></td>
+      <td>${maeHtml||'<span style="color:var(--muted)">—</span>'}<div style="font-size:10px;color:var(--muted);margin-top:3px">Tot: ${totOp} operatori</div></td>
+      <td>${mezziHtml||'<span style="color:var(--muted)">—</span>'}</td>
+      <td style="font-size:12px">${esc(r.lavorazioni||'—')}</td>
+      <td style="font-size:11px;color:var(--muted)">${esc(r.attrezzature||'')}${r.noli?`<br>Nolo: ${esc(r.noli)}`:''}</td>
+      <td style="font-size:11px;color:var(--muted)">${esc(r.note||'—')}</td>
+      <td>${canEditDL||canEditAll?`<div class="btn-group">
+        ${canEditDL||canEditAll?`<button class="btn btn-secondary btn-sm" onclick="openModalEditRiga('${r.id}','${listaId}')">✏️</button>`:''}
+        ${canEditDL||canEditAll?`<button class="btn btn-danger btn-sm" onclick="eliminaRiga('${r.id}','${listaId}')">🗑️</button>`:''}
+      </div>`:'—'}</td>
+    </tr>`;
+  });
+
+  t += `</tbody></table>`;
+  if(canEditDL||canEditAll){
+    t += `<div style="padding:8px 0"><button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga('${listaId}')">+ Aggiungi giorno</button></div>`;
+  }
+  return t;
+}
+
+// ---- NUOVA LISTA ----
+function openModalNuovaLista(){
+  // Calcola settimana corrente (lunedì→domenica)
+  const oggi = new Date();
+  const dow = oggi.getDay() || 7;
+  const lun = new Date(oggi);
+  lun.setDate(oggi.getDate() - dow + 1);
+  const dom = new Date(lun);
+  dom.setDate(lun.getDate() + 6);
+  const lunStr = lun.toISOString().split('T')[0];
+  const domStr = dom.toISOString().split('T')[0];
+
+  openModal('Nuova Lista Settimanale', `
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Dal (lunedì) *</label>
+        <input class="form-control" type="date" id="nl_dal" value="${lunStr}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Al (domenica) *</label>
+        <input class="form-control" type="date" id="nl_al" value="${domStr}">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Note generali settimana</label>
+        <textarea class="form-control" id="nl_note" rows="2" placeholder="Note introduttive sulla settimana..."></textarea>
+      </div>
+    </div>
+    <div class="alert alert-info" style="font-size:12px;margin-top:8px">
+      Dopo aver creato la lista potrai aggiungere le righe giornaliere con manodopera, mezzi e lavorazioni.
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaLista()">Crea lista</button>
+    </div>`);
+}
+
+async function salvaLista(){
+  const dal = document.getElementById('nl_dal').value;
+  const al  = document.getElementById('nl_al').value;
+  if(!dal||!al){ alert('Date obbligatorie'); return; }
+  const {error} = await sb.from('liste_settimanali').insert({
+    cantiere_id: currentCantiere,
+    settimana_dal: dal,
+    settimana_al: al,
+    note_generali: document.getElementById('nl_note').value.trim()||null,
+    stato: 'bozza',
+    created_by: currentUser.id
+  });
+  if(error){ alert(error.message); return; }
+  closeModal();
+  showView('liste');
+}
+
+async function openModalEditLista(id){
+  const {data:ls} = await sb.from('liste_settimanali').select('*').eq('id',id).single();
+  if(!ls) return;
+  openModal('Modifica Lista Settimanale', `
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Dal *</label>
+        <input class="form-control" type="date" id="el_dal" value="${ls.settimana_dal||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Al *</label>
+        <input class="form-control" type="date" id="el_al" value="${ls.settimana_al||''}">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Note generali</label>
+        <textarea class="form-control" id="el_note" rows="2">${esc(ls.note_generali||'')}</textarea>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaEditLista('${id}')">Salva</button>
+    </div>`);
+}
+
+async function salvaEditLista(id){
+  const {error} = await sb.from('liste_settimanali').update({
+    settimana_dal: document.getElementById('el_dal').value,
+    settimana_al: document.getElementById('el_al').value,
+    note_generali: document.getElementById('el_note').value.trim()||null
+  }).eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal(); showView('liste');
+}
+
+async function eliminaLista(id){
+  if(!confirm('Eliminare questa lista settimanale e tutte le sue righe?')) return;
+  await sb.from('liste_righe').delete().eq('lista_id',id);
+  const {error} = await sb.from('liste_settimanali').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  showView('liste');
+}
+
+// ---- VERIFICA DL → aggiorna giornale lavori ----
+async function verificaLista(listaId){
+  if(!confirm('Verificare questa lista settimanale?\n\nLe lavorazioni verranno automaticamente registrate nel Giornale dei Lavori per ogni giorno della lista.')) return;
+
+  // Carica righe
+  const {data:righe} = await sb.from('liste_righe').select('*').eq('lista_id',listaId).order('data');
+  if(!righe||!righe.length){ alert('Nessuna riga presente. Aggiungi almeno un giorno prima di verificare.'); return; }
+
+  const redattore = `${currentUser.nome||''} ${currentUser.cognome||''}`.trim()+' (DL) — da lista settimanale';
+  let errori = 0;
+
+  for(const r of righe){
+    if(!r.lavorazioni||!r.lavorazioni.trim()) continue;
+
+    // Cerca se esiste già una registrazione nel giornale per quella data
+    const {data:esist} = await sb.from('giornale_lavori').select('id,osservazioni,maestranze,mezzi')
+      .eq('cantiere_id',currentCantiere).eq('data',r.data).single();
+
+    const mae = (r.manodopera||[]).map(m=>({
+      figura: `${m.qualifica||'Operaio'} — ${m.nominativo}`,
+      num: 1,
+      ditta_id: m.ditta_id||null,
+      ditta_nome: m.ditta_nome||'',
+      distacco: false
+    }));
+
+    const mezziArr = (r.mezzi||[]).map(m=>m.descrizione).filter(Boolean);
+    const noteExtra = [r.attrezzature, r.noli, r.note].filter(Boolean).join(' | ');
+    const ossAggiornate = (esist?.osservazioni||'') + (noteExtra ? '\n[Lista sett.] '+noteExtra : '');
+
+    if(esist){
+      // Aggiorna registrazione esistente aggiungendo dati lista
+      const {error} = await sb.from('giornale_lavori').update({
+        maestranze: mae.length ? mae : (esist.maestranze||[]),
+        mezzi: mezziArr.length ? mezziArr : (esist.mezzi||[]),
+        lavorazioni: r.lavorazioni,
+        osservazioni: ossAggiornate.trim()
+      }).eq('id',esist.id);
+      if(error) errori++;
+    } else {
+      // Crea nuova registrazione
+      const {error} = await sb.from('giornale_lavori').insert({
+        cantiere_id: currentCantiere,
+        data: r.data,
+        redattore,
+        meteo: '—',
+        maestranze: mae,
+        mezzi: mezziArr,
+        lavorazioni: r.lavorazioni,
+        osservazioni: ossAggiornate.trim()||null,
+        created_by: currentUser.id
+      });
+      if(error) errori++;
+    }
+  }
+
+  // Marca lista come verificata
+  const {error} = await sb.from('liste_settimanali').update({
+    stato: 'verificata_dl',
+    verificata_da: currentUser.id,
+    verificata_at: new Date().toISOString()
+  }).eq('id',listaId);
+
+  if(error){ alert('Errore nella verifica: '+error.message); return; }
+
+  const msg = errori > 0
+    ? `Lista verificata con ${errori} errori nel trasferimento al giornale.`
+    : `✅ Lista verificata. ${righe.length} giorni trasferiti nel Giornale dei Lavori.`;
+  alert(msg);
+  showView('liste');
+}
+
+// ---- RIGHE GIORNALIERE ----
+async function openModalNuovaRiga(listaId){
+  const {data:ls} = await sb.from('liste_settimanali').select('settimana_dal,settimana_al').eq('id',listaId).single();
+  const {data:ditte} = await sb.from('ditte').select('id,nome,tipo').eq('cantiere_id',currentCantiere).order('nome');
+  const ditteOpts = `<option value="">— ditta —</option>`+(ditte||[]).map(d=>`<option value="${d.id}" data-nome="${esc(d.nome)}">[${d.tipo?.substring(0,3)||''}] ${esc(d.nome)}</option>`).join('');
+  window._ditteOpts = ditteOpts;
+  window._maeRowCount2 = 1;
+  window._mezzoRowCount2 = 1;
+
+  openModal('Aggiungi giorno — Lista settimanale', `
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Data *</label>
+      <input class="form-control" type="date" id="nr_data" value="${ls?.settimana_dal||today()}">
+    </div>
+
+    <div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="form-label" style="margin:0">Manodopera presente *</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiRigaMae2()">+ Operaio</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--primary);color:white">
+          <th style="padding:6px 8px;width:35%">Nominativo operaio</th>
+          <th style="padding:6px 8px;width:25%">Qualifica</th>
+          <th style="padding:6px 8px;width:30%">Ditta</th>
+          <th style="padding:6px 8px;width:10%"></th>
+        </tr></thead>
+        <tbody id="nr_mae_body">
+          <tr id="nr_mae_0">
+            <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_nome_0" placeholder="Nome Cognome"></td>
+            <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_qual_0" placeholder="es. Muratore"></td>
+            <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="nr_ditta_0">${ditteOpts}</select></td>
+            <td style="padding:3px;text-align:center"><button type="button" onclick="rimuoviRigaMae2(0)" class="btn btn-danger btn-sm" style="padding:2px 6px">✕</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="form-label" style="margin:0">Mezzi e attrezzature</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiMezzo2()">+ Mezzo</button>
+      </div>
+      <div id="nr_mezzi_body">
+        <div style="display:flex;gap:6px;margin-bottom:5px" id="nr_mezzo_0">
+          <input class="form-control" style="font-size:12px" id="nr_mz_0" placeholder="es. Gru a torre, Autobetoniera, Escavatore...">
+          <button type="button" onclick="rimuoviMezzo2(0)" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">Lavorazioni eseguite *</label>
+      <textarea class="form-control" id="nr_lav" rows="4" placeholder="Descrivi le lavorazioni eseguite nella giornata..."></textarea>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Attrezzature speciali</label>
+        <input class="form-control" id="nr_attr" placeholder="es. Ponteggio, Cassaforma...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Noli</label>
+        <input class="form-control" id="nr_noli" placeholder="es. Nolo gru, Nolo cassero...">
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label class="form-label">Note</label>
+      <input class="form-control" id="nr_note" placeholder="Note aggiuntive...">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaRiga('${listaId}')">Salva giorno</button>
+    </div>`);
+}
+
+function aggiungiRigaMae2(){
+  const n = window._maeRowCount2||1;
+  const tbody = document.getElementById('nr_mae_body');
+  if(!tbody) return;
+  const tr = document.createElement('tr');
+  tr.id = 'nr_mae_'+n;
+  tr.innerHTML = `
+    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_nome_${n}" placeholder="Nome Cognome"></td>
+    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_qual_${n}" placeholder="es. Muratore"></td>
+    <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="nr_ditta_${n}">${window._ditteOpts||''}</select></td>
+    <td style="padding:3px;text-align:center"><button type="button" onclick="rimuoviRigaMae2(${n})" class="btn btn-danger btn-sm" style="padding:2px 6px">✕</button></td>`;
+  tbody.appendChild(tr);
+  window._maeRowCount2 = n+1;
+}
+function rimuoviRigaMae2(n){ const r=document.getElementById('nr_mae_'+n); if(r) r.remove(); }
+
+function aggiungiMezzo2(){
+  const n = window._mezzoRowCount2||1;
+  const body = document.getElementById('nr_mezzi_body');
+  if(!body) return;
+  const div = document.createElement('div');
+  div.style.cssText='display:flex;gap:6px;margin-bottom:5px';
+  div.id='nr_mezzo_'+n;
+  div.innerHTML=`<input class="form-control" style="font-size:12px" id="nr_mz_${n}" placeholder="es. Autobetoniera, Escavatore..."><button type="button" onclick="rimuoviMezzo2(${n})" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button>`;
+  body.appendChild(div);
+  window._mezzoRowCount2 = n+1;
+}
+function rimuoviMezzo2(n){ const r=document.getElementById('nr_mezzo_'+n); if(r) r.remove(); }
+
+function raccogliMae2(){
+  const mae = [];
+  for(let i=0;i<(window._maeRowCount2||1);i++){
+    const nomeEl = document.getElementById('nr_nome_'+i);
+    if(!nomeEl) continue;
+    const nome = nomeEl.value.trim();
+    if(!nome) continue;
+    const dittaSel = document.getElementById('nr_ditta_'+i);
+    const dittaNome = dittaSel?.selectedIndex>0 ? dittaSel.options[dittaSel.selectedIndex].text : '';
+    mae.push({
+      nominativo: nome,
+      qualifica: document.getElementById('nr_qual_'+i)?.value.trim()||'',
+      ditta_id: dittaSel?.value||null,
+      ditta_nome: dittaNome
+    });
+  }
+  return mae;
+}
+
+function raccogliMezzi2(){
+  const mezzi = [];
+  for(let i=0;i<(window._mezzoRowCount2||1);i++){
+    const el = document.getElementById('nr_mz_'+i);
+    if(el&&el.value.trim()) mezzi.push({descrizione:el.value.trim()});
+  }
+  return mezzi;
+}
+
+async function salvaRiga(listaId){
+  const data = document.getElementById('nr_data').value;
+  const lavorazioni = document.getElementById('nr_lav').value.trim();
+  if(!data||!lavorazioni){ alert('Data e lavorazioni obbligatorie'); return; }
+  const mae = raccogliMae2();
+  const mezzi = raccogliMezzi2();
+  const {error} = await sb.from('liste_righe').insert({
+    lista_id: listaId,
+    cantiere_id: currentCantiere,
+    data,
+    manodopera: mae,
+    mezzi,
+    lavorazioni,
+    attrezzature: document.getElementById('nr_attr').value.trim()||null,
+    noli: document.getElementById('nr_noli').value.trim()||null,
+    note: document.getElementById('nr_note').value.trim()||null
+  });
+  if(error){ alert(error.message); return; }
+  closeModal(); showView('liste');
+}
+
+async function openModalEditRiga(rigaId, listaId){
+  const {data:r} = await sb.from('liste_righe').select('*').eq('id',rigaId).single();
+  if(!r) return;
+  const {data:ditte} = await sb.from('ditte').select('id,nome,tipo').eq('cantiere_id',currentCantiere).order('nome');
+
+  // Costruisce le righe manodopera esistenti
+  const mae = r.manodopera||[];
+  const mezzi = r.mezzi||[];
+  window._maeRowCount2 = mae.length||1;
+  window._mezzoRowCount2 = mezzi.length||1;
+
+  const ditteMap = {};
+  (ditte||[]).forEach(d=>{ ditteMap[d.id]=d; });
+  const ditteOpts = `<option value="">— ditta —</option>`+(ditte||[]).map(d=>`<option value="${d.id}">[${d.tipo?.substring(0,3)||''}] ${esc(d.nome)}</option>`).join('');
+  window._ditteOpts = ditteOpts;
+
+  const maeRows = mae.length ? mae.map((m,i)=>`<tr id="nr_mae_${i}">
+    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_nome_${i}" value="${esc(m.nominativo||'')}"></td>
+    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_qual_${i}" value="${esc(m.qualifica||'')}"></td>
+    <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="nr_ditta_${i}">${ditteOpts.replace(`value="${m.ditta_id}"`,`value="${m.ditta_id}" selected`)}</select></td>
+    <td style="padding:3px;text-align:center"><button type="button" onclick="rimuoviRigaMae2(${i})" class="btn btn-danger btn-sm" style="padding:2px 6px">✕</button></td>
+  </tr>`).join('') : `<tr id="nr_mae_0"><td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_nome_0" placeholder="Nome Cognome"></td><td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_qual_0"></td><td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="nr_ditta_0">${ditteOpts}</select></td><td></td></tr>`;
+
+  const mezziRows = mezzi.length ? mezzi.map((m,i)=>`<div style="display:flex;gap:6px;margin-bottom:5px" id="nr_mezzo_${i}"><input class="form-control" style="font-size:12px" id="nr_mz_${i}" value="${esc(m.descrizione||'')}"><button type="button" onclick="rimuoviMezzo2(${i})" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button></div>`).join('') : `<div style="display:flex;gap:6px;margin-bottom:5px" id="nr_mezzo_0"><input class="form-control" style="font-size:12px" id="nr_mz_0"><button type="button" onclick="rimuoviMezzo2(0)" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button></div>`;
+
+  openModal('Modifica giorno — Lista settimanale', `
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Data</label>
+      <input class="form-control" type="date" id="nr_data" value="${r.data||''}">
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="form-label" style="margin:0">Manodopera</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiRigaMae2()">+ Operaio</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--primary);color:white">
+          <th style="padding:6px 8px;width:35%">Nominativo</th>
+          <th style="padding:6px 8px;width:25%">Qualifica</th>
+          <th style="padding:6px 8px;width:30%">Ditta</th>
+          <th style="padding:6px 8px;width:10%"></th>
+        </tr></thead>
+        <tbody id="nr_mae_body">${maeRows}</tbody>
+      </table>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="form-label" style="margin:0">Mezzi</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiMezzo2()">+ Mezzo</button>
+      </div>
+      <div id="nr_mezzi_body">${mezziRows}</div>
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">Lavorazioni eseguite *</label>
+      <textarea class="form-control" id="nr_lav" rows="4">${esc(r.lavorazioni||'')}</textarea>
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Attrezzature</label><input class="form-control" id="nr_attr" value="${esc(r.attrezzature||'')}"></div>
+      <div class="form-group"><label class="form-label">Noli</label><input class="form-control" id="nr_noli" value="${esc(r.noli||'')}"></div>
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label class="form-label">Note</label>
+      <input class="form-control" id="nr_note" value="${esc(r.note||'')}">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaEditRiga('${rigaId}')">Salva</button>
+    </div>`);
+}
+
+async function salvaEditRiga(id){
+  const lavorazioni = document.getElementById('nr_lav').value.trim();
+  if(!lavorazioni){ alert('Lavorazioni obbligatorie'); return; }
+  const {error} = await sb.from('liste_righe').update({
+    data: document.getElementById('nr_data').value,
+    manodopera: raccogliMae2(),
+    mezzi: raccogliMezzi2(),
+    lavorazioni,
+    attrezzature: document.getElementById('nr_attr').value.trim()||null,
+    noli: document.getElementById('nr_noli').value.trim()||null,
+    note: document.getElementById('nr_note').value.trim()||null
+  }).eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal(); showView('liste');
+}
+
+async function eliminaRiga(id, listaId){
+  if(!confirm('Eliminare questa riga giornaliera?')) return;
+  const {error} = await sb.from('liste_righe').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  showView('liste');
 }
 
 
