@@ -1904,115 +1904,92 @@ async function renderListe(){
     ${canCreate?`<button class="btn btn-primary" onclick="openModalNuovaLista()">+ Nuova lista settimanale</button>`:''}
   </div>
   <div class="alert alert-info" style="font-size:12px">
-    L'impresa compila una riga per ogni giorno lavorato. Quando la settimana e' completa, clicca <strong>"Invia al DL"</strong>.
-    Il DL verifica e autorizza — dopo la verifica la lista non e' piu' modificabile dall'impresa.
+    L'impresa compila un giorno alla volta. Quando la settimana e' completa clicca <strong>Invia al DL</strong>. Il DL verifica e i dati passano nel Giornale dei Lavori. Dopo la verifica la lista non e' piu' modificabile dall'impresa.
   </div>`;
 
-  // Carica liste e righe in parallelo
   const {data:liste, error} = await sb.from('liste_settimanali').select('*')
     .eq('cantiere_id',currentCantiere).order('settimana_dal',{ascending:false});
-  if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
+  if(error) return html + `<div class="alert alert-error">${esc(error.message)}</div>`;
 
-  if(!liste||!liste.length){
-    return html + `<div class="empty"><div class="empty-icon">&#128197;</div><h3>Nessuna lista settimanale</h3>
-      <p>Crea la prima lista settimanale per iniziare a registrare le lavorazioni giornaliere.</p></div>`;
+  if(!liste || liste.length===0){
+    return html + `<div class="empty"><div class="empty-icon">&#128197;</div><h3>Nessuna lista settimanale</h3><p>Crea la prima lista per registrare le lavorazioni giornaliere.</p></div>`;
   }
 
-  // Carica tutte le righe in una sola query
+  // Carica TUTTE le righe in una sola query, prima di costruire l'HTML
   const listaIds = liste.map(l=>l.id);
-  const {data:tutteRighe} = await sb.from('liste_righe').select('*')
-    .in('lista_id', listaIds).order('data');
-
-  // Raggruppa righe per lista_id
+  let tutteRighe = [];
+  if(listaIds.length){
+    const {data:rr} = await sb.from('liste_righe').select('*').in('lista_id',listaIds).order('data');
+    tutteRighe = rr||[];
+  }
   const righePerLista = {};
-  (tutteRighe||[]).forEach(r=>{
-    if(!righePerLista[r.lista_id]) righePerLista[r.lista_id]=[];
-    righePerLista[r.lista_id].push(r);
+  tutteRighe.forEach(r=>{
+    (righePerLista[r.lista_id] = righePerLista[r.lista_id]||[]).push(r);
   });
 
+  // Costruisce l'HTML completo in modo sincrono
   liste.forEach(ls=>{
-    const righe = righePerLista[ls.id]||[];
+    const righe = righePerLista[ls.id] || [];
     const isVerificata = ls.stato==='verificata_dl';
+    const isInviata = ls.stato==='inviata_dl';
     const canEditDL = currentRole==='dl'||currentRole==='do';
-    const canEditImp = !isVerificata && ls.stato!=='inviata_dl' && currentRole==='dt_impresa';
-    const totGiorni = righe.length;
-    const compilati = righe.filter(r=>r.lavorazioni&&r.lavorazioni.trim()).length;
+    const canEditImp = currentRole==='dt_impresa' && !isVerificata && !isInviata;
+    const compilati = righe.filter(r=>r.lavorazioni && r.lavorazioni.trim()).length;
+
+    let statoBadge;
+    if(isVerificata) statoBadge = `<span class="badge badge-green">&#10003; Verificata DL</span>`;
+    else if(isInviata) statoBadge = `<span class="badge badge-blue">Inviata al DL</span>`;
+    else statoBadge = `<span class="badge badge-yellow">Bozza</span>`;
 
     html += `<div class="card" style="margin-bottom:16px">
       <div class="card-header">
         <div>
           <div class="card-title">Settimana ${fmt(ls.settimana_dal)} — ${fmt(ls.settimana_al)}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">
-            ${compilati}/${totGiorni} giorni compilati
-          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${compilati}/${righe.length} giorni compilati</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          ${isVerificata
-            ? `<span class="badge badge-green">&#10003; Verificata DL</span>`
-            : ls.stato==='inviata_dl'
-              ? `<span class="badge badge-blue">&#128233; Inviata al DL</span>`
-              : `<span class="badge badge-yellow">Bozza</span>`}
-          ${canEditDL||canEditImp?`<button class="btn btn-secondary btn-sm" onclick="openModalEditLista('${ls.id}')">&#9998;</button>`:''}
-          ${canEditDL||canEditImp?`<button class="btn btn-danger btn-sm" onclick="eliminaLista('${ls.id}')">&#128465;</button>`:''}
-          ${!isVerificata&&ls.stato!=='inviata_dl'&&currentRole==='dt_impresa'?`<button class="btn btn-primary btn-sm" onclick="inviaAlDL('${ls.id}')">&#128233; Invia al DL</button>`:''}
-          ${!isVerificata&&canEditDL?`<button class="btn btn-primary btn-sm" onclick="verificaLista('${ls.id}')">&#10003; Verifica DL</button>`:''}
+          ${statoBadge}
+          ${(canEditDL||canEditImp)?`<button class="btn btn-secondary btn-sm" onclick="openModalEditLista('${ls.id}')">&#9998;</button>`:''}
+          ${(canEditDL||canEditImp)?`<button class="btn btn-danger btn-sm" onclick="eliminaLista('${ls.id}')">&#128465;</button>`:''}
+          ${(canEditImp)?`<button class="btn btn-primary btn-sm" onclick="inviaAlDL('${ls.id}')">Invia al DL</button>`:''}
+          ${(!isVerificata && canEditDL)?`<button class="btn btn-primary btn-sm" onclick="verificaLista('${ls.id}')">&#10003; Verifica DL</button>`:''}
         </div>
       </div>
       ${ls.note_generali?`<div style="font-size:12px;color:var(--muted);margin-bottom:12px;font-style:italic">${esc(ls.note_generali)}</div>`:''}
-      ${renderRigheTabella(righe, isVerificata, ls.id)}
+      ${renderGiorniLista(righe, ls.id, isVerificata, isInviata)}
     </div>`;
   });
 
   return html;
 }
 
-async function inviaAlDL(listaId){
-  if(!confirm('Inviare la lista al DL per la verifica?\nAssicurati di aver compilato tutti i giorni.')) return;
-  // Marca la lista come "in attesa verifica" — il DL riceve notifica visiva
-  const {error} = await sb.from('liste_settimanali').update({
-    stato: 'inviata_dl'
-  }).eq('id',listaId);
-  if(error){ alert(error.message); return; }
-  alert('Lista inviata al DL per la verifica.');
-  showView('liste');
-}
-
-
-
-function renderRigheTabella(righe, isVerificata, listaId){
-  const canEditDL  = currentRole==='dl' || currentRole==='do';
-  // Impresa bloccata se lista inviata al DL o verificata
-  // DL/DO sempre liberi
-  const isInviata = false; // stato gestito dalla card, qui passiamo solo isVerificata
-  // impresa bloccata se verificata; DL/DO sempre liberi
-  const canEditAll = !isVerificata && (currentRole==='dl'||currentRole==='do'||(currentRole==='dt_impresa'));
-  const canEdit    = canEditDL || canEditAll;
+function renderGiorniLista(righe, listaId, isVerificata, isInviata){
+  const canEditDL = currentRole==='dl'||currentRole==='do';
+  const canEditImp = currentRole==='dt_impresa' && !isVerificata && !isInviata;
+  const canEdit = canEditDL || canEditImp;
 
   if(!righe.length){
-    return `<div style="padding:16px;color:var(--muted);font-size:13px;text-align:center">
-      Nessun giorno. ${canEdit?`<button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga('${listaId}')">+ Aggiungi giorno</button>`:''}
+    return `<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">
+      Nessun giorno presente. ${canEdit?`<button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga('${listaId}')">+ Aggiungi giorno</button>`:''}
     </div>`;
   }
 
-  let html = `<div style="padding:4px 0">`;
+  let h = `<div>`;
   righe.forEach(r=>{
-    const mae   = r.manodopera||[];
+    const mae = r.manodopera||[];
     const mezzi = r.mezzi||[];
     const hasData = r.lavorazioni && r.lavorazioni.trim();
     const d = new Date(r.data+'T00:00:00');
     const gg = d.toLocaleDateString('it-IT',{weekday:'long'});
     const dataFmt = d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
-    const isFestivo = d.getDay()===0||d.getDay()===6;
+    const festivo = d.getDay()===0 || d.getDay()===6;
 
-    html += `<div style="border:1px solid ${hasData?'var(--accent)':'var(--border)'};border-radius:6px;margin-bottom:8px;overflow:hidden">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;
-        background:${hasData?'#EBF3FB':isFestivo?'#FAFAFA':'var(--surface)'}">
+    h += `<div style="border:1px solid ${hasData?'var(--accent)':'var(--border)'};border-radius:6px;margin-bottom:8px;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:${hasData?'#EBF3FB':festivo?'#FAFAFA':'var(--surface)'}">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="font-size:13px;font-weight:700;color:var(--primary)">${dataFmt}</div>
-          <div style="font-size:12px;color:var(--muted);text-transform:capitalize">${gg}</div>
-          ${hasData
-            ? `<span class="badge badge-green" style="font-size:10px">&#10003; Compilato</span>`
-            : `<span class="badge badge-grey" style="font-size:10px">Da compilare</span>`}
+          <span style="font-size:13px;font-weight:700;color:var(--primary)">${dataFmt}</span>
+          <span style="font-size:12px;color:var(--muted);text-transform:capitalize">${gg}</span>
+          ${hasData?`<span class="badge badge-green" style="font-size:10px">Compilato</span>`:`<span class="badge badge-grey" style="font-size:10px">Da compilare</span>`}
         </div>
         ${canEdit?`<div class="btn-group">
           <button class="btn btn-secondary btn-sm" onclick="openModalEditRiga('${r.id}','${listaId}')">&#9998; Compila</button>
@@ -2022,67 +1999,47 @@ function renderRigheTabella(righe, isVerificata, listaId){
       ${hasData?`<div style="padding:10px 14px;font-size:12px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div>
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Manodopera (${mae.length} operatori)</div>
-            ${mae.length ? mae.map(m=>`<div style="margin-bottom:2px"><strong>${esc(m.nominativo)}</strong> <span style="color:var(--muted);font-size:11px">${esc(m.qualifica||'')} - ${esc(m.ditta_nome||'')}</span></div>`).join('') : '<span style="color:var(--muted)">--</span>'}
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Manodopera (${mae.length})</div>
+            ${mae.length?mae.map(m=>`<div style="margin-bottom:2px"><strong>${esc(m.nominativo)}</strong> <span style="color:var(--muted);font-size:11px">${esc(m.qualifica||'')}${m.ditta_nome?' — '+esc(m.ditta_nome):''}</span></div>`).join(''):'<span style="color:var(--muted)">—</span>'}
           </div>
           <div>
             <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Mezzi</div>
-            ${mezzi.length ? mezzi.map(m=>`<div>${esc(m.descrizione)}</div>`).join('') : '<span style="color:var(--muted)">--</span>'}
+            ${mezzi.length?mezzi.map(m=>`<div>${esc(m.descrizione)}</div>`).join(''):'<span style="color:var(--muted)">—</span>'}
           </div>
         </div>
         <div style="margin-top:8px">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Lavorazioni eseguite</div>
           <div style="white-space:pre-wrap">${esc(r.lavorazioni)}</div>
         </div>
-        ${r.attrezzature||r.noli?`<div style="margin-top:6px;font-size:11px;color:var(--muted)">
-          ${r.attrezzature?`Attrezzature: ${esc(r.attrezzature)} `:''}${r.noli?`Noli: ${esc(r.noli)}`:''}
-        </div>`:''}
+        ${(r.attrezzature||r.noli)?`<div style="margin-top:6px;font-size:11px;color:var(--muted)">${r.attrezzature?'Attrezzature: '+esc(r.attrezzature)+'  ':''}${r.noli?'Noli: '+esc(r.noli):''}</div>`:''}
         ${r.note?`<div style="margin-top:4px;font-size:11px;color:var(--muted)">Note: ${esc(r.note)}</div>`:''}
       </div>`:''}
     </div>`;
   });
 
   if(canEdit){
-    html += `<div style="padding:4px 0">
-      <button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga('${listaId}')">+ Aggiungi giorno</button>
-    </div>`;
+    h += `<div style="padding:4px 0"><button class="btn btn-secondary btn-sm" onclick="openModalNuovaRiga('${listaId}')">+ Aggiungi giorno</button></div>`;
   }
-
-  html += `</div>`;
-  return html;
+  h += `</div>`;
+  return h;
 }
-
 
 // ---- NUOVA LISTA ----
 function openModalNuovaLista(){
-  // Calcola settimana corrente (lunedì→domenica)
   const oggi = new Date();
   const dow = oggi.getDay() || 7;
-  const lun = new Date(oggi);
-  lun.setDate(oggi.getDate() - dow + 1);
-  const dom = new Date(lun);
-  dom.setDate(lun.getDate() + 6);
+  const lun = new Date(oggi); lun.setDate(oggi.getDate()-dow+1);
+  const dom = new Date(lun);  dom.setDate(lun.getDate()+6);
   const lunStr = lun.toISOString().split('T')[0];
   const domStr = dom.toISOString().split('T')[0];
 
   openModal('Nuova Lista Settimanale', `
     <div class="form-grid">
-      <div class="form-group">
-        <label class="form-label">Dal (lunedì) *</label>
-        <input class="form-control" type="date" id="nl_dal" value="${lunStr}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Al (domenica) *</label>
-        <input class="form-control" type="date" id="nl_al" value="${domStr}">
-      </div>
-      <div class="form-group span-2">
-        <label class="form-label">Note generali settimana</label>
-        <textarea class="form-control" id="nl_note" rows="2" placeholder="Note introduttive sulla settimana..."></textarea>
-      </div>
+      <div class="form-group"><label class="form-label">Dal (lunedi) *</label><input class="form-control" type="date" id="nl_dal" value="${lunStr}"></div>
+      <div class="form-group"><label class="form-label">Al (domenica) *</label><input class="form-control" type="date" id="nl_al" value="${domStr}"></div>
+      <div class="form-group span-2"><label class="form-label">Note generali</label><textarea class="form-control" id="nl_note" rows="2" placeholder="Note sulla settimana..."></textarea></div>
     </div>
-    <div class="alert alert-info" style="font-size:12px;margin-top:8px">
-      Dopo aver creato la lista potrai aggiungere le righe giornaliere con manodopera, mezzi e lavorazioni.
-    </div>
+    <div class="alert alert-info" style="font-size:12px;margin-top:8px">Verra' creato un giorno per ogni data della settimana. Compila ogni giorno con manodopera, mezzi e lavorazioni.</div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaLista()">Crea lista</button>
@@ -2104,11 +2061,12 @@ async function salvaLista(){
   }).select().single();
   if(error){ alert(error.message); return; }
 
-  // Crea automaticamente una riga per ogni giorno della settimana (lun-dom)
+  // Crea una riga per ogni giorno
   const righe = [];
   const cur = new Date(dal+'T00:00:00');
   const fine = new Date(al+'T00:00:00');
-  while(cur <= fine){
+  let guard = 0;
+  while(cur <= fine && guard < 60){
     righe.push({
       lista_id: ls.id,
       cantiere_id: currentCantiere,
@@ -2118,12 +2076,12 @@ async function salvaLista(){
       lavorazioni: ''
     });
     cur.setDate(cur.getDate()+1);
+    guard++;
   }
   if(righe.length){
     const {error:e2} = await sb.from('liste_righe').insert(righe);
     if(e2){ alert('Lista creata ma errore nelle righe: '+e2.message); }
   }
-
   closeModal();
   showView('liste');
 }
@@ -2131,20 +2089,11 @@ async function salvaLista(){
 async function openModalEditLista(id){
   const {data:ls} = await sb.from('liste_settimanali').select('*').eq('id',id).single();
   if(!ls) return;
-  openModal('Modifica Lista Settimanale', `
+  openModal('Modifica Lista', `
     <div class="form-grid">
-      <div class="form-group">
-        <label class="form-label">Dal *</label>
-        <input class="form-control" type="date" id="el_dal" value="${ls.settimana_dal||''}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Al *</label>
-        <input class="form-control" type="date" id="el_al" value="${ls.settimana_al||''}">
-      </div>
-      <div class="form-group span-2">
-        <label class="form-label">Note generali</label>
-        <textarea class="form-control" id="el_note" rows="2">${esc(ls.note_generali||'')}</textarea>
-      </div>
+      <div class="form-group"><label class="form-label">Dal *</label><input class="form-control" type="date" id="el_dal" value="${ls.settimana_dal||''}"></div>
+      <div class="form-group"><label class="form-label">Al *</label><input class="form-control" type="date" id="el_al" value="${ls.settimana_al||''}"></div>
+      <div class="form-group span-2"><label class="form-label">Note generali</label><textarea class="form-control" id="el_note" rows="2">${esc(ls.note_generali||'')}</textarea></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
@@ -2163,230 +2112,178 @@ async function salvaEditLista(id){
 }
 
 async function eliminaLista(id){
-  if(!confirm('Eliminare questa lista settimanale e tutte le sue righe?')) return;
+  if(!confirm('Eliminare questa lista settimanale e tutti i suoi giorni?')) return;
   await sb.from('liste_righe').delete().eq('lista_id',id);
   const {error} = await sb.from('liste_settimanali').delete().eq('id',id);
   if(error){ alert(error.message); return; }
   showView('liste');
 }
 
-// ---- VERIFICA DL → aggiorna giornale lavori ----
-async function verificaLista(listaId){
-  if(!confirm('Verificare questa lista settimanale?\n\nLe lavorazioni verranno automaticamente registrate nel Giornale dei Lavori per ogni giorno della lista.')) return;
+async function inviaAlDL(listaId){
+  if(!confirm('Inviare la lista al DL per la verifica?\nDopo l\'invio non potrai piu\' modificarla.')) return;
+  const {error} = await sb.from('liste_settimanali').update({ stato:'inviata_dl' }).eq('id',listaId);
+  if(error){ alert(error.message); return; }
+  alert('Lista inviata al DL.');
+  showView('liste');
+}
 
-  // Carica righe
+// ---- VERIFICA DL → aggiorna giornale ----
+async function verificaLista(listaId){
+  if(!confirm('Verificare questa lista?\nLe lavorazioni verranno registrate nel Giornale dei Lavori per ogni giorno compilato.')) return;
   const {data:righe} = await sb.from('liste_righe').select('*').eq('lista_id',listaId).order('data');
-  if(!righe||!righe.length){ alert('Nessuna riga presente. Aggiungi almeno un giorno prima di verificare.'); return; }
+  if(!righe||!righe.length){ alert('Nessun giorno presente.'); return; }
 
   const redattore = `${currentUser.nome||''} ${currentUser.cognome||''}`.trim()+' (DL) — da lista settimanale';
-  let errori = 0;
+  let trasferiti = 0;
 
   for(const r of righe){
-    if(!r.lavorazioni||!r.lavorazioni.trim()) continue;
-
-    // Cerca se esiste già una registrazione nel giornale per quella data
+    if(!r.lavorazioni || !r.lavorazioni.trim()) continue;
     const {data:esist} = await sb.from('giornale_lavori').select('id,osservazioni,maestranze,mezzi')
-      .eq('cantiere_id',currentCantiere).eq('data',r.data).single();
+      .eq('cantiere_id',currentCantiere).eq('data',r.data).maybeSingle();
 
     const mae = (r.manodopera||[]).map(m=>({
-      figura: `${m.qualifica||'Operaio'} — ${m.nominativo}`,
-      num: 1,
-      ditta_id: m.ditta_id||null,
-      ditta_nome: m.ditta_nome||'',
-      distacco: false
+      figura:`${m.qualifica||'Operaio'} — ${m.nominativo}`, num:1,
+      ditta_id:m.ditta_id||null, ditta_nome:m.ditta_nome||'', distacco:false
     }));
-
     const mezziArr = (r.mezzi||[]).map(m=>m.descrizione).filter(Boolean);
-    const noteExtra = [r.attrezzature, r.noli, r.note].filter(Boolean).join(' | ');
-    const ossAggiornate = (esist?.osservazioni||'') + (noteExtra ? '\n[Lista sett.] '+noteExtra : '');
+    const extra = [r.attrezzature,r.noli,r.note].filter(Boolean).join(' | ');
 
     if(esist){
-      // Aggiorna registrazione esistente aggiungendo dati lista
-      const {error} = await sb.from('giornale_lavori').update({
-        maestranze: mae.length ? mae : (esist.maestranze||[]),
-        mezzi: mezziArr.length ? mezziArr : (esist.mezzi||[]),
+      await sb.from('giornale_lavori').update({
+        maestranze: mae.length?mae:(esist.maestranze||[]),
+        mezzi: mezziArr.length?mezziArr:(esist.mezzi||[]),
         lavorazioni: r.lavorazioni,
-        osservazioni: ossAggiornate.trim()
+        osservazioni: ((esist.osservazioni||'')+(extra?'\n[Lista sett.] '+extra:'')).trim()||null
       }).eq('id',esist.id);
-      if(error) errori++;
     } else {
-      // Crea nuova registrazione
-      const {error} = await sb.from('giornale_lavori').insert({
-        cantiere_id: currentCantiere,
-        data: r.data,
-        redattore,
-        meteo: '—',
-        maestranze: mae,
-        mezzi: mezziArr,
-        lavorazioni: r.lavorazioni,
-        osservazioni: ossAggiornate.trim()||null,
-        created_by: currentUser.id
+      await sb.from('giornale_lavori').insert({
+        cantiere_id: currentCantiere, data:r.data, redattore, meteo:'—',
+        maestranze: mae, mezzi: mezziArr, lavorazioni:r.lavorazioni,
+        osservazioni: extra?'[Lista sett.] '+extra:null, created_by:currentUser.id
       });
-      if(error) errori++;
     }
+    trasferiti++;
   }
 
-  // Marca lista come verificata
   const {error} = await sb.from('liste_settimanali').update({
-    stato: 'verificata_dl',
-    verificata_da: currentUser.id,
-    verificata_at: new Date().toISOString()
+    stato:'verificata_dl', verificata_da:currentUser.id, verificata_at:new Date().toISOString()
   }).eq('id',listaId);
+  if(error){ alert('Errore: '+error.message); return; }
 
-  if(error){ alert('Errore nella verifica: '+error.message); return; }
-
-  const msg = errori > 0
-    ? `Lista verificata con ${errori} errori nel trasferimento al giornale.`
-    : `✅ Lista verificata. ${righe.length} giorni trasferiti nel Giornale dei Lavori.`;
-  alert(msg);
+  alert(`Lista verificata. ${trasferiti} giorni trasferiti nel Giornale dei Lavori.`);
   showView('liste');
 }
 
 // ---- RIGHE GIORNALIERE ----
 async function openModalNuovaRiga(listaId){
-  const {data:ls} = await sb.from('liste_settimanali').select('settimana_dal,settimana_al').eq('id',listaId).single();
+  const {data:ls} = await sb.from('liste_settimanali').select('settimana_dal').eq('id',listaId).single();
   const {data:ditte} = await sb.from('ditte').select('id,nome,tipo').eq('cantiere_id',currentCantiere).order('nome');
-  const ditteOpts = `<option value="">— ditta —</option>`+(ditte||[]).map(d=>`<option value="${d.id}" data-nome="${esc(d.nome)}">[${d.tipo?.substring(0,3)||''}] ${esc(d.nome)}</option>`).join('');
+  const ditteOpts = `<option value="">— ditta —</option>`+(ditte||[]).map(d=>`<option value="${d.id}">[${(d.tipo||'').substring(0,3)}] ${esc(d.nome)}</option>`).join('');
   window._ditteOpts = ditteOpts;
-  window._maeRowCount2 = 1;
-  window._mezzoRowCount2 = 1;
+  window._maeN = 1; window._mzN = 1;
 
-  openModal('Aggiungi giorno — Lista settimanale', `
+  openModal('Aggiungi giorno', `
     <div class="form-group" style="margin-bottom:12px">
       <label class="form-label">Data *</label>
       <input class="form-control" type="date" id="nr_data" value="${ls?.settimana_dal||today()}">
     </div>
-
     <div style="margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <label class="form-label" style="margin:0">Manodopera presente *</label>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiRigaMae2()">+ Operaio</button>
+        <label class="form-label" style="margin:0">Manodopera</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addMaeRow()">+ Operaio</button>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead><tr style="background:var(--primary);color:white">
-          <th style="padding:6px 8px;width:35%">Nominativo operaio</th>
+          <th style="padding:6px 8px;width:35%">Nominativo</th>
           <th style="padding:6px 8px;width:25%">Qualifica</th>
           <th style="padding:6px 8px;width:30%">Ditta</th>
           <th style="padding:6px 8px;width:10%"></th>
         </tr></thead>
-        <tbody id="nr_mae_body">
-          <tr id="nr_mae_0">
-            <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_nome_0" placeholder="Nome Cognome"></td>
-            <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_qual_0" placeholder="es. Muratore"></td>
-            <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="nr_ditta_0">${ditteOpts}</select></td>
-            <td style="padding:3px;text-align:center"><button type="button" onclick="rimuoviRigaMae2(0)" class="btn btn-danger btn-sm" style="padding:2px 6px">✕</button></td>
+        <tbody id="mae_body">
+          <tr id="mae_0">
+            <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_nome_0" placeholder="Nome Cognome"></td>
+            <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_qual_0" placeholder="Muratore"></td>
+            <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="mae_ditta_0">${ditteOpts}</select></td>
+            <td style="padding:3px;text-align:center"><button type="button" class="btn btn-danger btn-sm" style="padding:2px 6px" onclick="delMaeRow(0)">&#10005;</button></td>
           </tr>
         </tbody>
       </table>
     </div>
-
     <div style="margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <label class="form-label" style="margin:0">Mezzi e attrezzature</label>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiMezzo2()">+ Mezzo</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addMzRow()">+ Mezzo</button>
       </div>
-      <div id="nr_mezzi_body">
-        <div style="display:flex;gap:6px;margin-bottom:5px" id="nr_mezzo_0">
-          <input class="form-control" style="font-size:12px" id="nr_mz_0" placeholder="es. Gru a torre, Autobetoniera, Escavatore...">
-          <button type="button" onclick="rimuoviMezzo2(0)" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button>
+      <div id="mz_body">
+        <div style="display:flex;gap:6px;margin-bottom:5px" id="mz_0">
+          <input class="form-control" style="font-size:12px" id="mz_in_0" placeholder="es. Gru, Autobetoniera, Escavatore...">
+          <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="delMzRow(0)">&#10005;</button>
         </div>
       </div>
     </div>
-
     <div class="form-group" style="margin-bottom:10px">
       <label class="form-label">Lavorazioni eseguite *</label>
-      <textarea class="form-control" id="nr_lav" rows="4" placeholder="Descrivi le lavorazioni eseguite nella giornata..."></textarea>
+      <textarea class="form-control" id="nr_lav" rows="4" placeholder="Descrivi le lavorazioni della giornata..."></textarea>
     </div>
     <div class="form-grid">
-      <div class="form-group">
-        <label class="form-label">Attrezzature speciali</label>
-        <input class="form-control" id="nr_attr" placeholder="es. Ponteggio, Cassaforma...">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Noli</label>
-        <input class="form-control" id="nr_noli" placeholder="es. Nolo gru, Nolo cassero...">
-      </div>
+      <div class="form-group"><label class="form-label">Attrezzature speciali</label><input class="form-control" id="nr_attr" placeholder="Ponteggio, cassaforma..."></div>
+      <div class="form-group"><label class="form-label">Noli</label><input class="form-control" id="nr_noli" placeholder="Nolo gru..."></div>
     </div>
-    <div class="form-group" style="margin-top:10px">
-      <label class="form-label">Note</label>
-      <input class="form-control" id="nr_note" placeholder="Note aggiuntive...">
-    </div>
+    <div class="form-group" style="margin-top:10px"><label class="form-label">Note</label><input class="form-control" id="nr_note"></div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaRiga('${listaId}')">Salva giorno</button>
     </div>`);
 }
 
-function aggiungiRigaMae2(){
-  const n = window._maeRowCount2||1;
-  const tbody = document.getElementById('nr_mae_body');
-  if(!tbody) return;
-  const tr = document.createElement('tr');
-  tr.id = 'nr_mae_'+n;
-  tr.innerHTML = `
-    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_nome_${n}" placeholder="Nome Cognome"></td>
-    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_qual_${n}" placeholder="es. Muratore"></td>
-    <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="nr_ditta_${n}">${window._ditteOpts||''}</select></td>
-    <td style="padding:3px;text-align:center"><button type="button" onclick="rimuoviRigaMae2(${n})" class="btn btn-danger btn-sm" style="padding:2px 6px">✕</button></td>`;
-  tbody.appendChild(tr);
-  window._maeRowCount2 = n+1;
+function addMaeRow(){
+  const n = window._maeN||1;
+  const tb = document.getElementById('mae_body'); if(!tb) return;
+  const tr = document.createElement('tr'); tr.id='mae_'+n;
+  tr.innerHTML = `<td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_nome_${n}" placeholder="Nome Cognome"></td>
+    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_qual_${n}" placeholder="Muratore"></td>
+    <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="mae_ditta_${n}">${window._ditteOpts||''}</select></td>
+    <td style="padding:3px;text-align:center"><button type="button" class="btn btn-danger btn-sm" style="padding:2px 6px" onclick="delMaeRow(${n})">&#10005;</button></td>`;
+  tb.appendChild(tr); window._maeN = n+1;
 }
-function rimuoviRigaMae2(n){ const r=document.getElementById('nr_mae_'+n); if(r) r.remove(); }
-
-function aggiungiMezzo2(){
-  const n = window._mezzoRowCount2||1;
-  const body = document.getElementById('nr_mezzi_body');
-  if(!body) return;
-  const div = document.createElement('div');
-  div.style.cssText='display:flex;gap:6px;margin-bottom:5px';
-  div.id='nr_mezzo_'+n;
-  div.innerHTML=`<input class="form-control" style="font-size:12px" id="nr_mz_${n}" placeholder="es. Autobetoniera, Escavatore..."><button type="button" onclick="rimuoviMezzo2(${n})" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button>`;
-  body.appendChild(div);
-  window._mezzoRowCount2 = n+1;
+function delMaeRow(n){ const r=document.getElementById('mae_'+n); if(r) r.remove(); }
+function addMzRow(){
+  const n = window._mzN||1;
+  const b = document.getElementById('mz_body'); if(!b) return;
+  const d = document.createElement('div'); d.style.cssText='display:flex;gap:6px;margin-bottom:5px'; d.id='mz_'+n;
+  d.innerHTML = `<input class="form-control" style="font-size:12px" id="mz_in_${n}" placeholder="es. Autobetoniera...">
+    <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="delMzRow(${n})">&#10005;</button>`;
+  b.appendChild(d); window._mzN = n+1;
 }
-function rimuoviMezzo2(n){ const r=document.getElementById('nr_mezzo_'+n); if(r) r.remove(); }
+function delMzRow(n){ const r=document.getElementById('mz_'+n); if(r) r.remove(); }
 
-function raccogliMae2(){
-  const mae = [];
-  for(let i=0;i<(window._maeRowCount2||1);i++){
-    const nomeEl = document.getElementById('nr_nome_'+i);
-    if(!nomeEl) continue;
-    const nome = nomeEl.value.trim();
-    if(!nome) continue;
-    const dittaSel = document.getElementById('nr_ditta_'+i);
-    const dittaNome = dittaSel?.selectedIndex>0 ? dittaSel.options[dittaSel.selectedIndex].text : '';
-    mae.push({
-      nominativo: nome,
-      qualifica: document.getElementById('nr_qual_'+i)?.value.trim()||'',
-      ditta_id: dittaSel?.value||null,
-      ditta_nome: dittaNome
-    });
+function raccogliMae(){
+  const out = [];
+  for(let i=0;i<(window._maeN||1);i++){
+    const ne = document.getElementById('mae_nome_'+i); if(!ne) continue;
+    const nome = ne.value.trim(); if(!nome) continue;
+    const ds = document.getElementById('mae_ditta_'+i);
+    const dn = (ds && ds.selectedIndex>0) ? ds.options[ds.selectedIndex].text : '';
+    out.push({ nominativo:nome, qualifica:(document.getElementById('mae_qual_'+i)?.value||'').trim(), ditta_id:ds?.value||null, ditta_nome:dn });
   }
-  return mae;
+  return out;
 }
-
-function raccogliMezzi2(){
-  const mezzi = [];
-  for(let i=0;i<(window._mezzoRowCount2||1);i++){
-    const el = document.getElementById('nr_mz_'+i);
-    if(el&&el.value.trim()) mezzi.push({descrizione:el.value.trim()});
+function raccogliMz(){
+  const out = [];
+  for(let i=0;i<(window._mzN||1);i++){
+    const e = document.getElementById('mz_in_'+i);
+    if(e && e.value.trim()) out.push({ descrizione:e.value.trim() });
   }
-  return mezzi;
+  return out;
 }
 
 async function salvaRiga(listaId){
   const data = document.getElementById('nr_data').value;
-  const lavorazioni = document.getElementById('nr_lav').value.trim();
-  if(!data||!lavorazioni){ alert('Data e lavorazioni obbligatorie'); return; }
-  const mae = raccogliMae2();
-  const mezzi = raccogliMezzi2();
+  const lav = document.getElementById('nr_lav').value.trim();
+  if(!data||!lav){ alert('Data e lavorazioni obbligatorie'); return; }
   const {error} = await sb.from('liste_righe').insert({
-    lista_id: listaId,
-    cantiere_id: currentCantiere,
-    data,
-    manodopera: mae,
-    mezzi,
-    lavorazioni,
+    lista_id: listaId, cantiere_id: currentCantiere, data,
+    manodopera: raccogliMae(), mezzi: raccogliMz(), lavorazioni: lav,
     attrezzature: document.getElementById('nr_attr').value.trim()||null,
     noli: document.getElementById('nr_noli').value.trim()||null,
     note: document.getElementById('nr_note').value.trim()||null
@@ -2399,28 +2296,27 @@ async function openModalEditRiga(rigaId, listaId){
   const {data:r} = await sb.from('liste_righe').select('*').eq('id',rigaId).single();
   if(!r) return;
   const {data:ditte} = await sb.from('ditte').select('id,nome,tipo').eq('cantiere_id',currentCantiere).order('nome');
+  const baseOpts = d=>`<option value="">— ditta —</option>`+(ditte||[]).map(x=>`<option value="${x.id}"${x.id===d?' selected':''}>[${(x.tipo||'').substring(0,3)}] ${esc(x.nome)}</option>`).join('');
+  window._ditteOpts = `<option value="">— ditta —</option>`+(ditte||[]).map(x=>`<option value="${x.id}">[${(x.tipo||'').substring(0,3)}] ${esc(x.nome)}</option>`).join('');
 
-  // Costruisce le righe manodopera esistenti
   const mae = r.manodopera||[];
   const mezzi = r.mezzi||[];
-  window._maeRowCount2 = mae.length||1;
-  window._mezzoRowCount2 = mezzi.length||1;
+  window._maeN = Math.max(mae.length,1);
+  window._mzN = Math.max(mezzi.length,1);
 
-  const ditteMap = {};
-  (ditte||[]).forEach(d=>{ ditteMap[d.id]=d; });
-  const ditteOpts = `<option value="">— ditta —</option>`+(ditte||[]).map(d=>`<option value="${d.id}">[${d.tipo?.substring(0,3)||''}] ${esc(d.nome)}</option>`).join('');
-  window._ditteOpts = ditteOpts;
+  const maeRows = (mae.length?mae:[{}]).map((m,i)=>`<tr id="mae_${i}">
+    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_nome_${i}" value="${esc(m.nominativo||'')}" placeholder="Nome Cognome"></td>
+    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_qual_${i}" value="${esc(m.qualifica||'')}" placeholder="Muratore"></td>
+    <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="mae_ditta_${i}">${baseOpts(m.ditta_id)}</select></td>
+    <td style="padding:3px;text-align:center"><button type="button" class="btn btn-danger btn-sm" style="padding:2px 6px" onclick="delMaeRow(${i})">&#10005;</button></td>
+  </tr>`).join('');
 
-  const maeRows = mae.length ? mae.map((m,i)=>`<tr id="nr_mae_${i}">
-    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_nome_${i}" value="${esc(m.nominativo||'')}"></td>
-    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_qual_${i}" value="${esc(m.qualifica||'')}"></td>
-    <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="nr_ditta_${i}">${ditteOpts.replace(`value="${m.ditta_id}"`,`value="${m.ditta_id}" selected`)}</select></td>
-    <td style="padding:3px;text-align:center"><button type="button" onclick="rimuoviRigaMae2(${i})" class="btn btn-danger btn-sm" style="padding:2px 6px">✕</button></td>
-  </tr>`).join('') : `<tr id="nr_mae_0"><td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_nome_0" placeholder="Nome Cognome"></td><td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="nr_qual_0"></td><td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="nr_ditta_0">${ditteOpts}</select></td><td></td></tr>`;
+  const mzRows = (mezzi.length?mezzi:[{}]).map((m,i)=>`<div style="display:flex;gap:6px;margin-bottom:5px" id="mz_${i}">
+    <input class="form-control" style="font-size:12px" id="mz_in_${i}" value="${esc(m.descrizione||'')}" placeholder="es. Autobetoniera...">
+    <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="delMzRow(${i})">&#10005;</button>
+  </div>`).join('');
 
-  const mezziRows = mezzi.length ? mezzi.map((m,i)=>`<div style="display:flex;gap:6px;margin-bottom:5px" id="nr_mezzo_${i}"><input class="form-control" style="font-size:12px" id="nr_mz_${i}" value="${esc(m.descrizione||'')}"><button type="button" onclick="rimuoviMezzo2(${i})" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button></div>`).join('') : `<div style="display:flex;gap:6px;margin-bottom:5px" id="nr_mezzo_0"><input class="form-control" style="font-size:12px" id="nr_mz_0"><button type="button" onclick="rimuoviMezzo2(0)" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button></div>`;
-
-  openModal('Modifica giorno — Lista settimanale', `
+  openModal('Compila giorno — '+fmt(r.data), `
     <div class="form-group" style="margin-bottom:12px">
       <label class="form-label">Data</label>
       <input class="form-control" type="date" id="nr_data" value="${r.data||''}">
@@ -2428,7 +2324,7 @@ async function openModalEditRiga(rigaId, listaId){
     <div style="margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <label class="form-label" style="margin:0">Manodopera</label>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiRigaMae2()">+ Operaio</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addMaeRow()">+ Operaio</button>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead><tr style="background:var(--primary);color:white">
@@ -2437,42 +2333,37 @@ async function openModalEditRiga(rigaId, listaId){
           <th style="padding:6px 8px;width:30%">Ditta</th>
           <th style="padding:6px 8px;width:10%"></th>
         </tr></thead>
-        <tbody id="nr_mae_body">${maeRows}</tbody>
+        <tbody id="mae_body">${maeRows}</tbody>
       </table>
     </div>
     <div style="margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <label class="form-label" style="margin:0">Mezzi</label>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiMezzo2()">+ Mezzo</button>
+        <label class="form-label" style="margin:0">Mezzi e attrezzature</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addMzRow()">+ Mezzo</button>
       </div>
-      <div id="nr_mezzi_body">${mezziRows}</div>
+      <div id="mz_body">${mzRows}</div>
     </div>
     <div class="form-group" style="margin-bottom:10px">
       <label class="form-label">Lavorazioni eseguite *</label>
       <textarea class="form-control" id="nr_lav" rows="4">${esc(r.lavorazioni||'')}</textarea>
     </div>
     <div class="form-grid">
-      <div class="form-group"><label class="form-label">Attrezzature</label><input class="form-control" id="nr_attr" value="${esc(r.attrezzature||'')}"></div>
+      <div class="form-group"><label class="form-label">Attrezzature speciali</label><input class="form-control" id="nr_attr" value="${esc(r.attrezzature||'')}"></div>
       <div class="form-group"><label class="form-label">Noli</label><input class="form-control" id="nr_noli" value="${esc(r.noli||'')}"></div>
     </div>
-    <div class="form-group" style="margin-top:10px">
-      <label class="form-label">Note</label>
-      <input class="form-control" id="nr_note" value="${esc(r.note||'')}">
-    </div>
+    <div class="form-group" style="margin-top:10px"><label class="form-label">Note</label><input class="form-control" id="nr_note" value="${esc(r.note||'')}"></div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
-      <button class="btn btn-primary" onclick="salvaEditRiga('${rigaId}')">Salva</button>
+      <button class="btn btn-primary" onclick="salvaEditRiga('${rigaId}')">Salva giorno</button>
     </div>`);
 }
 
 async function salvaEditRiga(id){
-  const lavorazioni = document.getElementById('nr_lav').value.trim();
-  if(!lavorazioni){ alert('Lavorazioni obbligatorie'); return; }
+  const lav = document.getElementById('nr_lav').value.trim();
+  if(!lav){ alert('Lavorazioni obbligatorie'); return; }
   const {error} = await sb.from('liste_righe').update({
     data: document.getElementById('nr_data').value,
-    manodopera: raccogliMae2(),
-    mezzi: raccogliMezzi2(),
-    lavorazioni,
+    manodopera: raccogliMae(), mezzi: raccogliMz(), lavorazioni: lav,
     attrezzature: document.getElementById('nr_attr').value.trim()||null,
     noli: document.getElementById('nr_noli').value.trim()||null,
     note: document.getElementById('nr_note').value.trim()||null
@@ -2482,11 +2373,12 @@ async function salvaEditRiga(id){
 }
 
 async function eliminaRiga(id, listaId){
-  if(!confirm('Eliminare questa riga giornaliera?')) return;
+  if(!confirm('Eliminare questo giorno?')) return;
   const {error} = await sb.from('liste_righe').delete().eq('id',id);
   if(error){ alert(error.message); return; }
   showView('liste');
 }
+
 
 
 // ============================================================
