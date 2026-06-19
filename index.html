@@ -235,7 +235,7 @@ let currentRole = null;       // ruolo nel cantiere selezionato
 let myCantieri = [];          // [{cantiere, ruolo}]
 let authMode = 'login';
 
-const ROLE_LABELS = {dl:'Direttore Lavori',rup:'RUP / Committente',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato'};
+const ROLE_LABELS = {dl:'Direttore Lavori',rup:'RUP / Committente',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato',cse:'CSE - Coordinatore Sicurezza'};
 
 // permessi: cosa può fare un ruolo (la sicurezza VERA è lato DB/RLS; qui è solo UI)
 const ROLE_PERMS = {
@@ -243,7 +243,8 @@ const ROLE_PERMS = {
   rup:         {write:false,giornale:'read',ods:false,report:true},
   dt_impresa:  {write:false,giornale:'read',ods:false,report:false},
   do:          {write:true, giornale:true, ods:true, report:false},
-  committente: {write:false,giornale:'read',ods:false,report:true}
+  committente: {write:false,giornale:'read',ods:false,report:true},
+  cse:         {write:false,giornale:'read',ods:false,report:true,liste:'annotate'}
 };
 function can(p){ if(!currentRole) return false; return !!ROLE_PERMS[currentRole]?.[p]; }
 function giornaleAccess(){ return ROLE_PERMS[currentRole]?.giornale; } // true|false|'read'
@@ -378,7 +379,7 @@ function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').repla
 function statoFaseBadge(s){const m={attesa:['badge-grey','In attesa'],in_corso:['badge-yellow','In corso'],completata:['badge-blue','Completata'],verificata_dl:['badge-green','Verificata DL']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function odsStatoBadge(s){const m={bozza:['badge-grey','Bozza'],emessa:['badge-blue','Emessa'],ricevuta:['badge-yellow','Ricevuta'],accettata:['badge-green','Accettata'],contestata:['badge-red','Contestata']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function commTipoBadge(t){const m={nota:['badge-blue','📋 Nota'],richiesta:['badge-yellow','❓ Richiesta'],diffida:['badge-red','⚠️ Diffida']};const[c,l]=m[t]||['badge-grey',t];return`<span class="badge ${c}">${l}</span>`;}
-function roleBadge(r){const m={dl:['badge-blue','DL'],rup:['badge-green','RUP / Committente'],dt_impresa:['badge-yellow','DT Impresa'],do:['badge-grey','DO'],committente:['badge-blue','Committente']};const[c,l]=m[r]||['badge-grey',r];return`<span class="badge ${c}">${l}</span>`;}
+function roleBadge(r){const m={dl:['badge-blue','DL'],rup:['badge-green','RUP / Committente'],dt_impresa:['badge-yellow','DT Impresa'],do:['badge-grey','DO'],committente:['badge-blue','Committente'],cse:['badge-red','CSE']};const[c,l]=m[r]||['badge-grey',r];return`<span class="badge ${c}">${l}</span>`;}
 function getCantiereObj(id){return myCantieri.find(x=>x.cantiere.id===(id||currentCantiere))?.cantiere;}
 
 // ============================================================
@@ -663,7 +664,7 @@ async function renderODS(){
         <span style="opacity:0.7">${f.data?fmt(f.data):'in attesa'}</span></div>`).join('')}</div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
         ${(currentRole==='dt_impresa'&&o.stato!=='accettata')?`<button class="btn btn-primary btn-sm" onclick="accettaODS('${o.id}')">✅ Accetta ODS</button>`:''}
-        ${((currentRole==='rup'||currentRole==='committente')&&firme.find(f=>f.ruolo==='rup'&&f.stato==='in_attesa'))?`<button class="btn btn-primary btn-sm" onclick="firmaRupODS('${o.id}')">👁️ Presa visione</button>`:''}
+        ${((currentRole==='rup'||currentRole==='committente'||currentRole==='cse')&&firme.find(f=>f.ruolo==='rup'&&f.stato==='in_attesa'))?`<button class="btn btn-primary btn-sm" onclick="firmaRupODS('${o.id}')">👁️ Presa visione</button>`:''}
         <button class="btn btn-secondary btn-sm" onclick="stampaODS('${o.id}')">🖨️ Stampa / PDF</button>
         ${can('ods')?`<button class="btn btn-secondary btn-sm" onclick="openModalEditODS('${o.id}')">✏️</button>`:''}
         ${can('ods')?`<button class="btn btn-danger btn-sm" onclick="eliminaODS('${o.id}','${esc(o.numero)}')">🗑️</button>`:''}
@@ -684,7 +685,8 @@ async function renderComunicazioni(){
   const {data:comms} = await sb.from('comunicazioni').select('*').eq('cantiere_id',currentCantiere).order('data',{ascending:false});
   // Filtra lato client: impresa non vede comunicazioni riservate
   const commsFiltrate = (comms||[]).filter(co=>{
-    if(currentRole==='dt_impresa' && co.visibilita==='riservata') return false;
+    // Le comunicazioni riservate (DL→RUP) sono nascoste a impresa e CSE
+    if((currentRole==='dt_impresa'||currentRole==='cse') && co.visibilita==='riservata') return false;
     return true;
   });
   if(!commsFiltrate.length){ html += `<div class="empty"><div class="empty-icon">💬</div><h3>Nessuna comunicazione</h3></div>`; }
@@ -1894,7 +1896,7 @@ async function salvaAnnotaRUP(id){
 async function renderListe(){
   if(!currentCantiere) return noCantiere();
   const c = getCantiereObj();
-  const canCreate = currentRole==='dl'||currentRole==='do'||currentRole==='dt_impresa';
+  const canCreate = currentRole==='dl'||currentRole==='do'||currentRole==='dt_impresa'||currentRole==='cse';
 
   let html = `<div class="section-header">
     <div>
@@ -1933,7 +1935,7 @@ async function renderListe(){
     const isVerificata = ls.stato==='verificata_dl';
     const isInviata = ls.stato==='inviata_dl';
     const canEditDL = currentRole==='dl'||currentRole==='do';
-    const canEditImp = currentRole==='dt_impresa' && !isVerificata && !isInviata;
+    const canEditImp = (currentRole==='dt_impresa'||currentRole==='cse') && !isVerificata && !isInviata;
     const compilati = righe.filter(r=>r.lavorazioni && r.lavorazioni.trim()).length;
 
     let statoBadge;
@@ -1951,7 +1953,7 @@ async function renderListe(){
           ${statoBadge}
           ${(canEditDL||canEditImp)?`<button class="btn btn-secondary btn-sm" onclick="openModalEditLista('${ls.id}')">&#9998;</button>`:''}
           ${(canEditDL||canEditImp)?`<button class="btn btn-danger btn-sm" onclick="eliminaLista('${ls.id}')">&#128465;</button>`:''}
-          ${(canEditImp)?`<button class="btn btn-primary btn-sm" onclick="inviaAlDL('${ls.id}')">Invia al DL</button>`:''}
+          ${(currentRole==='dt_impresa'&&!isVerificata&&!isInviata)?`<button class="btn btn-primary btn-sm" onclick="inviaAlDL('${ls.id}')">Invia al DL</button>`:''}
           ${(!isVerificata && canEditDL)?`<button class="btn btn-primary btn-sm" onclick="verificaLista('${ls.id}')">&#10003; Verifica DL</button>`:''}
         </div>
       </div>
@@ -1965,7 +1967,7 @@ async function renderListe(){
 
 function renderGiorniLista(righe, listaId, isVerificata, isInviata){
   const canEditDL = currentRole==='dl'||currentRole==='do';
-  const canEditImp = currentRole==='dt_impresa' && !isVerificata && !isInviata;
+  const canEditImp = (currentRole==='dt_impresa'||currentRole==='cse') && !isVerificata && !isInviata;
   const canEdit = canEditDL || canEditImp;
 
   if(!righe.length){
@@ -2013,6 +2015,7 @@ function renderGiorniLista(righe, listaId, isVerificata, isInviata){
         </div>
         ${(r.attrezzature||r.noli)?`<div style="margin-top:6px;font-size:11px;color:var(--muted)">${r.attrezzature?'Attrezzature: '+esc(r.attrezzature)+'  ':''}${r.noli?'Noli: '+esc(r.noli):''}</div>`:''}
         ${r.note?`<div style="margin-top:4px;font-size:11px;color:var(--muted)">Note: ${esc(r.note)}</div>`:''}
+        '+(r.note_cse?'<div style="margin-top:6px;padding:6px 10px;background:#FFF3CD;border-left:3px solid #FFC107;border-radius:0 4px 4px 0;font-size:11px"><strong>Annotazione CSE:</strong> '+esc(r.note_cse)+'</div>':'')+'
       </div>`:''}
     </div>`;
   });
@@ -2281,12 +2284,14 @@ async function salvaRiga(listaId){
   const data = document.getElementById('nr_data').value;
   const lav = document.getElementById('nr_lav').value.trim();
   if(!data||!lav){ alert('Data e lavorazioni obbligatorie'); return; }
+  const noteCse = currentRole==='cse' ? (document.getElementById('nr_note_cse')?.value.trim()||null) : null;
   const {error} = await sb.from('liste_righe').insert({
     lista_id: listaId, cantiere_id: currentCantiere, data,
     manodopera: raccogliMae(), mezzi: raccogliMz(), lavorazioni: lav,
     attrezzature: document.getElementById('nr_attr').value.trim()||null,
     noli: document.getElementById('nr_noli').value.trim()||null,
-    note: document.getElementById('nr_note').value.trim()||null
+    note: document.getElementById('nr_note').value.trim()||null,
+    note_cse: noteCse
   });
   if(error){ alert(error.message); return; }
   closeModal(); showView('liste');
@@ -2351,7 +2356,8 @@ async function openModalEditRiga(rigaId, listaId){
       <div class="form-group"><label class="form-label">Attrezzature speciali</label><input class="form-control" id="nr_attr" value="${esc(r.attrezzature||'')}"></div>
       <div class="form-group"><label class="form-label">Noli</label><input class="form-control" id="nr_noli" value="${esc(r.noli||'')}"></div>
     </div>
-    <div class="form-group" style="margin-top:10px"><label class="form-label">Note</label><input class="form-control" id="nr_note" value="${esc(r.note||'')}"></div>
+    <div class="form-group" style="margin-top:10px"><label class="form-label">Note generali</label><input class="form-control" id="nr_note" value="${esc(r.note||'')}"></div>
+    ${(currentRole==='cse'||r.note_cse)?'<div style="margin-top:10px;background:#FFF3CD;padding:10px;border-radius:6px;border-left:3px solid #FFC107"><label class="form-label" style="color:#856404;display:block;margin-bottom:4px">Annotazione CSE (sicurezza)</label><textarea class="form-control" id="nr_note_cse" rows="3" '+( currentRole!=='cse'?'readonly style="background:#f8f9fa"':'')+'>'+(r.note_cse?esc(r.note_cse):'')+'</textarea></div>':'<input type="hidden" id="nr_note_cse" value="">'}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaEditRiga('${rigaId}')">Salva giorno</button>
@@ -2361,12 +2367,14 @@ async function openModalEditRiga(rigaId, listaId){
 async function salvaEditRiga(id){
   const lav = document.getElementById('nr_lav').value.trim();
   if(!lav){ alert('Lavorazioni obbligatorie'); return; }
+  const noteCseEdit = document.getElementById('nr_note_cse')?.value.trim()||null;
   const {error} = await sb.from('liste_righe').update({
     data: document.getElementById('nr_data').value,
     manodopera: raccogliMae(), mezzi: raccogliMz(), lavorazioni: lav,
     attrezzature: document.getElementById('nr_attr').value.trim()||null,
     noli: document.getElementById('nr_noli').value.trim()||null,
-    note: document.getElementById('nr_note').value.trim()||null
+    note: document.getElementById('nr_note').value.trim()||null,
+    note_cse: noteCseEdit!==null ? noteCseEdit : undefined
   }).eq('id',id);
   if(error){ alert(error.message); return; }
   closeModal(); showView('liste');
@@ -3210,6 +3218,7 @@ function openModalNuovoMembro(){
         <option value="dt_impresa">DT Impresa</option>
         <option value="do">Direttore Operativo</option>
         <option value="committente">Committente Privato</option>
+        <option value="cse">CSE - Coordinatore Sicurezza in Esecuzione</option>
       </select></div>
     <div class="form-group"><label class="form-label">Telefono</label><input class="form-control" id="tm_tel"></div></div>
     <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaMembro()">Aggiungi</button></div>`);
@@ -3485,7 +3494,7 @@ async function generaReportSA(cantiereId){
   const statoLabel={attesa:'In attesa',in_corso:'In corso',completata:'Completata',verificata_dl:'Verificata DL'};
   const tipoAttoLabel={atto_sottomissione:'Atto di sottomissione',atto_aggiuntivo:'Atto aggiuntivo'};
   const tipoDittaLabel={appaltatrice:'Appaltatrice',subappaltatrice:'Subappaltatrice',subaffidataria:'Subaffidataria'};
-  const roleLabel={dl:'Direttore dei Lavori',rup:'RUP / Committente',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato'};
+  const roleLabel={dl:'Direttore dei Lavori',rup:'RUP / Committente',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato',cse:'CSE - Coordinatore Sicurezza'};
 
   // Totali manodopera
   const totOpGiornale=(giornale||[]).reduce((a,g)=>{const mae=g.maestranze||[];return a+mae.reduce((b,m)=>b+(m.num||0),0);},0);
@@ -3594,19 +3603,19 @@ async function generaReportSA(cantiereId){
   </tbody></table>`}
 
   <h2>Varianti contrattuali</h2>
-  ${(varianti||[]).length===0?'<p style="color:#6C757D">Nessuna variante registrata.</p>':`
-  <table><thead><tr><th>N.</th><th>Data</th><th>Motivo</th><th>Tipo atto</th><th>Data firma</th><th>Data approv.</th><th>Estremi approvazione</th><th>Nuova fine</th></tr></thead><tbody>
-  ${(varianti||[]).map(v=>`<tr>
-    <td style="text-align:center"><strong>V${v.numero}</strong></td>
-    <td>${fmt(v.data)}</td>
-    <td style="font-size:11px">${esc(v.motivo||'—')}</td>
-    <td style="font-size:11px">${tipoAttoLabel[v.tipo_atto]||v.tipo_atto}</td>
-    <td>${v.data_firma?fmt(v.data_firma):'<em style="color:#6C757D">Non firmato</em>'}</td>
-    <td>${v.data_approvazione?fmt(v.data_approvazione):'—'}</td>
-    <td style="font-size:11px">${esc(v.estremi_approvazione||'—')}</td>
-    <td>${v.nuova_fine_lavori?`<strong>${fmt(v.nuova_fine_lavori)}</strong>`:'—'}</td>
-  </tr>`).join('')}
-  </tbody></table>`}
+  ${(varianti||[]).length===0?'<p style="color:#6C757D">Nessuna variante registrata.</p>':(
+  '<table><thead><tr><th>N.</th><th>Data</th><th>Motivo</th><th>Tipo atto</th><th>Data firma</th><th>Data approv.</th><th>Estremi approvazione</th><th>Nuova fine</th></tr></thead><tbody>'+
+  (varianti||[]).map(v=>('<tr>'+
+    '<td style="text-align:center"><strong>V'+v.numero+'</strong></td>'+
+    '<td>'+fmt(v.data)+'</td>'+
+    '<td style="font-size:11px">'+esc(v.motivo||'&mdash;')+'</td>'+
+    '<td style="font-size:11px">'+(tipoAttoLabel[v.tipo_atto]||v.tipo_atto)+'</td>'+
+    '<td>'+(v.data_firma?fmt(v.data_firma):'<em style="color:#6C757D">Non firmato</em>')+'</td>'+
+    '<td>'+(v.data_approvazione?fmt(v.data_approvazione):'&mdash;')+'</td>'+
+    '<td style="font-size:11px">'+esc(v.estremi_approvazione||'&mdash;')+'</td>'+
+    '<td>'+(v.giorni_concessi!=null?'<strong>+'+v.giorni_concessi+' gg</strong>':'&mdash;')+'</td>'+
+  '</tr>')).join('')+
+  '</tbody></table>')}
 
   <h2>Stati di avanzamento lavori (SAL)</h2>
   ${(sal||[]).length===0?'<p style="color:#6C757D">Nessun SAL registrato.</p>':`
