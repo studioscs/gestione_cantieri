@@ -3190,7 +3190,13 @@ function openModalNuovoMembro(){
   openModal('Aggiungi Membro Team',`<div class="alert alert-info">Il membro deve essersi già registrato all'app con la sua email.</div>
     <div class="form-grid">
     <div class="form-group span-2"><label class="form-label">Email utente registrato *</label><input class="form-control" type="email" id="tm_email"></div>
-    <div class="form-group"><label class="form-label">Ruolo *</label><select class="form-control" id="tm_ruolo"><option value="dl">Direttore Lavori</option><option value="rup">RUP</option><option value="dt_impresa">DT Impresa</option><option value="do">Direttore Operativo</option></select></div>
+    <div class="form-group"><label class="form-label">Ruolo *</label><select class="form-control" id="tm_ruolo">
+        <option value="dl">Direttore Lavori</option>
+        <option value="rup">RUP</option>
+        <option value="dt_impresa">DT Impresa</option>
+        <option value="do">Direttore Operativo</option>
+        <option value="committente">Committente Privato</option>
+      </select></div>
     <div class="form-group"><label class="form-label">Telefono</label><input class="form-control" id="tm_tel"></div></div>
     <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaMembro()">Aggiungi</button></div>`);
 }
