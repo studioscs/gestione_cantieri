@@ -2412,12 +2412,12 @@ async function renderSAL(){
 
   // Totali
   if(sals && sals.length){
-    const totLordo = sals.reduce((a,s)=>a+(s.importo_lordo||0),0);
+    const totLordo = sals.reduce((a,s)=>a+(s.importo_lavori||0)+(s.importo_sicurezza||0),0);
     const totNetto = sals.reduce((a,s)=>a+(s.netto_pagare||0),0);
     const ultSal = sals[0];
     html += `<div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
       <div class="kpi"><div class="kpi-label">SAL emessi</div><div class="kpi-value">${sals.length}</div><div class="kpi-sub">ultimo: SAL n. ${ultSal.numero}</div></div>
-      <div class="kpi"><div class="kpi-label">Importo lordo cumulato</div><div class="kpi-value" style="font-size:18px">${fmtEur(totLordo)}</div><div class="kpi-sub">lavori + sicurezza</div></div>
+      <div class="kpi"><div class="kpi-label">Totale lavorazioni (lordo)</div><div class="kpi-value" style="font-size:18px">${fmtEur(totLordo)}</div><div class="kpi-sub">lavori eseguiti + sicurezza, al lordo delle detrazioni</div></div>
       <div class="kpi"><div class="kpi-label">Netto a pagare cumulato</div><div class="kpi-value" style="font-size:18px;color:var(--green)">${fmtEur(totNetto)}</div><div class="kpi-sub">al netto di ritenute</div></div>
     </div>`;
   }
@@ -2434,7 +2434,7 @@ async function renderSAL(){
   };
 
   html += `<div class="card" style="padding:0"><table>
-    <thead><tr><th>N. SAL</th><th>Periodo</th><th>Importo lordo</th><th>Ritenuta gar.</th><th>Anticipazione</th><th>Detrazioni</th><th>Netto</th><th>IVA</th><th>Netto + IVA</th><th>Stato</th><th></th></tr></thead>
+    <thead><tr><th>N. SAL</th><th>Periodo</th><th>Totale lav. lordo</th><th>Ritenuta gar.</th><th>Anticipazione</th><th>Detrazioni</th><th>Netto</th><th>IVA</th><th>Netto + IVA</th><th>Stato</th><th></th></tr></thead>
     <tbody>`;
 
   sals.forEach(s=>{
@@ -2442,7 +2442,7 @@ async function renderSAL(){
     html += `<tr>
       <td><strong>SAL n. ${s.numero}</strong><div style="font-size:11px;color:var(--muted)">${fmt(s.data)}</div></td>
       <td style="font-size:12px">${fmt(s.periodo_dal)} →<br>${fmt(s.periodo_al)}</td>
-      <td>${fmtEur(s.importo_lordo)}<div style="font-size:11px;color:var(--muted)">Lav: ${fmtEur(s.importo_lavori)} + Sic: ${fmtEur(s.importo_sicurezza)}</div></td>
+      <td><strong>${fmtEur((s.importo_lavori||0)+(s.importo_sicurezza||0))}</strong><div style="font-size:10px;color:var(--muted)">Lav: ${fmtEur(s.importo_lavori)} + Sic: ${fmtEur(s.importo_sicurezza)}</div><div style="font-size:10px;color:var(--muted)">Totale lavorazioni eseguite al lordo delle detrazioni</div></td>
       <td style="color:var(--red)">${fmtEur(s.ritenuta_garanzia)}</td>
       <td style="color:var(--red)">${fmtEur(s.anticipazione_dedurre)}</td>
       <td style="color:var(--red)">${fmtEur(s.altri_importi)}${s.note_altri_importi?'<div style="font-size:10px;color:var(--muted)">'+esc(s.note_altri_importi)+'</div>':''}</td>
@@ -2522,7 +2522,7 @@ function openModalNuovoSAL(){
     <div style="margin-top:14px;padding:14px;border:2px solid var(--primary);border-radius:6px;background:#EBF3FB">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center">
         <div>
-          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">IMPORTO LORDO</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">TOTALE LAVORAZIONI (lordo detrazioni)</div>
           <div style="font-size:16px;font-weight:700;color:var(--primary)" id="sal_lordo_display">€ 0,00</div>
         </div>
         <div>
@@ -2635,7 +2635,6 @@ async function salvaSAL(){
     periodo_al: document.getElementById('sal_al').value||null,
     importo_lavori: lav,
     importo_sicurezza: sic,
-    importo_lordo: lordo,
     ritenuta_garanzia: rit,
     anticipazione_dedurre: ant,
     altri_importi: det.totale,
@@ -2713,7 +2712,7 @@ async function openModalEditSAL(id){
     <div style="margin-top:14px;padding:14px;border:2px solid var(--primary);border-radius:6px;background:#EBF3FB">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center">
         <div>
-          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">IMPORTO LORDO</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">TOTALE LAVORAZIONI (lordo detrazioni)</div>
           <div style="font-size:16px;font-weight:700;color:var(--primary)" id="es_lordo_display">${fmtEur(s.importo_lordo||0)}</div>
         </div>
         <div>
@@ -2761,7 +2760,6 @@ async function salvaEditSAL(id){
     periodo_al: document.getElementById('es_al').value||null,
     importo_lavori: lav,
     importo_sicurezza: sic,
-    importo_lordo: lordo,
     ritenuta_garanzia: rit,
     anticipazione_dedurre: ant,
     altri_importi: det.totale,
