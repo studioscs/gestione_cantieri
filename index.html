@@ -322,7 +322,7 @@ async function onLoggedIn(){
   const displayName = (currentUser.nome || currentUser.cognome) ? `${currentUser.nome} ${currentUser.cognome}`.trim() : currentUser.email;
   document.getElementById('topbarUser').textContent = displayName;
   await loadMyCantieri();
-  showView('dashboard');
+  showView('cantieri');
 }
 
 async function loadMyCantieri(){
@@ -356,7 +356,7 @@ function selectCantiere(id){
   const nav = document.getElementById('navCantiere');
   nav.style.opacity = id?'1':'0.4';
   nav.style.pointerEvents = id?'auto':'none';
-  if(id) showView('dashboard');
+  if(id) showView('cantieri');
 }
 
 async function showView(view){
