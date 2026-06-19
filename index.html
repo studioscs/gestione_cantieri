@@ -777,7 +777,7 @@ async function renderSospensioni(){
       <td><strong>${fmt(s.data)}</strong></td>
       <td style="font-size:11px;max-width:180px">${dettaglio}</td>
       <td>${dataRip}</td>
-      <td style="text-align:center">${giorni}${isParziale&&s.giorni_calendario?`<div style="font-size:10px;color:var(--muted)">${s.giorni_calendario} gg cal.</div>`:''}</td>
+      <td style="text-align:center">${giorni}${s.tipo_sospensione==='parziale'&&s.giorni_calendario?'<div style="font-size:10px;color:var(--muted)">'+s.giorni_calendario+' gg cal.</div>':''}</td>
       <td>${s.nuova_fine_lavori?fmt(s.nuova_fine_lavori):'—'}</td>
       <td style="text-align:center">${isProroga?'<span style="color:var(--muted);font-size:11px">N/A</span>':(s.fasi_spostate!=null?s.fasi_spostate:'—')}</td>
       <td>${can('write')&&isAperta?`<button class="btn btn-primary btn-sm" onclick="openModalRipresaLavori('${s.id}')">▶️ Ripresa</button>`:
