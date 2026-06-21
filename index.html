@@ -666,6 +666,7 @@ async function renderODS(){
         ${(currentRole==='dt_impresa'&&o.stato!=='accettata')?`<button class="btn btn-primary btn-sm" onclick="accettaODS('${o.id}')">✅ Accetta ODS</button>`:''}
         ${((currentRole==='rup'||currentRole==='committente'||currentRole==='cse')&&firme.find(f=>f.ruolo==='rup'&&f.stato==='in_attesa'))?`<button class="btn btn-primary btn-sm" onclick="firmaRupODS('${o.id}')">👁️ Presa visione</button>`:''}
         <button class="btn btn-secondary btn-sm" onclick="stampaODS('${o.id}')">🖨️ Stampa / PDF</button>
+        ${can('ods')?`<button class="btn btn-primary btn-sm" onclick="inviaViaPEC('ods','${o.id}')">📧 Invia via PEC</button>`:''}
         ${can('ods')?`<button class="btn btn-secondary btn-sm" onclick="openModalEditODS('${o.id}')">✏️</button>`:''}
         ${can('ods')?`<button class="btn btn-danger btn-sm" onclick="eliminaODS('${o.id}','${esc(o.numero)}')">🗑️</button>`:''}
       </div></div>`;
@@ -698,8 +699,9 @@ async function renderComunicazioni(){
         <div style="font-weight:${co.letto?'400':'700'};font-size:13px">${esc(co.oggetto)} ${!co.letto?'<span style="color:#DC3545;font-size:11px">NUOVO</span>':''}${badgeRiservata}</div>${commTipoBadge(co.tipo)}</div>
         <div class="comm-meta"><span>Da: ${esc(co.mittente||'')}</span><span>A: ${esc(dest)}</span><span>${fmt(co.data)}</span></div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px">${esc((co.testo||'').substring(0,100))}…</div>
-        <div style="margin-top:6px;display:flex;gap:6px">
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-secondary btn-sm" onclick="viewComunicazione('${co.id}')">Leggi</button>
+          <button class="btn btn-primary btn-sm" onclick="inviaViaPEC('comunicazione','${co.id}')">📧 Invia via PEC</button>
           ${can('write')||currentRole==='dt_impresa'?`<button class="btn btn-secondary btn-sm" onclick="openModalEditComunicazione('${co.id}')">✏️</button>`:''}
           ${can('write')?`<button class="btn btn-danger btn-sm" onclick="eliminaComunicazione('${co.id}')">🗑️</button>`:''}
         </div></div></div>`;
@@ -1635,8 +1637,8 @@ async function renderTeam(){
   const c = getCantiereObj();
   let html = `<div class="section-header"><div><div class="page-title">Team Cantiere</div><div class="page-subtitle">${esc(c?.nome||'')}</div></div>
     ${currentRole==='dl'?`<button class="btn btn-primary" onclick="openModalNuovoMembro()">+ Aggiungi membro</button>`:''}</div><div class="card" style="padding:0">
-    <table><thead><tr><th>Nome</th><th>Ruolo</th><th>Email</th><th>Telefono</th><th></th></tr></thead><tbody>`;
-  const {data:teamRaw} = await sb.from('cantiere_utenti').select('id,ruolo,telefono,utente_id').eq('cantiere_id',currentCantiere);
+    <table><thead><tr><th>Nome</th><th>Ruolo</th><th>Email registrazione</th><th>Email prof.</th><th>PEC</th><th>Tel.</th><th></th></tr></thead><tbody>`;
+  const {data:teamRaw} = await sb.from('cantiere_utenti').select('id,ruolo,telefono,email_prof,pec,utente_id').eq('cantiere_id',currentCantiere);
   const team = teamRaw || [];
   // carica profili separatamente per evitare errori join
   const profili = {};
@@ -1650,7 +1652,10 @@ async function renderTeam(){
     const p=t.profilo||{};
     const nome = `${p.nome||''} ${p.cognome||''}`.trim() || p.email || '—';
     html += `<tr><td><strong>${esc(nome)}</strong></td><td>${roleBadge(t.ruolo)}</td>
-      <td><a href="mailto:${esc(p.email||'')}" style="color:var(--accent)">${esc(p.email||'—')}</a></td><td>${esc(t.telefono||'—')}</td>
+      <td style="font-size:11px"><a href="mailto:${esc(p.email||'')}" style="color:var(--accent)">${esc(p.email||'—')}</a></td>
+      <td style="font-size:11px">${t.email_prof?`<a href="mailto:${esc(t.email_prof)}" style="color:var(--accent)">${esc(t.email_prof)}</a>`:'—'}</td>
+      <td style="font-size:11px">${t.pec?`<a href="mailto:${esc(t.pec)}" style="color:var(--accent)">${esc(t.pec)}</a>`:'—'}</td>
+      <td style="font-size:11px">${esc(t.telefono||'—')}</td>
       <td>${currentRole==='dl'&&t.utente_id!==currentUser.id?`<button class="btn btn-danger btn-sm" onclick="eliminaMembro('${t.id}','${esc(nome)}')">Rimuovi</button>`:'—'}</td></tr>`;
   });
   html += `</tbody></table></div>
@@ -3581,7 +3586,9 @@ function openModalNuovoMembro(){
         <option value="committente">Committente Privato</option>
         <option value="cse">CSE - Coordinatore Sicurezza in Esecuzione</option>
       </select></div>
-    <div class="form-group"><label class="form-label">Telefono</label><input class="form-control" id="tm_tel"></div></div>
+    <div class="form-group"><label class="form-label">Telefono</label><input class="form-control" id="tm_tel"></div>
+    <div class="form-group"><label class="form-label">Email professionale</label><input class="form-control" type="email" id="tm_email_prof" placeholder="nome@studio.it"><div class="form-hint" style="font-size:11px;color:#ADB5BD">Usata per invio comunicazioni via mailto</div></div>
+    <div class="form-group"><label class="form-label">Indirizzo PEC</label><input class="form-control" type="email" id="tm_pec" placeholder="nome@pec.it"><div class="form-hint" style="font-size:11px;color:#ADB5BD">Usata per ODS, diffide e comunicazioni formali</div></div></div>
     <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaMembro()">Aggiungi</button></div>`);
 }
 async function salvaMembro(){
@@ -3591,7 +3598,10 @@ async function salvaMembro(){
   if(e1||!prof){alert('Nessun utente registrato con questa email. Deve prima registrarsi.');return;}
   const {error}=await sb.from('cantiere_utenti').insert({
     cantiere_id:currentCantiere,utente_id:prof.id,
-    ruolo:document.getElementById('tm_ruolo').value,telefono:document.getElementById('tm_tel').value
+    ruolo:document.getElementById('tm_ruolo').value,
+    telefono:document.getElementById('tm_tel').value,
+    email_prof:document.getElementById('tm_email_prof').value.trim()||null,
+    pec:document.getElementById('tm_pec').value.trim()||null
   });
   if(error){alert(error.message.includes('duplicate')?'Utente già nel team':error.message);return;}
   closeModal();showView('team');
@@ -3788,6 +3798,92 @@ async function salvaEditSospensione(id){
   }).eq('id',id);
   if(error){ alert(error.message); return; }
   closeModal(); showView('sospensioni');
+}
+
+
+// ============================================================
+// INVIO VIA MAILTO / PEC
+// ============================================================
+async function inviaViaPEC(tipo, id){
+  // Carica team con PEC
+  const {data:team} = await sb.from('cantiere_utenti')
+    .select('ruolo,pec,email_prof,utente_id')
+    .eq('cantiere_id',currentCantiere);
+  const {data:profili} = await sb.from('profiles')
+    .select('id,nome,cognome,email')
+    .in('id',(team||[]).map(t=>t.utente_id));
+  const profMap={};(profili||[]).forEach(p=>{profMap[p.id]=p;});
+  const teamConPec=(team||[]).map(t=>({...t,profilo:profMap[t.utente_id]||{}}));
+
+  let oggetto='', corpo='', destinatari=[], cc=[];
+
+  if(tipo==='ods'){
+    const {data:o} = await sb.from('ods').select('*').eq('id',id).single();
+    if(!o) return;
+    oggetto = encodeURIComponent(`ODS ${o.numero} — ${o.oggetto}`);
+    corpo = encodeURIComponent(
+      `ORDINE DI SERVIZIO ${o.numero}\n`+
+      `Data: ${fmt(o.data)}\n`+
+      `Cantiere: ${getCantiereObj()?.nome||''}\n\n`+
+      `Oggetto: ${o.oggetto}\n\n`+
+      `${o.corpo||''}\n\n`+
+      `---\nEmesso dal Direttore dei Lavori\n`+
+      `Trasmesso tramite GestioneCantiere`
+    );
+    // Destinatario principale: DT Impresa
+    const imp = teamConPec.find(t=>t.ruolo==='dt_impresa');
+    const pecImp = imp?.pec || imp?.profilo?.email || '';
+    // CC: RUP
+    const rup = teamConPec.find(t=>t.ruolo==='rup');
+    const pecRup = rup?.pec || rup?.profilo?.email || '';
+    if(pecImp) destinatari.push(pecImp);
+    if(pecRup) cc.push(pecRup);
+  } else if(tipo==='comunicazione'){
+    const {data:co} = await sb.from('comunicazioni').select('*').eq('id',id).single();
+    if(!co) return;
+    const tipoLabel = {nota:'NOTA',richiesta:'RICHIESTA',diffida:'DIFFIDA'}[co.tipo]||co.tipo.toUpperCase();
+    oggetto = encodeURIComponent(`${tipoLabel} — ${co.oggetto}`);
+    corpo = encodeURIComponent(
+      `${tipoLabel}\n`+
+      `Data: ${fmt(co.data)}\n`+
+      `Cantiere: ${getCantiereObj()?.nome||''}\n\n`+
+      `Oggetto: ${co.oggetto}\n\n`+
+      `${co.testo||''}\n\n`+
+      `---\nDa: ${co.mittente||''}\n`+
+      `Trasmesso tramite GestioneCantiere`
+    );
+    // Destinatari in base ai ruoli indicati nella comunicazione
+    const dest = co.destinatari||[];
+    const ruoliDestinatari = {
+      'DL':'dl','RUP':'rup','DT Impresa':'dt_impresa','DO':'do'
+    };
+    dest.forEach(d=>{
+      const ruolo = ruoliDestinatari[d];
+      if(!ruolo) return;
+      const m = teamConPec.find(t=>t.ruolo===ruolo);
+      const addr = m?.pec || m?.email_prof || m?.profilo?.email || '';
+      if(addr && !destinatari.includes(addr)) destinatari.push(addr);
+    });
+  }
+
+  if(!destinatari.length){
+    alert('Nessun indirizzo PEC/email trovato per i destinatari.\nAggiorna i dati del team nella sezione Team cantiere.');
+    return;
+  }
+
+  const to = destinatari.join(',');
+  const ccStr = cc.length ? `&cc=${cc.join(',')}` : '';
+  const mailto = `mailto:${to}?subject=${oggetto}${ccStr}&body=${corpo}`;
+
+  // Verifica che l'URL sia valido prima di aprirlo
+  if(mailto.length > 8000){
+    // Testo troppo lungo per mailto — apre senza body e avvisa
+    const mailtoShort = `mailto:${to}?subject=${oggetto}${ccStr}`;
+    alert('Il testo è troppo lungo per il client email.\nVerrà aperto il client con oggetto e destinatario preimpostati.\nCopia manualmente il testo dall\'app.');
+    window.open(mailtoShort, '_blank');
+  } else {
+    window.open(mailto, '_blank');
+  }
 }
 
 // ============================================================
