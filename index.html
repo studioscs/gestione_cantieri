@@ -3659,12 +3659,14 @@ async function salvaMembro(){
   const {data:prof, error:e1} = await sb.from('profiles').select('id,nome,cognome').eq('email',email).single();
   if(e1||!prof){ alert('Nessun utente registrato con questa email. Deve prima registrarsi.'); return; }
 
-  // Aggiorna nome/cognome nel profilo se l'utente li ha inseriti/modificati
+  // Aggiorna SEMPRE nome e cognome nel profilo — sovrascrive dati del signup
   if(nome || cognome){
     await sb.from('profiles').update({
       nome: nome || prof.nome,
       cognome: cognome || prof.cognome
     }).eq('id', prof.id);
+  } else if(prof.nome || prof.cognome){
+    // Se non inseriti nel form, mantieni quelli esistenti senza toccarli
   }
 
   const {error} = await sb.from('cantiere_utenti').insert({
@@ -3738,14 +3740,12 @@ async function salvaEditMembro(membroId, utenteId){
   const nome    = document.getElementById('em_nome').value.trim();
   const cognome = document.getElementById('em_cognome').value.trim();
 
-  // Aggiorna profilo (nome e cognome)
-  if(nome || cognome){
-    const {error:ep} = await sb.from('profiles').update({
-      nome: nome||null,
-      cognome: cognome||null
-    }).eq('id', utenteId);
-    if(ep){ alert('Errore aggiornamento profilo: '+ep.message); return; }
-  }
+  // Aggiorna SEMPRE nome e cognome nel profilo (sovrascrive quanto inserito al signup)
+  const {error:ep} = await sb.from('profiles').update({
+    nome: nome||null,
+    cognome: cognome||null
+  }).eq('id', utenteId);
+  if(ep){ alert('Errore aggiornamento profilo: '+ep.message); return; }
 
   // Aggiorna cantiere_utenti (ruolo, tel, pec, email_prof)
   const aggiornamento = {
