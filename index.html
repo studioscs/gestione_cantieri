@@ -1647,14 +1647,14 @@ async function renderTeam(){
     const {data:profs} = await sb.from('profiles').select('id,nome,cognome,email').in('id',ids);
     (profs||[]).forEach(p=>{ profili[p.id]=p; });
   }
-  if(!team.length){ html += `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--muted)">Nessun membro</td></tr>`; }
+  if(!team.length){ html += `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--muted)">Nessun membro</td></tr>`; }
   else team.forEach(t=>{ t.profilo = profili[t.utente_id] || {};
     const p=t.profilo||{};
     const nome = `${p.nome||''} ${p.cognome||''}`.trim() || p.email || '—';
     html += `<tr><td><strong>${esc(nome)}</strong></td><td>${roleBadge(t.ruolo)}</td>
       <td style="font-size:11px"><a href="mailto:${esc(p.email||'')}" style="color:var(--accent)">${esc(p.email||'—')}</a></td>
-      <td style="font-size:11px">${t.email_prof?`<a href="mailto:${esc(t.email_prof)}" style="color:var(--accent)">${esc(t.email_prof)}</a>`:'—'}</td>
-      <td style="font-size:11px">${t.pec?`<a href="mailto:${esc(t.pec)}" style="color:var(--accent)">${esc(t.pec)}</a>`:'—'}</td>
+      <td style="font-size:11px">${t.email_prof?'<a href="mailto:'+esc(t.email_prof)+'" style="color:var(--accent)">'+esc(t.email_prof)+'</a>':'—'}</td>
+      <td style="font-size:11px">${t.pec?'<a href="mailto:'+esc(t.pec)+'" style="color:var(--accent)">'+esc(t.pec)+'</a>':'—'}</td>
       <td style="font-size:11px">${esc(t.telefono||'—')}</td>
       <td>${currentRole==='dl'&&t.utente_id!==currentUser.id?`<button class="btn btn-danger btn-sm" onclick="eliminaMembro('${t.id}','${esc(nome)}')">Rimuovi</button>`:'—'}</td></tr>`;
   });
