@@ -3748,14 +3748,24 @@ async function salvaEditMembro(membroId, utenteId){
   }
 
   // Aggiorna cantiere_utenti (ruolo, tel, pec, email_prof)
-  const {error} = await sb.from('cantiere_utenti').update({
-    ruolo:       document.getElementById('em_ruolo').value,
-    telefono:    document.getElementById('em_tel').value.trim()||null,
-    email_prof:  document.getElementById('em_email_prof').value.trim()||null,
-    pec:         document.getElementById('em_pec').value.trim()||null
-  }).eq('id', membroId);
-  if(error){ alert(error.message); return; }
-
+  const aggiornamento = {
+    ruolo:      document.getElementById('em_ruolo').value,
+    telefono:   document.getElementById('em_tel').value.trim()||null,
+    email_prof: document.getElementById('em_email_prof').value.trim()||null,
+    pec:        document.getElementById('em_pec').value.trim()||null
+  };
+  const {data:upd, error} = await sb.from('cantiere_utenti')
+    .update(aggiornamento)
+    .eq('id', membroId)
+    .select();
+  if(error){
+    alert('Errore salvataggio: '+error.message+'\n\nCodice: '+error.code);
+    return;
+  }
+  if(!upd||upd.length===0){
+    alert('Nessuna riga aggiornata — verifica le policy RLS su Supabase.\n\nEsegui su SQL Editor:\ncreate policy cu_update on public.cantiere_utenti for update using (auth.uid() in (select utente_id from public.cantiere_utenti where cantiere_id = cantiere_utenti.cantiere_id and ruolo = \'dl\'));');
+    return;
+  }
   closeModal();
   showView('team');
 }
