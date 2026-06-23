@@ -322,6 +322,23 @@ async function onLoggedIn(){
   const displayName = (currentUser.nome || currentUser.cognome) ? `${currentUser.nome} ${currentUser.cognome}`.trim() : currentUser.email;
   document.getElementById('topbarUser').textContent = displayName;
   await loadMyCantieri();
+  if(myCantieri.length === 0){
+    // Utente registrato ma non ancora aggiunto a nessun cantiere dal DL
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('appScreen').classList.add('hidden');
+    document.getElementById('authMsg').innerHTML =
+      '<div style="background:#FFF3CD;border:1px solid #FFC107;border-radius:6px;padding:14px;margin-top:12px;font-size:13px">' +
+      '<strong>Accesso in attesa di autorizzazione</strong><br><br>' +
+      'La tua registrazione è avvenuta con successo.<br>' +
+      'Sei loggato come: <strong>' + currentUser.email + '</strong><br><br>' +
+      'Per accedere ai cantieri devi essere aggiunto al team dal Direttore dei Lavori.<br>' +
+      'Contatta il DL e comunicagli l\'email con cui ti sei registrato.' +
+      '<br><br><button onclick="sb.auth.signOut().then(()=>location.reload())" ' +
+      'style="background:#856404;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">' +
+      'Esci e attendi autorizzazione</button>' +
+      '</div>';
+    return;
+  }
   showView('cantieri');
 }
 
@@ -3771,9 +3788,11 @@ async function salvaEditMembro(membroId, utenteId){
 }
 
 async function eliminaMembro(membroId, nomeMembro){
-  if(!confirm(`Rimuovere ${nomeMembro} dal team di questo cantiere?`)) return;
+  if(!confirm(`Rimuovere ${nomeMembro} dal team di questo cantiere?\nL'utente perderà immediatamente l'accesso a questo cantiere.`)) return;
   const {error} = await sb.from('cantiere_utenti').delete().eq('id', membroId);
   if(error){ alert('Errore: ' + error.message); return; }
+  // Ricarica il team e aggiorna il selettore cantieri
+  await loadMyCantieri();
   showView('team');
 }
 
