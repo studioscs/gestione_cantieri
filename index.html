@@ -460,8 +460,11 @@ async function renderCantieri(){
     const perc = tot ? Math.round(ver/tot*100) : 0;
     html += `<div class="card"><div class="card-header"><div><div class="card-title">${esc(c.nome)}</div>
       <div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(c.stazione_appaltante||'')} • ${esc(c.impresa||'')}</div></div>
-      <div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="jumpToCantiere('${c.id}')">Apri cantiere</button>
-      ${r.ruolo==='dl'||r.ruolo==='rup'?`<button class="btn btn-secondary btn-sm" onclick="openModalEditCantiere('${c.id}')">✏️</button>`:''}</div></div>
+      <div class="btn-group">
+        <button class="btn btn-secondary btn-sm" onclick="jumpToCantiere('${c.id}')">Apri cantiere</button>
+        ${c.link_box?`<a href="${c.link_box}" target="_blank" class="btn btn-secondary btn-sm">📷 Foto</a>`:''}
+        ${r.ruolo==='dl'||r.ruolo==='rup'?`<button class="btn btn-secondary btn-sm" onclick="openModalEditCantiere('${c.id}')">✏️</button>`:''}
+      </div></div>
       <div class="form-grid-3" style="gap:12px;margin-bottom:16px">
         <div><div class="form-label">CIG</div><div style="font-size:13px;font-weight:600">${esc(c.cig||'—')}</div></div>
         <div><div class="form-label">CUP</div><div style="font-size:13px;font-weight:600">${esc(c.cup||'—')}</div></div>
@@ -3074,6 +3077,10 @@ function openModalNuovoCantiere(){
       <div class="form-group span-2"><label class="form-label">Estremi del contratto</label>
         <input class="form-control" id="f_estremi" placeholder="Es. Rep. n. 123 del 01/01/2024 — Registro Particolare n. 456">
         <div class="form-hint" style="font-size:11px;color:#ADB5BD">Repertorio, data stipula, CIG, riferimento atto</div>
+      </div>
+      <div class="form-group span-2"><label class="form-label">Cartella foto Box</label>
+        <input class="form-control" id="f_link_box" placeholder="https://app.box.com/folder/...">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Link condiviso della cartella Box per le foto del cantiere — viene creata automaticamente su Box</div>
       </div></div>
     <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" id="saveCantBtn" onclick="salvaCantiere()">Salva cantiere</button></div>`);
 }
@@ -3092,6 +3099,7 @@ async function salvaCantiere(){
     impresa:document.getElementById('f_impresa').value.trim(),importo,
     stato:document.getElementById('f_stato').value,
     estremi_contratto:document.getElementById('f_estremi').value.trim()||null,
+    link_box:document.getElementById('f_link_box').value.trim()||null,
     data_consegna:document.getElementById('f_dc').value||null,
     data_fine_contratto:document.getElementById('f_df').value||null,
     data_fine_aggiornata:document.getElementById('f_df').value||null,
@@ -3149,6 +3157,10 @@ function openModalEditCantiere(id){
       <div class="form-group span-2"><label class="form-label">Estremi del contratto</label>
         <input class="form-control" id="e_estremi" value="${esc(c.estremi_contratto||'')}" placeholder="Es. Rep. n. 123 del 01/01/2024">
       </div>
+      <div class="form-group span-2"><label class="form-label">Cartella foto Box</label>
+        <input class="form-control" id="e_link_box" value="${esc(c.link_box||'')}" placeholder="https://app.box.com/folder/...">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Link condiviso della cartella Box per le foto del cantiere</div>
+      </div>
     </div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
@@ -3168,7 +3180,8 @@ async function salvaEditCantiere(id){
     stato: document.getElementById('e_stato').value,
     data_consegna: document.getElementById('e_dc').value||null,
     data_fine_contratto: document.getElementById('e_dfc').value||null,
-    estremi_contratto: document.getElementById('e_estremi').value.trim()||null
+    estremi_contratto: document.getElementById('e_estremi').value.trim()||null,
+    link_box: document.getElementById('e_link_box').value.trim()||null
   }).eq('id',id);
   if(error){alert(error.message);return;}
   closeModal();await loadMyCantieri();showView('cantieri');
