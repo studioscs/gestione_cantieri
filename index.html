@@ -1985,6 +1985,7 @@ async function renderListe(){
           ${(canEditDL||canEditImp)?`<button class="btn btn-danger btn-sm" onclick="eliminaLista('${ls.id}')">&#128465;</button>`:''}
           ${(currentRole==='dt_impresa'&&!isVerificata&&!isInviata)?`<button class="btn btn-primary btn-sm" onclick="inviaAlDL('${ls.id}')">Invia al DL</button>`:''}
           ${(!isVerificata && canEditDL)?`<button class="btn btn-primary btn-sm" onclick="verificaLista('${ls.id}')">&#10003; Verifica DL</button>`:''}
+          ${(isVerificata && canEditDL)?`<button class="btn btn-secondary btn-sm" onclick="riapriLista('${ls.id}')">&#9998; Modifica e ri-verifica</button>`:''}
         </div>
       </div>
       ${ls.note_generali?`<div style="font-size:12px;color:var(--muted);margin-bottom:12px;font-style:italic">${esc(ls.note_generali)}</div>`:''}
@@ -2217,6 +2218,20 @@ async function inviaAlDL(listaId){
 }
 
 // ---- VERIFICA DL → aggiorna giornale ----
+
+async function riapriLista(listaId){
+  if(!confirm('Riaprire questa lista per modificarla?\n\nPotrai modificare i giorni e poi ri-verificare per aggiornare il Giornale dei Lavori.')) return;
+
+  const {error} = await sb.from('liste_settimanali').update({
+    stato: 'bozza',
+    verificata_da: null,
+    verificata_at: null
+  }).eq('id', listaId);
+
+  if(error){ alert('Errore: '+error.message); return; }
+  showView('liste');
+}
+
 async function verificaLista(listaId){
   if(!confirm('Verificare questa lista?\nLe lavorazioni verranno registrate nel Giornale dei Lavori per ogni giorno compilato.')) return;
   const {data:righe} = await sb.from('liste_righe').select('*').eq('lista_id',listaId).order('data');
