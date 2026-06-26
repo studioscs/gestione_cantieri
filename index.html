@@ -4334,39 +4334,39 @@ async function generaReportSA(cantiereId){
 
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:10px;color:#212529;background:white}
-  .intestazione{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 28px 10px;border-bottom:3px solid #1F3864}
+  .intestazione{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 28px 10px;border-bottom:3px solid #2C4A7C}
   .intestazione-logo{display:flex;align-items:center;gap:12px}
   .intestazione-logo img{height:50px}
-  .studio-info{font-size:9px;color:#78909C;line-height:1.6}
-  .studio-info strong{font-size:11px;color:#1F3864;font-weight:700;display:block;margin-bottom:2px}
+  .studio-info{font-size:9px;color:#95A8B0;line-height:1.6}
+  .studio-info strong{font-size:11px;color:#2C4A7C;font-weight:700;display:block;margin-bottom:2px}
   .intestazione-iso img{height:50px}
-  .striscia{background:#8DB04A;height:3px;margin-bottom:0}
-  .doc-title{background:#1F3864;color:white;padding:7px 28px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .striscia{background:#A8C87A;height:3px;margin-bottom:0}
+  .doc-title{background:#2C4A7C;color:white;padding:7px 28px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
   .doc-title h1{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
   .doc-title .ref{font-size:8.5px;opacity:.85;text-align:right;line-height:1.6}
   .scheda{margin:0 28px 12px;border:1px solid #dee2e6;border-radius:3px;overflow:hidden}
   .sez-hdr{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:4px 10px;color:white}
-  .sez-hdr.blu{background:#1F3864}.sez-hdr.verde{background:#8DB04A}.sez-hdr.grigio{background:#78909C}
+  .sez-hdr.blu{background:#2C4A7C}.sez-hdr.verde{background:#A8C87A}.sez-hdr.grigio{background:#95A8B0}
   .scheda td{padding:4px 10px;font-size:9.5px;border-bottom:1px solid #f0f0f0;vertical-align:top}
-  .scheda td.lab{font-weight:600;color:#78909C;width:170px;white-space:nowrap}
+  .scheda td.lab{font-weight:600;color:#95A8B0;width:170px;white-space:nowrap}
   .kpi-row{display:flex;gap:10px;margin:0 28px 12px}
   .kpi-box{flex:1;border:1px solid #dee2e6;border-radius:3px;padding:8px 10px;text-align:center}
-  .kpi-box .v{font-size:17px;font-weight:700;color:#1F3864;line-height:1}
-  .kpi-box .v.g{color:#8DB04A}.kpi-box .v.gr{color:#78909C}
-  .kpi-box .l{font-size:8px;color:#78909C;text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+  .kpi-box .v{font-size:17px;font-weight:700;color:#2C4A7C;line-height:1}
+  .kpi-box .v.g{color:#A8C87A}.kpi-box .v.gr{color:#95A8B0}
+  .kpi-box .l{font-size:8px;color:#95A8B0;text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
   .sezione{margin:0 28px 12px;page-break-inside:avoid}
   table.t{width:100%;border-collapse:collapse;font-size:9px}
-  table.t th{background:#1F3864;color:white;padding:4px 7px;font-size:8.5px;text-transform:uppercase;letter-spacing:.04em;text-align:left;font-weight:600}
+  table.t th{background:#2C4A7C;color:white;padding:4px 7px;font-size:8.5px;text-transform:uppercase;letter-spacing:.04em;text-align:left;font-weight:600}
   table.t td{padding:3px 7px;border-bottom:1px solid #f0f0f0;vertical-align:top}
   table.t tr:nth-child(even) td{background:#fafafa}
-  table.t.verde th{background:#8DB04A}
-  table.t.grigio th{background:#78909C}
+  table.t.verde th{background:#A8C87A}
+  table.t.grigio th{background:#95A8B0}
   .firma-row{display:flex;gap:0;margin:14px 28px 0;border:1px solid #dee2e6;border-radius:3px;overflow:hidden}
   .firma-box{flex:1;padding:8px 10px;border-right:1px solid #dee2e6;text-align:center}
   .firma-box:last-child{border-right:none}
-  .firma-box .flabel{font-size:8px;color:#78909C;text-transform:uppercase;letter-spacing:.05em;margin-bottom:28px}
+  .firma-box .flabel{font-size:8px;color:#95A8B0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:28px}
   .firma-box .fname{font-size:9px;font-weight:600;border-top:1px solid #dee2e6;padding-top:4px;margin-top:4px}
-  .footer-doc{margin:12px 28px 0;padding-top:8px;border-top:1px solid #dee2e6;display:flex;justify-content:space-between;font-size:8px;color:#78909C}
+  .footer-doc{margin:12px 28px 0;padding-top:8px;border-top:1px solid #dee2e6;display:flex;justify-content:space-between;font-size:8px;color:#95A8B0}
   @page{margin:12mm;size:A4}
   @media print{body{font-size:9px}.no-print{display:none}tr{page-break-inside:avoid}.sezione{page-break-inside:avoid}}
   </style></head><body>
@@ -4452,7 +4452,7 @@ async function generaReportSA(cantiereId){
       <td><strong>${fmtEur(s.netto_iva_calcolato||s.netto_iva_inclusa||s.netto_calcolato||0)}</strong></td>
       <td>${esc(s.stato||'—')}</td>
     </tr>`).join('')}
-    <tr style="background:#EBF3FB"><td colspan="3"><strong>TOTALE</strong></td>
+    <tr style="background:#EEF3FA"><td colspan="3"><strong>TOTALE</strong></td>
       <td><strong>${fmtEur(totSalLordo)}</strong></td>
       <td></td><td></td>
       <td><strong>${fmtEur(totSalNetto)}</strong></td>
@@ -4570,7 +4570,7 @@ async function generaReportGiornale(cantiereId){
       const dF=new Date(giorni[j-1]+'T00:00:00').toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
       const lbl=num===1?`${dI} &mdash; giorno non lavorato`:`Dal ${dI} al ${dF} &mdash; ${num} giorni non lavorati`;
       righeHtml+=`<tr style="background:#F5F5F5">
-        <td colspan="9" style="padding:5px 10px;font-size:8.5px;color:#78909C;font-style:italic;border-left:3px solid #dee2e6;text-align:center;letter-spacing:.02em">${lbl}</td>
+        <td colspan="9" style="padding:5px 10px;font-size:8.5px;color:#95A8B0;font-style:italic;border-left:3px solid #dee2e6;text-align:center;letter-spacing:.02em">${lbl}</td>
       </tr>`;
       i=j;continue;
     }
@@ -4586,24 +4586,24 @@ async function generaReportGiornale(cantiereId){
       const ditta=m.ditta_nome?m.ditta_nome.replace(/^\[.*?\]\s*/,''):'';
       const dist=m.distacco?' <em style="color:#856404">[dist.]</em>':'';
       return `<div style="margin-bottom:1px"><strong>${esc(m.figura||'')}</strong> &times;${m.num||1}${dist}`+
-        (ditta?`<br><span style="color:#78909C;font-size:8px">${esc(ditta)}</span>`:'')+'</div>';
+        (ditta?`<br><span style="color:#95A8B0;font-size:8px">${esc(ditta)}</span>`:'')+'</div>';
     }).join('')||'—';
     const mezziStr=mezzi.join(', ')||'—';
     const bgRow=isFest?'#FAFAFA':'white';
     righeHtml+=`
-    <tr style="background:${bgRow};border-left:3px solid #1F3864">
+    <tr style="background:${bgRow};border-left:3px solid #2C4A7C">
       <td style="vertical-align:top;white-space:nowrap">
-        <strong style="font-size:10px;color:#1F3864">${dataFmt}</strong><br>
-        <span style="font-size:8px;color:#78909C;text-transform:capitalize">${gg}</span>
+        <strong style="font-size:10px;color:#2C4A7C">${dataFmt}</strong><br>
+        <span style="font-size:8px;color:#95A8B0;text-transform:capitalize">${gg}</span>
       </td>
       <td style="vertical-align:top;font-size:9px">${esc(g.redattore||'—')}</td>
       <td style="vertical-align:top;font-size:9px">${esc(g.meteo||'—')}</td>
       <td style="vertical-align:top;font-size:9px;white-space:nowrap">${g.temp_min??'—'}° / ${g.temp_max??'—'}°</td>
-      <td style="vertical-align:top;font-size:9px">${maeHtml}<div style="font-size:8px;color:#78909C;margin-top:2px"><strong>Tot: ${totOp}</strong></div></td>
+      <td style="vertical-align:top;font-size:9px">${maeHtml}<div style="font-size:8px;color:#95A8B0;margin-top:2px"><strong>Tot: ${totOp}</strong></div></td>
       <td style="vertical-align:top;font-size:9px">${mezziStr}</td>
-      <td style="vertical-align:top;font-size:9px;white-space:pre-wrap">${esc(g.lavorazioni||'—')}</td>
-      <td style="vertical-align:top;font-size:9px">${esc(g.osservazioni||'')}</td>
-      <td style="vertical-align:top;font-size:9px;color:#721C24">${esc(g.anomalie||'')}</td>
+      <td style="vertical-align:top;font-size:9px;word-break:break-word;overflow-wrap:break-word">${esc(g.lavorazioni||'—')}</td>
+      <td style="vertical-align:top;font-size:9px;word-break:break-word">${esc(g.osservazioni||'')}</td>
+      <td style="vertical-align:top;font-size:9px;color:#9B2335;word-break:break-word">${esc(g.anomalie||'')}</td>
     </tr>`;
     i++;
   }
@@ -4615,32 +4615,32 @@ async function generaReportGiornale(cantiereId){
 
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:9.5px;color:#212529;background:white}
-  .intestazione{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 20px 10px;border-bottom:3px solid #1F3864}
+  .intestazione{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 20px 10px;border-bottom:3px solid #2C4A7C}
   .intestazione-logo{display:flex;align-items:center;gap:12px}
   .intestazione-logo img{height:48px}
-  .studio-info{font-size:8.5px;color:#78909C;line-height:1.6}
-  .studio-info strong{font-size:10.5px;color:#1F3864;font-weight:700;display:block;margin-bottom:2px}
+  .studio-info{font-size:8.5px;color:#95A8B0;line-height:1.6}
+  .studio-info strong{font-size:10.5px;color:#2C4A7C;font-weight:700;display:block;margin-bottom:2px}
   .intestazione-iso img{height:48px}
-  .striscia{background:#8DB04A;height:3px}
-  .doc-title{background:#1F3864;color:white;padding:7px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .striscia{background:#A8C87A;height:3px}
+  .doc-title{background:#2C4A7C;color:white;padding:7px 20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
   .doc-title h1{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
   .doc-title .ref{font-size:8px;opacity:.85;text-align:right;line-height:1.6}
   .scheda{margin:0 20px 10px;border:1px solid #dee2e6;border-radius:3px;overflow:hidden}
   .sez-hdr{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:4px 10px;color:white}
-  .sez-hdr.blu{background:#1F3864}.sez-hdr.verde{background:#8DB04A}.sez-hdr.grigio{background:#78909C}
+  .sez-hdr.blu{background:#2C4A7C}.sez-hdr.verde{background:#A8C87A}.sez-hdr.grigio{background:#95A8B0}
   .scheda td{padding:3px 10px;font-size:9px;border-bottom:1px solid #f0f0f0;vertical-align:top}
-  .scheda td.lab{font-weight:600;color:#78909C;width:160px;white-space:nowrap}
+  .scheda td.lab{font-weight:600;color:#95A8B0;width:160px;white-space:nowrap}
   .kpi-row{display:flex;gap:8px;margin:0 20px 10px}
   .kpi-box{flex:1;border:1px solid #dee2e6;border-radius:3px;padding:6px 8px;text-align:center}
-  .kpi-box .v{font-size:16px;font-weight:700;color:#1F3864;line-height:1}
-  .kpi-box .v.g{color:#8DB04A}.kpi-box .v.gr{color:#78909C}
-  .kpi-box .l{font-size:7.5px;color:#78909C;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+  .kpi-box .v{font-size:16px;font-weight:700;color:#2C4A7C;line-height:1}
+  .kpi-box .v.g{color:#A8C87A}.kpi-box .v.gr{color:#95A8B0}
+  .kpi-box .l{font-size:7.5px;color:#95A8B0;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
   .sezione{margin:0 20px 10px}
   table.t{width:100%;border-collapse:collapse;font-size:8.5px;table-layout:fixed}
-  table.t th{background:#1F3864;color:white;padding:4px 6px;font-size:8px;text-transform:uppercase;letter-spacing:.04em;text-align:left;font-weight:600}
-  table.t td{padding:4px 6px;border-bottom:1px solid #eee;vertical-align:top;word-wrap:break-word}
+  table.t th{background:#2C4A7C;color:white;padding:4px 6px;font-size:8px;text-transform:uppercase;letter-spacing:.04em;text-align:left;font-weight:600}
+  table.t td{padding:4px 6px;border-bottom:1px solid #eee;vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;hyphens:auto}
   table.t tr:nth-child(even) td{background:#fafafa}
-  .footer-doc{margin:10px 20px 0;padding-top:6px;border-top:1px solid #dee2e6;display:flex;justify-content:space-between;font-size:7.5px;color:#78909C}
+  .footer-doc{margin:10px 20px 0;padding-top:6px;border-top:1px solid #dee2e6;display:flex;justify-content:space-between;font-size:7.5px;color:#95A8B0}
   @page{margin:10mm;size:A4 landscape}
   @media print{body{font-size:8.5px}.no-print{display:none}}
 
