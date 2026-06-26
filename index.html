@@ -598,20 +598,20 @@ async function renderGiornale(){
   html += `<div class="card" style="padding:0;overflow:hidden">
     <table style="table-layout:fixed">
       <colgroup>
-        <col style="width:110px">
-        <col style="width:70px">
-        <col style="width:80px">
-        <col style="width:60px">
-        <col style="width:180px">
+        <col style="width:100px">
+        <col style="width:65px">
+        <col style="width:75px">
+        <col style="width:150px">
+        <col style="width:150px">
         <col style="width:auto">
-        <col style="width:60px">
-        <col style="width:90px">
+        <col style="width:55px">
+        <col style="width:110px">
       </colgroup>
       <thead><tr>
         <th>Data</th>
         <th>Meteo</th>
         <th>Temp.</th>
-        <th style="text-align:center">Operai</th>
+        <th>Manodopera / Ditta</th>
         <th>Mezzi</th>
         <th>Lavorazioni</th>
         <th style="text-align:center">Note</th>
@@ -661,6 +661,14 @@ async function renderGiornale(){
       const mezziStr = mezzi.slice(0,2).join(', ')+(mezzi.length>2?` +${mezzi.length-2}`:'');
       const lavStr = (g.lavorazioni||'').substring(0,80)+(g.lavorazioni?.length>80?'…':'');
       const hasOss = !!(g.osservazioni||g.anomalie);
+      // Costruisce riepilogo manodopera con ditta
+      const maeHtml = mae.length ? mae.map(m=>{
+        const dittaLabel = m.ditta_nome ? m.ditta_nome.replace(/^\[.*?\]\s*/,'') : '';
+        const distLabel  = m.distacco ? ' <span style="color:#856404;font-size:9px">[dist.]</span>' : '';
+        return '<div style="margin-bottom:2px;font-size:11px">'+
+          '<strong>'+esc(m.figura||'')+'</strong> &times;'+( m.num||1)+distLabel+
+          (dittaLabel?'<br><span style="color:var(--muted);font-size:10px">'+esc(dittaLabel)+'</span>':'');
+      }).join('') : '—';
       html += `<tr style="background:${isToday?'#EBF3FB':'white'}" title="${data}">
         <td style="border-left:3px solid var(--accent)">
           <div style="font-weight:700;font-size:12px;color:var(--primary)">${dataFmt}</div>
@@ -668,11 +676,11 @@ async function renderGiornale(){
         </td>
         <td style="font-size:12px">${g.meteo||'—'}</td>
         <td style="font-size:11px;color:var(--muted)">${g.temp_min??'—'}° / ${g.temp_max??'—'}°</td>
-        <td style="text-align:center"><span style="font-size:14px;font-weight:700;color:var(--primary)">${totOp}</span></td>
+        <td style="vertical-align:top">${maeHtml}<div style="font-size:10px;color:var(--muted);margin-top:3px;font-weight:600">Tot: ${totOp}</div></td>
         <td style="font-size:11px;color:var(--muted)">${mezziStr||'—'}</td>
         <td style="font-size:12px;color:var(--text)">${lavStr||'—'}</td>
         <td style="text-align:center">${hasOss?'<span title="Osservazioni / Anomalie presenti">⚠️</span>':'—'}</td>
-        <td>${giornaleAccess()===true?`<div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="openModalEditGiornaleData('${g.id}','${data}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="copiaGiornoGiornale('${g.id}','${data}')" title="Copia su altro giorno">📋</button><button class="btn btn-danger btn-sm" onclick="eliminaRegistrazione('${g.id}','${data}')">🗑️</button></div>`:''}</td>
+        <td>${giornaleAccess()===true?`<div style="display:flex;flex-wrap:wrap;gap:2px"><button class="btn btn-secondary btn-sm" onclick="openModalEditGiornaleData('${g.id}','${data}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="copiaGiornoGiornale('${g.id}','${data}')" title="Copia">📋</button><button class="btn btn-danger btn-sm" onclick="eliminaRegistrazione('${g.id}','${data}')">🗑️</button></div>`:''}</td>
       </tr>`;
     } else {
       html += `<tr style="background:${isToday?'#EBF3FB':isFestivo?'#FAFAFA':'white'}" title="${data}">
