@@ -531,9 +531,18 @@ async function renderGiornale(){
   if(!currentCantiere) return noCantiere();
   const c = getCantiereObj();
 
+  // Stato comprimi: persiste durante la sessione
+  if(typeof window._giornaleComprimi === 'undefined') window._giornaleComprimi = false;
+  const comprimi = window._giornaleComprimi;
+
   let html = `<div class="section-header"><div><div class="page-title">Giornale dei Lavori</div>
     <div class="page-subtitle">${esc(c?.nome||'')} — tenuto a cura del Direttore dei Lavori</div></div>
-    ${giornaleAccess()===true?`<button class="btn btn-primary" onclick="openModalNuovaRegistrazione()">+ Nuova registrazione</button>`:''}</div>`;
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary" onclick="toggleGiornaleComprimi()">
+        ${comprimi ? '&#9660; Espandi giorni non lavorati' : '&#9650; Comprimi giorni non lavorati'}
+      </button>
+      ${giornaleAccess()===true?`<button class="btn btn-primary" onclick="openModalNuovaRegistrazione()">+ Nuova registrazione</button>`:''}
+    </div></div>`;
 
   if(giornaleAccess()==='read'){
     html += `<div class="alert alert-info">👁️ Visione in sola lettura — il Giornale è redatto dal DL e dai DO per delega. L'impresa può visualizzare ma non modificare.</div>`;
@@ -610,13 +619,40 @@ async function renderGiornale(){
       </tr></thead>
       <tbody>`;
 
-  giorni.forEach(data => {  // ordine crescente: primo giorno = consegna lavori
+  // Costruisce le righe con raggruppamento giorni non lavorati se comprimi=true
+  let i = 0;
+  while(i < giorni.length){
+    const data = giorni[i];
     const g = entriesMap[data];
     const d = new Date(data+'T00:00:00');
     const gg = d.toLocaleDateString('it-IT',{weekday:'short'});
     const dataFmt = d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'});
     const isToday = data === today();
     const isFestivo = d.getDay()===0||d.getDay()===6;
+
+    // Se modalità compressa e giorno non lavorato → raggruppa i consecutivi
+    if(comprimi && !g){
+      // Trova quanti giorni non lavorati consecutivi ci sono
+      let j = i;
+      while(j < giorni.length && !entriesMap[giorni[j]]){ j++; }
+      const numGiorni = j - i;
+      const dataInizioGruppo = giorni[i];
+      const dataFineGruppo = giorni[j-1];
+      const dInizio = new Date(dataInizioGruppo+'T00:00:00');
+      const dFine   = new Date(dataFineGruppo+'T00:00:00');
+      const fmtInizio = dInizio.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'});
+      const fmtFine   = dFine.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'});
+      const label = numGiorni === 1
+        ? `${fmtInizio} — non lavorato`
+        : `Dal ${fmtInizio} al ${fmtFine} — ${numGiorni} giorni non lavorati`;
+      html += `<tr style="background:#FAFAFA">
+        <td colspan="8" style="padding:6px 14px;font-size:11px;color:#ADB5BD;font-style:italic;border-left:3px solid #DEE2E6">
+          ${label}
+        </td>
+      </tr>`;
+      i = j;
+      continue;
+    }
 
     if(g){
       const mae = g.maestranze||[];
@@ -649,11 +685,18 @@ async function renderGiornale(){
         <td>${giornaleAccess()===true?`<button class="btn btn-primary btn-sm" onclick="openModalNuovaRegistrazioneData('${data}')" title="Aggiungi registrazione">+</button>`:''}</td>
       </tr>`;
     }
-  });
+    i++;
+  } // fine while giorni
 
   html += `</tbody></table></div>`;
 
   return html;
+}
+
+
+function toggleGiornaleComprimi(){
+  window._giornaleComprimi = !window._giornaleComprimi;
+  showView('giornale');
 }
 
 function openModalEditGiornaleData(id, data){
@@ -1940,7 +1983,7 @@ async function renderListe(){
   </div>`;
 
   const {data:liste, error} = await sb.from('liste_settimanali').select('*')
-    .eq('cantiere_id',currentCantiere).order('settimana_dal',{ascending:false});
+    .eq('cantiere_id',currentCantiere).order('settimana_dal',{ascending:true});
   if(error) return html + `<div class="alert alert-error">${esc(error.message)}</div>`;
 
   if(!liste || liste.length===0){
