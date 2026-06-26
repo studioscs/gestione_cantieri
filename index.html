@@ -672,7 +672,7 @@ async function renderGiornale(){
         <td style="font-size:11px;color:var(--muted)">${mezziStr||'—'}</td>
         <td style="font-size:12px;color:var(--text)">${lavStr||'—'}</td>
         <td style="text-align:center">${hasOss?'<span title="Osservazioni / Anomalie presenti">⚠️</span>':'—'}</td>
-        <td>${giornaleAccess()===true?`<div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="openModalEditGiornaleData('${g.id}','${data}')">✏️</button><button class="btn btn-danger btn-sm" onclick="eliminaRegistrazione('${g.id}','${data}')">🗑️</button></div>`:''}</td>
+        <td>${giornaleAccess()===true?`<div class="btn-group"><button class="btn btn-secondary btn-sm" onclick="openModalEditGiornaleData('${g.id}','${data}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="copiaGiornoGiornale('${g.id}','${data}')" title="Copia su altro giorno">📋</button><button class="btn btn-danger btn-sm" onclick="eliminaRegistrazione('${g.id}','${data}')">🗑️</button></div>`:''}</td>
       </tr>`;
     } else {
       html += `<tr style="background:${isToday?'#EBF3FB':isFestivo?'#FAFAFA':'white'}" title="${data}">
@@ -693,6 +693,118 @@ async function renderGiornale(){
   return html;
 }
 
+
+
+// ============================================================
+// COPIA GIORNO — Giornale dei Lavori
+// ============================================================
+async function copiaGiornoGiornale(id, dataSorgente){
+  const {data:g} = await sb.from('giornale_lavori').select('*').eq('id',id).single();
+  if(!g){ alert('Impossibile caricare il giorno sorgente'); return; }
+
+  const {data:ditteList} = await sb.from('ditte').select('id,nome,tipo').eq('cantiere_id',currentCantiere).order('nome');
+  const tipoLabel = {appaltatrice:'App.',subappaltatrice:'Sub.',subaffidataria:'Subaff.'};
+  const ditteOptsHtml = '<option value="">— ditta —</option>'+(ditteList||[]).map(d=>`<option value="${d.id}">[${tipoLabel[d.tipo]||''}] ${esc(d.nome)}</option>`).join('');
+  window._ditteOptsHtml = ditteOptsHtml;
+
+  // Prepara righe manodopera pre-compilate
+  const mae = g.maestranze||[];
+  const mezzi = g.mezzi||[];
+  window._maeRowCount = Math.max(mae.length, 1);
+  window._mezzoRowCount = Math.max(mezzi.length, 1);
+
+  const maeRows = (mae.length ? mae : [{}]).map((m,i)=>`
+    <tr id="mae_row_${i}">
+      <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="mae_ditta_${i}">${ditteOptsHtml.replace(`value="${m.ditta_id}"`,`value="${m.ditta_id}" selected`)}</select></td>
+      <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_qual_${i}" value="${esc(m.figura||m.qualifica||'')}"></td>
+      <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px;text-align:center" type="number" min="1" id="mae_num_${i}" value="${m.num||1}"></td>
+      <td style="padding:3px;text-align:center"><input type="checkbox" id="mae_dist_${i}" ${m.distacco?'checked':''}></td>
+      <td style="padding:3px;text-align:center"><button type="button" class="btn btn-danger btn-sm" style="padding:2px 6px" onclick="rimuoviRigaMae(${i})">✕</button></td>
+    </tr>`).join('');
+
+  const mezziRows = (mezzi.length ? mezzi : ['']).map((m,i)=>`
+    <div style="display:flex;gap:6px;margin-bottom:4px" id="mezzo_row_${i}">
+      <input class="form-control" style="font-size:12px" id="mezzo_${i}" value="${esc(m||'')}" placeholder="es. Autobetoniera, Gru...">
+      <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="rimuoviMezzo(${i})">✕</button>
+    </div>`).join('');
+
+  // Calcola la data del giorno successivo non ancora registrato come suggerimento
+  const entries = await sb.from('giornale_lavori').select('data').eq('cantiere_id',currentCantiere);
+  const dateUsate = new Set((entries.data||[]).map(e=>e.data));
+  const dSorg = new Date(dataSorgente+'T00:00:00');
+  let suggerita = dataSorgente;
+  for(let k=1; k<=30; k++){
+    const dc = new Date(dSorg); dc.setDate(dc.getDate()+k);
+    const ds = dc.toISOString().split('T')[0];
+    if(!dateUsate.has(ds)){ suggerita = ds; break; }
+  }
+
+  openModal('Copia giorno — Giornale Lavori (da '+fmt(dataSorgente)+')', `
+    <div class="alert alert-info" style="font-size:12px">
+      📋 Dati copiati dal <strong>${fmt(dataSorgente)}</strong> — modifica ciò che è cambiato e scegli la data di destinazione.
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Data *</label>
+        <input class="form-control" type="date" id="gl_data" value="${suggerita}">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Suggerita: primo giorno successivo non ancora registrato</div>
+      </div>
+      <div class="form-group"><label class="form-label">Meteo</label>
+        <select class="form-control" id="gl_meteo">
+          ${['Soleggiato','Parzialmente nuvoloso','Nuvoloso','Pioggia','Vento forte','Neve'].map(m=>`<option${m===(g.meteo||'Soleggiato')?' selected':''}>${m}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Temp. min (°C)</label>
+        <input class="form-control" type="number" id="gl_tmin" value="${g.temp_min??''}">
+      </div>
+      <div class="form-group"><label class="form-label">Temp. max (°C)</label>
+        <input class="form-control" type="number" id="gl_tmax" value="${g.temp_max??''}">
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="form-label" style="margin:0">Manodopera presente</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiRigaMae()">+ Aggiungi riga</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--primary);color:white">
+          <th style="padding:6px 8px;width:32%">Ditta</th>
+          <th style="padding:6px 8px;width:28%">Qualifica / Figura</th>
+          <th style="padding:6px 8px;text-align:center;width:10%">N. op.</th>
+          <th style="padding:6px 8px;text-align:center;width:18%">Distacco</th>
+          <th style="padding:6px 8px;width:8%"></th>
+        </tr></thead>
+        <tbody id="gl_mae_body">${maeRows}</tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="form-label" style="margin:0">Mezzi / Attrezzature</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiMezzo()">+ Mezzo</button>
+      </div>
+      <div id="gl_mezzi_body">${mezziRows}</div>
+    </div>
+
+    <div style="margin-top:12px">
+      <label class="form-label">Lavorazioni eseguite *</label>
+      <textarea class="form-control" id="gl_lav" rows="4">${esc(g.lavorazioni||'')}</textarea>
+    </div>
+    <div class="form-grid" style="margin-top:10px">
+      <div class="form-group">
+        <label class="form-label">Osservazioni DL</label>
+        <textarea class="form-control" id="gl_oss" rows="2">${esc(g.osservazioni||'')}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Anomalie / Riserve</label>
+        <textarea class="form-control" id="gl_ano" rows="2">${esc(g.anomalie||'')}</textarea>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaRegistrazione()">Salva copia</button>
+    </div>`);
+}
 
 function toggleGiornaleComprimi(){
   window._giornaleComprimi = !window._giornaleComprimi;
