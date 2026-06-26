@@ -4601,9 +4601,9 @@ async function generaReportGiornale(cantiereId){
       <td style="vertical-align:top;font-size:9px;white-space:nowrap">${g.temp_min??'—'}° / ${g.temp_max??'—'}°</td>
       <td style="vertical-align:top;font-size:9px">${maeHtml}<div style="font-size:8px;color:#95A8B0;margin-top:2px"><strong>Tot: ${totOp}</strong></div></td>
       <td style="vertical-align:top;font-size:9px">${mezziStr}</td>
-      <td style="vertical-align:top;font-size:9px;word-break:break-word;overflow-wrap:break-word">${esc(g.lavorazioni||'—')}</td>
-      <td style="vertical-align:top;font-size:9px;word-break:break-word">${esc(g.osservazioni||'')}</td>
-      <td style="vertical-align:top;font-size:9px;color:#9B2335;word-break:break-word">${esc(g.anomalie||'')}</td>
+      <td style="vertical-align:top;font-size:9px">${esc(g.lavorazioni||'—')}</td>
+      <td style="vertical-align:top;font-size:9px">${esc(g.osservazioni||'')}</td>
+      <td style="vertical-align:top;font-size:9px;color:#9B2335">${esc(g.anomalie||'')}</td>
     </tr>`;
     i++;
   }
@@ -4636,9 +4636,9 @@ async function generaReportGiornale(cantiereId){
   .kpi-box .v.g{color:#A8C87A}.kpi-box .v.gr{color:#95A8B0}
   .kpi-box .l{font-size:7.5px;color:#95A8B0;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
   .sezione{margin:0 20px 10px}
-  table.t{width:100%;border-collapse:collapse;font-size:8.5px;table-layout:fixed}
+  table.t{width:100%;border-collapse:collapse;font-size:8.5px;table-layout:auto}
   table.t th{background:#2C4A7C;color:white;padding:4px 6px;font-size:8px;text-transform:uppercase;letter-spacing:.04em;text-align:left;font-weight:600}
-  table.t td{padding:4px 6px;border-bottom:1px solid #eee;vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;hyphens:auto}
+  table.t td{padding:4px 6px;border-bottom:1px solid #eee;vertical-align:top;overflow-wrap:break-word;word-wrap:break-word}
   table.t tr:nth-child(even) td{background:#fafafa}
   .footer-doc{margin:10px 20px 0;padding-top:6px;border-top:1px solid #dee2e6;display:flex;justify-content:space-between;font-size:7.5px;color:#95A8B0}
   @page{margin:10mm;size:A4 landscape}
@@ -4682,11 +4682,11 @@ async function generaReportGiornale(cantiereId){
   </div>
 
   <div class="sezione">
-    <table class="t" style="table-layout:fixed">
+    <table class="t">
       <colgroup>
-        <col style="width:80px"><col style="width:90px"><col style="width:70px">
-        <col style="width:55px"><col style="width:110px"><col style="width:90px">
-        <col style="width:auto"><col style="width:100px"><col style="width:90px">
+        <col style="width:85px"><col style="width:100px"><col style="width:65px">
+        <col style="width:50px"><col style="width:120px"><col style="width:80px">
+        <col><col style="width:110px"><col style="width:100px">
       </colgroup>
       <thead><tr>
         <th>Data</th><th>Redattore</th><th>Meteo</th><th>Temp.</th>
