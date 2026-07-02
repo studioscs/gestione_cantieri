@@ -1927,7 +1927,51 @@ async function renderVerbali(){
   return html;
 }
 
-function openModalNuovoVerbale(){
+// ============================================================
+// Collegamento Team cantiere -> compilazione automatica verbali
+// ============================================================
+// Ricalca lo stesso pattern gia' in uso altrove nel file (inviaViaPEC,
+// generaReportGiornale): cantiere_utenti (ruolo, utente_id) + profiles
+// (nome, cognome), unite lato client.
+async function getTeamRoster(cantiereId){
+  const roster = {};
+  if(!cantiereId) return roster;
+  try{
+    const {data:team, error} = await sb.from('cantiere_utenti')
+      .select('ruolo,utente_id')
+      .eq('cantiere_id',cantiereId);
+    if(error) throw error;
+    if(!team || !team.length) return roster;
+    const {data:profili, error:e2} = await sb.from('profiles')
+      .select('id,nome,cognome')
+      .in('id', team.map(t=>t.utente_id));
+    if(e2) throw e2;
+    const profMap = {}; (profili||[]).forEach(p=>{ profMap[p.id]=p; });
+    team.forEach(t=>{
+      if(roster[t.ruolo]) return; // primo trovato per ruolo se piu' persone condividono lo stesso ruolo
+      const p = profMap[t.utente_id];
+      if(p) roster[t.ruolo] = { id:p.id, nome:`${p.nome||''} ${p.cognome||''}`.trim() };
+    });
+  }catch(e){ console.error('getTeamRoster', e); }
+  return roster;
+}
+
+function formatPresentiFromTeam(team){
+  return Object.keys(team)
+    .filter(function(r){ return team[r] && team[r].nome; })
+    .map(function(r){ return team[r].nome+' ('+(ROLE_LABELS[r]||r)+')'; })
+    .join('\n');
+}
+
+async function openModalNuovoVerbale(){
+  const team = await getTeamRoster(currentCantiere);
+  const redattoreDefault = (team.dl && team.dl.nome) || ((currentUser.nome||'')+' '+(currentUser.cognome||'')+' ('+(ROLE_LABELS[currentRole]||'')+')');
+  const presentiDefault = formatPresentiFromTeam(team);
+  const teamDx = {
+    rup_nome: (team.rup && team.rup.nome) || '',
+    dt_impresa_nome: (team.dt_impresa && team.dt_impresa.nome) || '',
+    legale_rappresentante: (team.dt_impresa && team.dt_impresa.nome) || ''
+  };
   openModal('Nuovo Verbale', `
     <div class="form-grid">
       <div class="form-group">
@@ -1957,7 +2001,7 @@ function openModalNuovoVerbale(){
       </div>
       <div class="form-group">
         <label class="form-label">Redattore</label>
-        <input class="form-control" id="nv2_red" value="${(currentUser.nome||'')+' '+(currentUser.cognome||'')} (${ROLE_LABELS[currentRole]||''})">
+        <input class="form-control" id="nv2_red" value="${esc(redattoreDefault)}">
       </div>
       <div class="form-group span-2">
         <label class="form-label">Oggetto</label>
@@ -1970,18 +2014,18 @@ function openModalNuovoVerbale(){
       </div>
       <div class="form-group span-2">
         <label class="form-label">Presenti</label>
-        <div class="form-hint">Una persona per riga, formato "Nome (Ruolo)" &mdash; verranno riproposti come firmatari nel verbale PDF.</div>
-        <textarea class="form-control" id="nv2_pres" rows="2" placeholder="Ing. Rossi (DL)&#10;Geom. Bianchi (RUP/Committente)&#10;Ing. Verdi (DT Impresa)"></textarea>
+        <div class="form-hint">Precompilato dal Team cantiere (DL, RUP, DT Impresa...). Una persona per riga, formato "Nome (Ruolo)" &mdash; verranno riproposti come firmatari nel verbale PDF. Modifica o cancella liberamente.</div>
+        <textarea class="form-control" id="nv2_pres" rows="3" placeholder="Ing. Rossi (DL)&#10;Geom. Bianchi (RUP/Committente)&#10;Ing. Verdi (DT Impresa)">${esc(presentiDefault)}</textarea>
       </div>
     </div>
-    ${extraFieldsSopralluogoHtml('nv2')}
+    ${extraFieldsSopralluogoHtml('nv2', teamDx)}
     ${extraFieldsVerificaODSHtml('nv2')}
-    ${extraFieldsConsegnaLavoriHtml('nv2')}
-    ${extraFieldsConsegnaParzialeHtml('nv2')}
+    ${extraFieldsConsegnaLavoriHtml('nv2', teamDx)}
+    ${extraFieldsConsegnaParzialeHtml('nv2', teamDx)}
     ${extraFieldsConstatazioneLuoghiHtml('nv2')}
     ${extraFieldsCertUltimazioneHtml('nv2')}
     ${extraFieldsCertUltimazioneConOpereHtml('nv2')}
-    ${extraFieldsRiconsegnaAnticipataHtml('nv2')}
+    ${extraFieldsRiconsegnaAnticipataHtml('nv2', teamDx)}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaVerbale()">Salva verbale</button>
@@ -2017,6 +2061,13 @@ async function openModalEditVerbale(id){
   const {data:v} = await sb.from('verbali').select('*').eq('id',id).single();
   if(!v) return;
   const dx = v.dati_extra || {};
+  const team = await getTeamRoster(v.cantiere_id);
+  const dxWithTeam = Object.assign({}, dx, {
+    rup_nome: dx.rup_nome || (team.rup && team.rup.nome) || '',
+    dt_impresa_nome: dx.dt_impresa_nome || (team.dt_impresa && team.dt_impresa.nome) || '',
+    legale_rappresentante: dx.legale_rappresentante || (team.dt_impresa && team.dt_impresa.nome) || ''
+  });
+  const presentiValue = v.presenti || formatPresentiFromTeam(team);
   openModal('Modifica Verbale', `
     <div class="form-grid">
       <div class="form-group">
@@ -2060,17 +2111,17 @@ async function openModalEditVerbale(id){
       <div class="form-group span-2">
         <label class="form-label">Presenti</label>
         <div class="form-hint">Una persona per riga, formato "Nome (Ruolo)".</div>
-        <textarea class="form-control" id="ev2_pres" rows="2">${esc(v.presenti||'')}</textarea>
+        <textarea class="form-control" id="ev2_pres" rows="3">${esc(presentiValue)}</textarea>
       </div>
     </div>
-    ${extraFieldsSopralluogoHtml('ev2', dx)}
+    ${extraFieldsSopralluogoHtml('ev2', dxWithTeam)}
     ${extraFieldsVerificaODSHtml('ev2', dx)}
-    ${extraFieldsConsegnaLavoriHtml('ev2', dx)}
-    ${extraFieldsConsegnaParzialeHtml('ev2', dx)}
+    ${extraFieldsConsegnaLavoriHtml('ev2', dxWithTeam)}
+    ${extraFieldsConsegnaParzialeHtml('ev2', dxWithTeam)}
     ${extraFieldsConstatazioneLuoghiHtml('ev2', dx)}
     ${extraFieldsCertUltimazioneHtml('ev2', dx)}
     ${extraFieldsCertUltimazioneConOpereHtml('ev2', dx)}
-    ${extraFieldsRiconsegnaAnticipataHtml('ev2', dx)}
+    ${extraFieldsRiconsegnaAnticipataHtml('ev2', dxWithTeam)}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaEditVerbale('${id}')">Salva</button>
@@ -6007,17 +6058,10 @@ async function openModalGeneraVerbaleSospensione(sospId, tipoVerbale){
   if(!s) return;
   const c = getCantiereObj(s.cantiere_id);
 
-  // prova a suggerire il referente impresa dal team
-  let impresaRef = '';
-  try{
-    const {data:team} = await sb.from('cantiere_utenti').select('ruolo,utente_id').eq('cantiere_id',s.cantiere_id).eq('ruolo','dt_impresa');
-    if(team && team.length){
-      const {data:prof} = await sb.from('profiles').select('nome,cognome').eq('id',team[0].utente_id).single();
-      if(prof) impresaRef = `${prof.nome||''} ${prof.cognome||''}`.trim();
-    }
-  }catch(e){}
-
-  const redattoreDefault = `${currentUser.nome||''} ${currentUser.cognome||''}`.trim() + (ROLE_LABELS[currentRole]?` (${ROLE_LABELS[currentRole]})`:'');
+  // suggerisce redattore e referente impresa dal Team cantiere
+  const team = await getTeamRoster(s.cantiere_id);
+  const impresaRef = (team.dt_impresa && team.dt_impresa.nome) || '';
+  const redattoreDefault = (team.dl && team.dl.nome) || (`${currentUser.nome||''} ${currentUser.cognome||''}`.trim() + (ROLE_LABELS[currentRole]?` (${ROLE_LABELS[currentRole]})`:''));
   const isRipresa = tipoVerbale==='ripresa';
 
   let campiSpecifici = '';
@@ -6057,7 +6101,7 @@ async function openModalGeneraVerbaleSospensione(sospId, tipoVerbale){
         <input class="form-control" id="gvs_comune" value="${esc(c?.stazione_appaltante||'')}"></div>
       ${campiSpecifici}
       <div class="form-group span-2"><label class="form-label">Presenti (uno per riga, formato "Nome (Ruolo)")</label>
-        <textarea class="form-control" id="gvs_presenti" rows="3" placeholder="Ing. Francesco Stortoni (Direttore dei Lavori)&#10;Sig. Mario Rossi (Impresa)"></textarea>
+        <textarea class="form-control" id="gvs_presenti" rows="3" placeholder="Ing. Francesco Stortoni (Direttore dei Lavori)&#10;Sig. Mario Rossi (Impresa)">${esc(formatPresentiFromTeam(team))}</textarea>
       </div>
     </div>
     <div class="form-actions">
