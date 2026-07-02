@@ -225,6 +225,7 @@ const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtkc2hydnNhZWNkYmNmcHNvZ2d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MDU0NDMsImV4cCI6MjA5NzE4MTQ0M30.HJaYNeKFSVPEXT28e0NAd3xHnZnQl5JaJKck5t6RGYo';
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+window.sb = sb; // esposto su window: le finestre popup dei verbali firmabili vi accedono via window.opener.sb
 
 // ============================================================
 // STATO
@@ -965,11 +966,13 @@ async function renderSospensioni(){
       <td style="text-align:center">${giorni}${s.tipo_sospensione==='parziale'&&s.giorni_calendario?'<div style="font-size:10px;color:var(--muted)">'+s.giorni_calendario+' gg cal.</div>':''}</td>
       <td>${s.nuova_fine_lavori?fmt(s.nuova_fine_lavori):'—'}</td>
       <td style="text-align:center">${isProroga?'<span style="color:var(--muted);font-size:11px">N/A</span>':(s.fasi_spostate!=null?s.fasi_spostate:'—')}</td>
-      <td>${can('write')&&isAperta?`<button class="btn btn-primary btn-sm" onclick="openModalRipresaLavori('${s.id}')">▶️ Ripresa</button>`:
-          can('write')?`<div class="btn-group">
-            <button class="btn btn-secondary btn-sm" onclick="openModalEditSospensione('${s.id}')">✏️</button>
-            <button class="btn btn-danger btn-sm" onclick="eliminaSospensione('${s.id}')">🗑️</button>
-          </div>`:'—'}</td>
+      <td>${can('write')&&isAperta?`<button class="btn btn-primary btn-sm" onclick="openModalRipresaLavori('${s.id}')">▶️ Ripresa</button>`:''}
+          <div class="btn-group" style="flex-wrap:wrap;margin-top:${isAperta&&can('write')?'6px':'0'}">
+          ${!isProroga?`<button class="btn btn-secondary btn-sm" onclick="openModalGeneraVerbaleSospensione('${s.id}','sospensione')">🖨️ Verbale sosp.</button>`:''}
+          ${!isProroga&&s.data_ripresa?`<button class="btn btn-secondary btn-sm" onclick="openModalGeneraVerbaleSospensione('${s.id}','ripresa')">🖨️ Verbale ripresa</button>`:''}
+          ${can('write')&&!isAperta?`<button class="btn btn-secondary btn-sm" onclick="openModalEditSospensione('${s.id}')">✏️</button>
+            <button class="btn btn-danger btn-sm" onclick="eliminaSospensione('${s.id}')">🗑️</button>`:''}
+          </div></td>
     </tr>`;
   });
 
@@ -1879,13 +1882,13 @@ async function renderVerbali(){
   }
 
   const tipoIcon = {
-    consegna_lavori:'🏗️', sopralluogo:'👁️', constatazione:'📝',
-    riunione:'👥', fine_lavori:'✅', altro:'📋'
+    consegna_lavori:'🏗️', consegna_parziale:'🏗️', sopralluogo:'👁️', sopralluogo_periodico:'🔎', verifica_ods:'📐', constatazione:'📝', constatazione_stato_luoghi:'🔍',
+    riunione:'👥', fine_lavori:'✅', certificato_ultimazione:'✅', certificato_ultimazione_con_opere:'✅', riconsegna_anticipata:'🔑', altro:'📋'
   };
   const tipoLabel = {
-    consegna_lavori:'Consegna lavori', sopralluogo:'Sopralluogo',
-    constatazione:'Constatazione', riunione:'Riunione di cantiere',
-    fine_lavori:'Fine lavori', altro:'Altro verbale'
+    consegna_lavori:'Consegna lavori', consegna_parziale:'Consegna parziale lavori', sopralluogo:'Sopralluogo', sopralluogo_periodico:'Sopralluogo periodico', verifica_ods:'Verifica adempimento OdS',
+    constatazione:'Constatazione', constatazione_stato_luoghi:'Constatazione stato dei luoghi', riunione:'Riunione di cantiere',
+    fine_lavori:'Fine lavori (dismesso)', certificato_ultimazione:'Certificato di ultimazione lavori', certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare', riconsegna_anticipata:'Presa in consegna anticipata delle opere', altro:'Altro verbale'
   };
 
   verbali.forEach(v=>{
@@ -1901,11 +1904,14 @@ async function renderVerbali(){
           </div>
           ${v.oggetto?`<div style="font-size:13px;font-weight:600;margin-top:6px">${esc(v.oggetto)}</div>`:''}
         </div>
-        ${can('write')?`<div class="btn-group">
+        <div class="btn-group">
+          <button class="btn btn-secondary btn-sm" onclick="apriVerbaleFirmabile('${v.id}')">🖨️ Genera PDF firmabile</button>
+          ${can('write')?`
           <button class="btn btn-secondary btn-sm" onclick="openModalEditVerbale('${v.id}')">✏️</button>
-          <button class="btn btn-danger btn-sm" onclick="eliminaVerbale('${v.id}')">🗑️</button>
-        </div>`:''}
+          <button class="btn btn-danger btn-sm" onclick="eliminaVerbale('${v.id}')">🗑️</button>`:''}
+        </div>
       </div>
+      ${v.firmatari&&v.firmatari.length?`<div style="margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap">${v.firmatari.map(f=>`<span class="firma-chip ${f.firmato?'signed':'pending'}">${f.firmato?'✅':'⏳'} ${esc(f.nome||f.ruolo||'—')}</span>`).join('')}</div>`:''}
       ${v.testo?`<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;background:var(--surface);padding:12px;border-radius:4px;border-left:3px solid var(--accent)">${esc(v.testo)}</div>`:''}
       ${v.presenti?`<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Presenti</div>
         <div style="font-size:13px">${esc(v.presenti)}</div></div>`:''}
@@ -1926,12 +1932,18 @@ function openModalNuovoVerbale(){
     <div class="form-grid">
       <div class="form-group">
         <label class="form-label">Tipo verbale *</label>
-        <select class="form-control" id="nv2_tipo">
+        <select class="form-control" id="nv2_tipo" onchange="toggleVerbaleExtra('nv2')">
           <option value="consegna_lavori">🏗️ Consegna lavori</option>
+          <option value="consegna_parziale">🏗️ Consegna parziale lavori</option>
           <option value="sopralluogo">👁️ Sopralluogo</option>
+          <option value="sopralluogo_periodico">🔎 Sopralluogo periodico (verbale strutturato)</option>
+          <option value="verifica_ods">📐 Verifica adempimento OdS / stato luoghi</option>
           <option value="constatazione">📝 Constatazione</option>
+          <option value="constatazione_stato_luoghi">🔍 Constatazione stato dei luoghi</option>
           <option value="riunione">👥 Riunione di cantiere</option>
-          <option value="fine_lavori">✅ Fine lavori</option>
+          <option value="certificato_ultimazione">✅ Certificato di ultimazione lavori</option>
+          <option value="certificato_ultimazione_con_opere">✅ Certificato di ultimazione con opere da completare</option>
+          <option value="riconsegna_anticipata">🔑 Presa in consegna anticipata (riconsegna anticipata) delle opere</option>
           <option value="altro">📋 Altro verbale</option>
         </select>
       </div>
@@ -1953,14 +1965,23 @@ function openModalNuovoVerbale(){
       </div>
       <div class="form-group span-2">
         <label class="form-label">Testo del verbale</label>
-        <div class="form-hint">Descrivi sinteticamente quanto constatato, le disposizioni impartite, le decisioni assunte.</div>
+        <div class="form-hint">Descrivi sinteticamente quanto constatato, le disposizioni impartite, le decisioni assunte. Per i tipi "Sopralluogo periodico" e "Verifica OdS" questo testo &egrave; facoltativo: il documento firmabile viene generato dai campi strutturati qui sotto.</div>
         <textarea class="form-control" id="nv2_testo" rows="6" placeholder="Es. Il giorno ... alle ore ... si sono riuniti presso il cantiere in oggetto il Direttore dei Lavori Ing. ... e il Rappresentante dell'Impresa ...&#10;&#10;Si constata che...&#10;&#10;Si dispone che..."></textarea>
       </div>
       <div class="form-group span-2">
         <label class="form-label">Presenti</label>
-        <input class="form-control" id="nv2_pres" placeholder="Es. Ing. Rossi (DL), Geom. Bianchi (RUP/Committente), Ing. Verdi (DT Impresa)">
+        <div class="form-hint">Una persona per riga, formato "Nome (Ruolo)" &mdash; verranno riproposti come firmatari nel verbale PDF.</div>
+        <textarea class="form-control" id="nv2_pres" rows="2" placeholder="Ing. Rossi (DL)&#10;Geom. Bianchi (RUP/Committente)&#10;Ing. Verdi (DT Impresa)"></textarea>
       </div>
     </div>
+    ${extraFieldsSopralluogoHtml('nv2')}
+    ${extraFieldsVerificaODSHtml('nv2')}
+    ${extraFieldsConsegnaLavoriHtml('nv2')}
+    ${extraFieldsConsegnaParzialeHtml('nv2')}
+    ${extraFieldsConstatazioneLuoghiHtml('nv2')}
+    ${extraFieldsCertUltimazioneHtml('nv2')}
+    ${extraFieldsCertUltimazioneConOpereHtml('nv2')}
+    ${extraFieldsRiconsegnaAnticipataHtml('nv2')}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaVerbale()">Salva verbale</button>
@@ -1971,6 +1992,7 @@ async function salvaVerbale(){
   const tipo = document.getElementById('nv2_tipo').value;
   const data = document.getElementById('nv2_data').value;
   if(!data){ alert('Data obbligatoria'); return; }
+  const datiExtra = raccogliDatiExtraVerbale('nv2', tipo);
   const {error} = await sb.from('verbali').insert({
     cantiere_id: currentCantiere,
     tipo, data,
@@ -1979,11 +2001,12 @@ async function salvaVerbale(){
     oggetto: document.getElementById('nv2_ogg').value.trim()||null,
     testo: document.getElementById('nv2_testo').value.trim()||null,
     presenti: document.getElementById('nv2_pres').value.trim()||null,
+    dati_extra: datiExtra,
     created_by: currentUser.id
   });
   if(error){ alert(error.message); return; }
   // Annotazione automatica sul giornale
-  const tipoL = {consegna_lavori:'Consegna lavori',sopralluogo:'Sopralluogo',constatazione:'Constatazione',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',altro:'Verbale'};
+  const tipoL = {consegna_lavori:'Consegna lavori',consegna_parziale:'Consegna parziale lavori',sopralluogo:'Sopralluogo',sopralluogo_periodico:'Sopralluogo periodico',verifica_ods:'Verifica adempimento OdS',constatazione:'Constatazione',constatazione_stato_luoghi:'Constatazione stato dei luoghi',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',certificato_ultimazione:'Certificato di ultimazione lavori',certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare',riconsegna_anticipata:'Presa in consegna anticipata delle opere',altro:'Verbale'};
   const ogg = document.getElementById('nv2_ogg').value.trim();
   await annotaGiornale(data, `[VERBALE ${(tipoL[tipo]||tipo).toUpperCase()}]${ogg?' — '+ogg:''}`);
   closeModal();
@@ -1993,16 +2016,24 @@ async function salvaVerbale(){
 async function openModalEditVerbale(id){
   const {data:v} = await sb.from('verbali').select('*').eq('id',id).single();
   if(!v) return;
+  const dx = v.dati_extra || {};
   openModal('Modifica Verbale', `
     <div class="form-grid">
       <div class="form-group">
         <label class="form-label">Tipo verbale</label>
-        <select class="form-control" id="ev2_tipo">
+        <select class="form-control" id="ev2_tipo" onchange="toggleVerbaleExtra('ev2')">
           <option value="consegna_lavori"${v.tipo==='consegna_lavori'?' selected':''}>🏗️ Consegna lavori</option>
+          <option value="consegna_parziale"${v.tipo==='consegna_parziale'?' selected':''}>🏗️ Consegna parziale lavori</option>
           <option value="sopralluogo"${v.tipo==='sopralluogo'?' selected':''}>👁️ Sopralluogo</option>
+          <option value="sopralluogo_periodico"${v.tipo==='sopralluogo_periodico'?' selected':''}>🔎 Sopralluogo periodico (verbale strutturato)</option>
+          <option value="verifica_ods"${v.tipo==='verifica_ods'?' selected':''}>📐 Verifica adempimento OdS / stato luoghi</option>
           <option value="constatazione"${v.tipo==='constatazione'?' selected':''}>📝 Constatazione</option>
+          <option value="constatazione_stato_luoghi"${v.tipo==='constatazione_stato_luoghi'?' selected':''}>🔍 Constatazione stato dei luoghi</option>
           <option value="riunione"${v.tipo==='riunione'?' selected':''}>👥 Riunione di cantiere</option>
-          <option value="fine_lavori"${v.tipo==='fine_lavori'?' selected':''}>✅ Fine lavori</option>
+          <option value="certificato_ultimazione"${v.tipo==='certificato_ultimazione'?' selected':''}>✅ Certificato di ultimazione lavori</option>
+          <option value="certificato_ultimazione_con_opere"${v.tipo==='certificato_ultimazione_con_opere'?' selected':''}>✅ Certificato di ultimazione con opere da completare</option>
+          <option value="riconsegna_anticipata"${v.tipo==='riconsegna_anticipata'?' selected':''}>🔑 Presa in consegna anticipata (riconsegna anticipata) delle opere</option>
+          ${v.tipo==='fine_lavori'?'<option value="fine_lavori" selected>✅ Fine lavori (tipo dismesso — cambia in uno dei nuovi tipi sopra)</option>':''}
           <option value="altro"${v.tipo==='altro'?' selected':''}>📋 Altro verbale</option>
         </select>
       </div>
@@ -2028,24 +2059,37 @@ async function openModalEditVerbale(id){
       </div>
       <div class="form-group span-2">
         <label class="form-label">Presenti</label>
-        <input class="form-control" id="ev2_pres" value="${esc(v.presenti||'')}">
+        <div class="form-hint">Una persona per riga, formato "Nome (Ruolo)".</div>
+        <textarea class="form-control" id="ev2_pres" rows="2">${esc(v.presenti||'')}</textarea>
       </div>
     </div>
+    ${extraFieldsSopralluogoHtml('ev2', dx)}
+    ${extraFieldsVerificaODSHtml('ev2', dx)}
+    ${extraFieldsConsegnaLavoriHtml('ev2', dx)}
+    ${extraFieldsConsegnaParzialeHtml('ev2', dx)}
+    ${extraFieldsConstatazioneLuoghiHtml('ev2', dx)}
+    ${extraFieldsCertUltimazioneHtml('ev2', dx)}
+    ${extraFieldsCertUltimazioneConOpereHtml('ev2', dx)}
+    ${extraFieldsRiconsegnaAnticipataHtml('ev2', dx)}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaEditVerbale('${id}')">Salva</button>
     </div>`);
+  toggleVerbaleExtra('ev2');
 }
 
 async function salvaEditVerbale(id){
+  const tipo = document.getElementById('ev2_tipo').value;
+  const datiExtra = raccogliDatiExtraVerbale('ev2', tipo);
   const {error} = await sb.from('verbali').update({
-    tipo: document.getElementById('ev2_tipo').value,
+    tipo,
     data: document.getElementById('ev2_data').value,
     numero: document.getElementById('ev2_num').value.trim()||null,
     redattore: document.getElementById('ev2_red').value.trim()||null,
     oggetto: document.getElementById('ev2_ogg').value.trim()||null,
     testo: document.getElementById('ev2_testo').value.trim()||null,
-    presenti: document.getElementById('ev2_pres').value.trim()||null
+    presenti: document.getElementById('ev2_pres').value.trim()||null,
+    dati_extra: datiExtra
   }).eq('id',id);
   if(error){ alert(error.message); return; }
   closeModal();
@@ -4758,6 +4802,1326 @@ async function generaReportGiornale(cantiereId){
 
   <script>window.onload=()=>window.print()<\/script></body></html>`);
   w.document.close();
+}
+
+
+// ============================================================
+// MOTORE VERBALI FIRMABILI (PDF stampabile + firme su iPad)
+// ============================================================
+// Genera un documento HTML formattato su carta intestata Studio SCS,
+// apribile in una nuova scheda: chi e' presente firma col dito/Pencil
+// direttamente sui riquadri firma, poi con "Genera PDF" si usa la
+// stampa nativa del browser (su iPad: anteprima di stampa -> icona
+// Condividi -> Mail / Salva su File / altra app di posta).
+
+// ---- Asset carta intestata (Studio SCS) ----
+const LOGO_SCS_B64='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';
+const LOGO_CQY_B64='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';
+
+function numToWordsIT(n){
+  if(n===0) return 'zero';
+  const unita=['','uno','due','tre','quattro','cinque','sei','sette','otto','nove'];
+  const decineParole=['','dieci','venti','trenta','quaranta','cinquanta','sessanta','settanta','ottanta','novanta'];
+  let words='';
+  let migliaia=Math.floor(n/1000); n%=1000;
+  let centinaia=Math.floor(n/100); n%=100;
+  let dec=Math.floor(n/10); let unit=n%10;
+  if(migliaia){ words += (migliaia===1?'mille':numToWordsIT(migliaia)+'mila'); }
+  if(centinaia){ words += (centinaia===1?'cento':unita[centinaia]+'cento'); }
+  if(dec||unit){
+    let decParola=decineParole[dec];
+    let u=unita[unit];
+    if(dec>=1 && (unit===1||unit===8)) decParola=decParola.slice(0,-1);
+    words += decParola+u;
+  }
+  return words;
+}
+
+function dataInLettere(dateStr){
+  if(!dateStr) return {anno:'',giorno:'',mese:'',meseAnno:''};
+  const d = new Date(dateStr+'T00:00:00');
+  const giorniParole=['','uno','due','tre','quattro','cinque','sei','sette','otto','nove','dieci',
+    'undici','dodici','tredici','quattordici','quindici','sedici','diciassette','diciotto','diciannove','venti',
+    'ventuno','ventidue','ventitre','ventiquattro','venticinque','ventisei','ventisette','ventotto','ventinove','trenta','trentuno'];
+  const mesi=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+  return {
+    anno: numToWordsIT(d.getFullYear()),
+    giorno: giorniParole[d.getDate()],
+    mese: mesi[d.getMonth()]
+  };
+}
+
+function letterheadHeaderHtml(){
+  return '<div class="lh-header">'
+    +'<div class="lh-logo"><img src="data:image/png;base64,'+LOGO_SCS_B64+'" alt="Studio SCS"></div>'
+    +'<div class="lh-cqy"><img src="data:image/png;base64,'+LOGO_CQY_B64+'" alt="Certificazione CQY"></div>'
+    +'</div>'
+    +'<div class="lh-title">STUDIO SCS &ndash; SOCIET&Agrave; DI ARCHITETTURA E INGEGNERIA</div>';
+}
+function letterheadFooterHtml(){
+  return '<div class="lh-footer">Sede legale: Recanati (MC) Via Piaggia Castelnuovo 10 &mdash; Sede operativa: Pesaro (PU) Via San Francesco d&rsquo;Assisi 44<br>'
+    +'P.I. 02077580435 &middot; www.studiotecnicoscs.com &middot; info@studiotecnicoscs.com</div>';
+}
+
+function metaBlockHtml(rows){
+  // rows: array of [label, value]
+  let html='<table class="meta-block"><tbody>';
+  rows.forEach(function(r){
+    if(!r) return;
+    html += '<tr><td class="k">'+r[0]+'</td><td>'+(r[1]&&String(r[1]).trim()?r[1]:'&mdash;')+'</td></tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function titleBlockHtml(comune, provincia, titolo, normativa){
+  let html='<div class="doc-title-block">';
+  if(comune) html += '<h1>COMUNE DI '+esc(comune).toUpperCase()+'</h1>';
+  if(provincia) html += '<div style="font-size:11px;color:#6C757D;letter-spacing:.04em">PROVINCIA DI '+esc(provincia).toUpperCase()+'</div>';
+  html += '<h2>'+esc(titolo).toUpperCase()+'</h2>';
+  if(normativa) html += '<div class="norma">'+esc(normativa)+'</div>';
+  html += '</div>';
+  return html;
+}
+
+// Estrae un elenco di persone da un testo libero "Nome (Ruolo)" per riga o separato da virgole/;
+function parsePresentiList(testo){
+  if(!testo) return [];
+  const parti = testo.split(/\n|;/).map(function(s){return s.trim();}).filter(Boolean);
+  if(parti.length<=1 && testo.indexOf(',')>-1) {
+    // fallback: split per virgola se non ci sono newline/;
+    return testo.split(',').map(function(s){return s.trim();}).filter(Boolean).map(parseNomeRuolo);
+  }
+  return parti.map(parseNomeRuolo);
+}
+function parseNomeRuolo(s){
+  let m = s.match(/^(.*?)[\(\-\u2013\u2014]\s*([^\)]+?)\)?$/);
+  if(m) return {nome:m[1].trim(), ruolo:m[2].trim()};
+  return {nome:s.trim(), ruolo:''};
+}
+
+// ----- SHELL PRINCIPALE -----
+// opts: {
+//   titolo, normativa, comune, provincia,
+//   metaRows: [[label,value],...],
+//   corpoHtml: string,
+//   luogo, dataDoc (YYYY-MM-DD),
+//   firmatari: [{nome,ruolo}],
+//   recordTable, recordId  // per salvataggio firme opzionale
+// }
+function apriDocumentoFirmabile(opts){
+  const w = opts.existingWindow || window.open('about:blank', '_blank');
+  if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per generare il documento.'); return; }
+  w.RECORD_TABLE = opts.recordTable || null;
+  w.RECORD_ID = opts.recordId || null;
+
+  const headerHtml = letterheadHeaderHtml();
+  const footerHtml = letterheadFooterHtml();
+  const titleHtml = titleBlockHtml(opts.comune, opts.provincia, opts.titolo, opts.normativa);
+  const metaHtml = opts.metaRows ? metaBlockHtml(opts.metaRows) : '';
+  const luogoDataHtml = '<div class="luogo-data">'+esc((opts.luogo||'').toUpperCase())+', l&igrave; '+fmt(opts.dataDoc||today())+'</div>';
+
+  const firmatariIniziali = (opts.firmatari&&opts.firmatari.length) ? opts.firmatari : [{nome:'',ruolo:'Il Direttore dei Lavori'}];
+
+  let html = '<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">';
+  html += '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
+  html += '<title>'+esc(opts.titolo||'Verbale')+'</title><style>'+PDF_ENGINE_CSS+'</style></head><body>';
+  html += '<div class="no-print toolbar">';
+  html += '<button class="tb-ghost" onclick="window.close()">&#10005; Chiudi</button>';
+  html += '<button class="tb-secondary" onclick="addFirmatario(\'\',\'\')">+ Aggiungi firmatario</button>';
+  html += '<button class="tb-secondary" onclick="clearAllSig()">&#129529; Cancella firme</button>';
+  html += (opts.recordTable ? '<button class="tb-secondary" onclick="salvaFirmeNelGestionale()">&#128190; Salva firme nel gestionale</button>' : '');
+  html += '<button class="tb-primary" onclick="window.print()">&#128424;&#65039; Genera PDF (firma e stampa)</button>';
+  html += '</div>';
+  html += '<div id="saveConfirm" class="no-print" style="display:none;background:#D4EDDA;color:#155724;padding:8px 16px;font-size:12px;text-align:center">&#9989; Firme salvate nel gestionale.</div>';
+  html += '<div class="doc-wrap"><table class="doc-table"><thead><tr><td>'+headerHtml+'</td></tr></thead>';
+  html += '<tfoot><tr><td>'+footerHtml+'</td></tr></tfoot>';
+  html += '<tbody><tr><td>';
+  html += titleHtml + metaHtml + '<div class="corpo">'+opts.corpoHtml+'</div>' + luogoDataHtml;
+  html += '<div id="firmeContainer" class="firme-wrap"></div>';
+  if(opts.allegatiHtml) html += opts.allegatiHtml;
+  html += '</td></tr></tbody></table></div>';
+  html += '<script>'+PDF_ENGINE_JS(firmatariIniziali)+'<\/script>';
+  html += '</body></html>';
+
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
+const PDF_ENGINE_CSS = `
+@page { size:A4; margin:16mm 14mm 20mm 14mm; }
+*{box-sizing:border-box}
+body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12.5px;color:#212529;margin:0;background:#525659}
+.doc-wrap{padding:20px;max-width:800px;margin:0 auto;background:#fff}
+.doc-table{width:100%;border-collapse:collapse}
+.doc-table>thead>tr>td{padding:0 0 8px 0}
+.doc-table>tfoot>tr>td{padding:8px 0 0 0}
+.doc-table>tbody>tr>td{padding:0}
+.lh-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1.5px solid #1F3864;padding-bottom:6px}
+.lh-logo img{height:42px;display:block}
+.lh-cqy img{height:42px;display:block}
+.lh-title{font-size:10px;font-weight:700;color:#1F3864;letter-spacing:.03em;margin-top:5px}
+.lh-footer{border-top:1px solid #DEE2E6;padding-top:5px;font-size:8.5px;color:#6C757D;text-align:center}
+.doc-title-block{text-align:center;margin:20px 0 16px}
+.doc-title-block h1{font-size:14px;color:#1F3864;margin:0 0 2px;font-weight:700}
+.doc-title-block h2{font-size:13.5px;font-weight:800;letter-spacing:.03em;margin:8px 0 3px;color:#212529}
+.doc-title-block .norma{font-size:10.5px;font-style:italic;color:#6C757D}
+.meta-block{width:100%;border-collapse:collapse;margin-bottom:18px;font-size:11px}
+.meta-block td{border:1px solid #DEE2E6;padding:6px 10px;vertical-align:top}
+.meta-block td.k{background:#F8F9FA;font-weight:700;width:150px;color:#1F3864}
+.corpo p{margin:0 0 10px;line-height:1.65;text-align:justify}
+.corpo ul{margin:0 0 10px 18px;padding:0}
+.corpo li{margin-bottom:5px;line-height:1.55}
+.corpo strong{color:#1F3864}
+.corpo .center{text-align:center}
+.chk{display:inline-block;width:12px;height:12px;border:1.3px solid #212529;text-align:center;line-height:11px;font-size:10px;margin-right:6px;font-weight:700;vertical-align:middle}
+.presc-item{border-left:2px solid #DEE2E6;padding:2px 0 2px 10px;margin-bottom:8px}
+.luogo-data{margin:22px 0 6px;font-size:12px;font-weight:600}
+.firme-wrap{margin-top:20px}
+.firma-block{border:1px solid #DEE2E6;border-radius:6px;padding:10px;margin-bottom:14px;page-break-inside:avoid;background:#fff}
+.firma-label{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#6C757D;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:8px}
+canvas.sig-canvas{border:1px dashed #ADB5BD;border-radius:4px;width:100%;height:110px;touch-action:none;background:#fff;display:block;margin-top:6px}
+.sig-name-inputs{display:flex;gap:8px;flex:1}
+.sig-name-inputs input{border:1px solid #DEE2E6;border-radius:4px;padding:4px 6px;font-size:11px;font-family:inherit;flex:1;min-width:0}
+.sig-remove{border:none;background:none;color:#DC3545;cursor:pointer;font-size:11px;white-space:nowrap}
+.sig-clear{border:1px solid #DEE2E6;border-radius:4px;background:#fff;cursor:pointer;font-size:10.5px;padding:3px 8px;margin-top:4px}
+.toolbar{position:sticky;top:0;background:#1F3864;padding:10px 16px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;z-index:10}
+.toolbar button{border:none;border-radius:4px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
+.tb-primary{background:#2E75B6;color:#fff}
+.tb-secondary{background:#fff;color:#1F3864}
+.tb-ghost{background:rgba(255,255,255,.15);color:#fff}
+@media print{
+  .no-print{display:none!important}
+  body{background:#fff}
+  .doc-wrap{padding:0;max-width:none}
+  .sig-name-inputs input{border:none!important;border-bottom:1px solid #999!important;background:transparent!important;padding:2px 0}
+  .firma-block{border:none;padding:0;page-break-inside:avoid}
+  canvas.sig-canvas{border:none;border-bottom:1px solid #999;height:90px}
+}
+`;
+
+function PDF_ENGINE_JS(firmatariIniziali){
+  return `
+    var escHtml = function(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+    var sigCount = 0;
+    function initSigPad(canvas){
+      var ctx = canvas.getContext('2d');
+      function resize(){
+        var ratio = Math.max(window.devicePixelRatio||1,1);
+        var rect = canvas.getBoundingClientRect();
+        var prevData = null;
+        try{ prevData = canvas.toDataURL(); }catch(e){}
+        canvas.width = rect.width*ratio;
+        canvas.height = rect.height*ratio;
+        ctx.scale(ratio,ratio);
+        ctx.lineWidth = 2.2;
+        ctx.lineCap='round';
+        ctx.lineJoin='round';
+        ctx.strokeStyle='#1a1a1a';
+      }
+      resize();
+      var drawing=false, last=null;
+      function pos(e){
+        var rect = canvas.getBoundingClientRect();
+        return {x:(e.clientX-rect.left), y:(e.clientY-rect.top)};
+      }
+      function start(e){ e.preventDefault(); drawing=true; last=pos(e); canvas.setPointerCapture&&canvas.setPointerCapture(e.pointerId); }
+      function move(e){
+        if(!drawing) return;
+        e.preventDefault();
+        var p = pos(e);
+        ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke();
+        last=p;
+        canvas.dataset.signed='1';
+      }
+      function end(e){ drawing=false; }
+      canvas.addEventListener('pointerdown',start);
+      canvas.addEventListener('pointermove',move);
+      canvas.addEventListener('pointerup',end);
+      canvas.addEventListener('pointercancel',end);
+      canvas.addEventListener('pointerleave',end);
+      canvas._clear = function(){
+        var rect = canvas.getBoundingClientRect();
+        ctx.clearRect(0,0,rect.width,rect.height);
+        canvas.dataset.signed='';
+      };
+    }
+    function addFirmatario(nome, ruolo){
+      sigCount++;
+      var wrap = document.createElement('div');
+      wrap.className='firma-block';
+      wrap.innerHTML =
+        '<div class="firma-label">'
+        +'<div class="sig-name-inputs">'
+        +'<input type="text" placeholder="Nome e cognome" value="'+escHtml(nome||'')+'">'
+        +'<input type="text" placeholder="Qualifica / Ruolo" value="'+escHtml(ruolo||'')+'">'
+        +'</div>'
+        +'<button class="sig-remove no-print" onclick="this.closest(\\'.firma-block\\').remove()">&#10005; rimuovi</button>'
+        +'</div>'
+        +'<canvas class="sig-canvas"></canvas>'
+        +'<div class="no-print" style="text-align:right"><button class="sig-clear" onclick="this.parentElement.previousElementSibling._clear()">Cancella firma</button></div>';
+      document.getElementById('firmeContainer').appendChild(wrap);
+      initSigPad(wrap.querySelector('canvas'));
+    }
+    function clearAllSig(){
+      document.querySelectorAll('.sig-canvas').forEach(function(c){ c._clear && c._clear(); });
+    }
+    async function salvaFirmeNelGestionale(){
+      var firmatari = [];
+      document.querySelectorAll('.firma-block').forEach(function(b){
+        var inputs = b.querySelectorAll('.sig-name-inputs input');
+        var canvas = b.querySelector('canvas');
+        var signed = canvas.dataset.signed==='1';
+        firmatari.push({
+          nome: inputs[0].value.trim(),
+          ruolo: inputs[1].value.trim(),
+          firmato: signed,
+          firma_png: signed ? canvas.toDataURL('image/png') : null,
+          data: new Date().toISOString()
+        });
+      });
+      if(!window.opener || !window.opener.sb || !window.RECORD_TABLE || !window.RECORD_ID){
+        alert('Impossibile salvare: apri questo documento dal gestionale (non funziona se la finestra madre e\\' stata chiusa).');
+        return;
+      }
+      var res = await window.opener.sb.from(window.RECORD_TABLE).update({
+        firmatari: firmatari,
+        pdf_generato_at: new Date().toISOString()
+      }).eq('id', window.RECORD_ID);
+      if(res.error){ alert('Errore salvataggio: '+res.error.message); return; }
+      var el = document.getElementById('saveConfirm');
+      if(el) el.style.display='block';
+    }
+    (function(){
+      var iniziali = ${JSON.stringify(firmatariIniziali)};
+      iniziali.forEach(function(f){ addFirmatario(f.nome, f.ruolo); });
+    })();
+  `;
+}
+
+// ============================================================
+// TEMPLATE TESTO VERBALI
+// ============================================================
+
+function paraP(txt){ return txt ? '<p style="white-space:pre-wrap">'+esc(txt)+'</p>' : ''; }
+function listaPresentiHtml(presentiArr){
+  if(!presentiArr||!presentiArr.length) return '<p><em>(nessun presente indicato)</em></p>';
+  return '<ul>'+presentiArr.map(function(p){
+    return '<li>'+esc(p.nome||'—')+(p.ruolo?' &mdash; <em>'+esc(p.ruolo)+'</em>':'')+'</li>';
+  }).join('')+'</ul>';
+}
+
+// ---- 1. VERBALE DI SOPRALLUOGO PERIODICO ----
+function bodySopralluogoPeriodico(c, v, dx){
+  const dl = dataInLettere(v.data);
+  const redattore = v.redattore || '';
+  const presenti = parsePresentiList(v.presenti);
+  const esitoConforme = (dx.esito||'conforme')==='conforme';
+  let html = '';
+  html += '<p>L\'anno <strong>'+dl.anno+'</strong>, il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>, il sottoscritto '
+    + esc(redattore) + ', in qualit&agrave; di Direttore dei Lavori, alla presenza continua degli intervenuti, ha effettuato accesso al cantiere'
+    + (dx.luogo ? ' sito in '+esc(dx.luogo) : ' in oggetto') + ', dove ha incontrato:</p>';
+  html += listaPresentiHtml(presenti);
+  html += '<p>ed ha proceduto alla verifica periodica di controllo dei lavori in epigrafe indicati.</p>';
+  html += '<p>Nello specifico, alla data odierna, '
+    + (esitoConforme ? '&egrave; stata riscontrata' : '<strong>NON</strong> &egrave; stata riscontrata')
+    + ' la corrispondenza dell\'opera al progetto, al capitolato speciale d\'appalto e alle regole della tecnica, oltre al rispetto delle norme in materia di edilizia, sicurezza e delle norme tecniche per le costruzioni e di tutti i regolamenti applicabili'
+    + (esitoConforme ? '. &Egrave; stata altres&igrave; rilevata la corrispondenza dei materiali utilizzati alle caratteristiche tecniche indicate nella documentazione tecnica allegata al contratto d\'appalto.' : '.')
+    + '</p>';
+  if(dx.accertamenti){
+    html += '<p><strong>Accertamenti effettuati / disposizioni impartite:</strong></p>';
+    html += paraP(dx.accertamenti);
+  }
+  if(!esitoConforme && dx.rilievi){
+    html += '<p><strong>Rilievi e non conformit&agrave; riscontrate:</strong></p>';
+    html += paraP(dx.rilievi);
+  }
+  html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dagli intervenuti.</p>';
+  return html;
+}
+
+// ---- 2. VERBALE DI VERIFICA ADEMPIMENTO ORDINE DI SERVIZIO + STATO LUOGHI ----
+function bodyVerificaODS(c, v, dx){
+  const presenti = parsePresentiList(v.presenti);
+  let html = '';
+  if(v.oggetto) html += '<p><strong>Oggetto:</strong> '+esc(v.oggetto)+'</p>';
+  html += '<p><strong>Presenti</strong></p>';
+  html += listaPresentiHtml(presenti);
+
+  if(dx.premesse){
+    html += '<p><strong>Premesse</strong></p><ul>';
+    dx.premesse.split('\n').map(function(s){return s.trim();}).filter(Boolean).forEach(function(riga){
+      html += '<li>'+esc(riga)+'</li>';
+    });
+    html += '</ul>';
+  }
+
+  html += '<p><strong>Verifica adempimento dell\'Ordine di Servizio'+(dx.ods_numero?' n. '+esc(dx.ods_numero):'')+'</strong></p>';
+  const esitoLabels = {adempiente:'Adempiente', parzialmente_adempiente:'Parzialmente adempiente', inadempiente:'Inadempiente'};
+  html += '<p><strong>Esito generale:</strong> ';
+  ['adempiente','parzialmente_adempiente','inadempiente'].forEach(function(k){
+    html += '<span class="chk">'+(dx.esito_generale===k?'&#10005;':'')+'</span> '+esitoLabels[k]+'&nbsp;&nbsp; ';
+  });
+  html += '</p>';
+
+  if(dx.prescrizioni){
+    html += '<p><strong>Dettaglio per singola prescrizione:</strong></p>';
+    dx.prescrizioni.split('\n').map(function(s){return s.trim();}).filter(Boolean).forEach(function(riga){
+      const parti = riga.split('|').map(function(s){return s.trim();});
+      const descr = parti[0]||riga;
+      const esitoP = (parti[1]||'').toLowerCase();
+      const opts = [['completa','Eseguita completamente'],['parziale','Parzialmente eseguita'],['non_eseguita','Non eseguita']];
+      html += '<div class="presc-item"><div>'+esc(descr)+'</div><div>';
+      opts.forEach(function(o){
+        html += '<span class="chk">'+(esitoP===o[0]?'&#10005;':'')+'</span> '+o[1]+'&nbsp;&nbsp; ';
+      });
+      html += '</div></div>';
+    });
+  }
+
+  if(dx.stato_luoghi){
+    html += '<p><strong>Constatazione dello stato dei luoghi</strong></p>';
+    html += paraP(dx.stato_luoghi);
+  }
+
+  if(dx.esito_generale && dx.esito_generale!=='adempiente' && dx.conseguenze){
+    html += '<p><strong>Conseguenze dell\'inadempimento in corso</strong></p>';
+    html += paraP(dx.conseguenze);
+  }
+
+  if(dx.prossima_riunione){
+    html += '<p>Viene fissata ulteriore riunione per la verifica dello stato del cantiere alla data del '+fmt(dx.prossima_riunione)+'.</p>';
+  }
+
+  html += '<p>Letto, confermato e sottoscritto.</p>';
+  if(dx.trasmissione){
+    html += '<p style="font-size:11px;color:#6C757D">'+esc(dx.trasmissione)+'</p>';
+  }
+  return html;
+}
+
+// ---- 3. VERBALE GENERICO (consegna_lavori / riunione / constatazione / fine_lavori / altro) ----
+function bodyGenericoVerbale(c, v){
+  const dl = dataInLettere(v.data);
+  const presenti = parsePresentiList(v.presenti);
+  let html = '';
+  html += '<p>L\'anno <strong>'+dl.anno+'</strong>, il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>, il sottoscritto '
+    + esc(v.redattore||'') + ', in qualit&agrave; di Direttore dei Lavori, alla presenza continua degli intervenuti, si &egrave; recato presso il cantiere in oggetto ed ha incontrato:</p>';
+  html += listaPresentiHtml(presenti);
+  if(v.oggetto) html += '<p><strong>Oggetto:</strong> '+esc(v.oggetto)+'</p>';
+  html += paraP(v.testo);
+  html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dagli intervenuti.</p>';
+  return html;
+}
+
+// ---- 4. VERBALE DI SOSPENSIONE LAVORI ----
+function bodySospensione(c, s, dx){
+  const dl = dataInLettere(s.data);
+  const comune = dx.comune || c?.stazione_appaltante || '';
+  let html = '';
+  html += '<p>L\'anno <strong>'+dl.anno+'</strong> il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>'
+    + (comune?' nel Comune di '+esc(comune):'') + ', il sottoscritto ' + esc(dx.redattore||'')
+    + ', in qualit&agrave; di Direttore dei Lavori, su incarico della Stazione Appaltante, ha compilato il presente verbale'
+    + (dx.impresa_referente ? ' con l\'intervento di '+esc(dx.impresa_referente)+', in rappresentanza dell\'impresa esecutrice' : '')
+    + ', considerato:</p>';
+  html += '<ul>';
+  if(dx.data_consegna) html += '<li>che in data '+fmt(dx.data_consegna)+' &egrave; stata effettuata la consegna dei lavori in oggetto;</li>';
+  html += '<li>' + esc(s.motivo||'le circostanze indicate nel presente verbale') + ';</li>';
+  html += '</ul>';
+
+  if(s.tipo_sospensione==='parziale'){
+    html += '<p>Trattasi di <strong>sospensione parziale</strong>. Importo delle lavorazioni sospese: <strong>'+fmtEur(s.importo_sospeso)+'</strong> '
+      + 'su un importo totale delle lavorazioni residue pari a <strong>'+fmtEur(s.importo_totale_residuo)+'</strong>'
+      + (s.importo_sospeso&&s.importo_totale_residuo ? ' (rapporto '+((s.importo_sospeso/s.importo_totale_residuo)*100).toFixed(2)+'%)' : '') + '.</p>';
+  }
+
+  if(dx.stato_avanzamento){
+    html += '<p>Rilevato che alla data odierna lo stato di avanzamento dei lavori e delle opere risulta il seguente: '+esc(dx.stato_avanzamento)+'.</p>';
+  }
+
+  if(dx.fascia_oraria_da && dx.fascia_oraria_a){
+    html += '<p><strong>Tutto ci&ograve; premesso, il sottoscritto ' + esc(dx.redattore||'') + '</strong></p>';
+    html += '<p class="center" style="font-weight:800;letter-spacing:.06em">DISPONE</p>';
+    html += '<ul><li>Che a far data dal '+fmt(s.data)+' e fino a nuova comunicazione, ovvero quando saranno cessate le condizioni di impedimento, le lavorazioni in cantiere siano sospese ogni giorno nella fascia oraria dalle '
+      + esc(dx.fascia_oraria_da)+' alle '+esc(dx.fascia_oraria_a)+'.</li>'
+      + '<li>Tale sospensione &egrave; da intendersi ricorrente e limitata alle ore sopra indicate; l\'impresa si impegna a proseguire regolarmente le lavorazioni residue nelle restanti ore giornaliere, compatibilmente con la sicurezza dei lavoratori.</li>'
+      + '<li>Le condizioni saranno monitorate; qualora cessi la causa di impedimento, il presente verbale potr&agrave; essere revocato mediante comunicazione scritta della Direzione Lavori.</li></ul>';
+  } else {
+    html += '<p>Tutto ci&ograve; premesso, il sottoscritto Direttore dei Lavori dichiara <strong>sospesi</strong> i lavori in oggetto a decorrere dalla data del '
+      + fmt(s.data) + ' e sino a nuova comunicazione di ripresa, con la quale verr&agrave; accertato il numero dei giorni di effettiva sospensione ai fini del computo dei termini contrattuali.</p>';
+  }
+
+  html += '<p>A motivo della sospensione non sono previsti compensi o indennizzi all\'esecutore, salvi i casi disciplinati dalla normativa vigente in materia di sospensione dei lavori pubblici.</p>';
+  html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dagli intervenuti.</p>';
+  return html;
+}
+
+// ---- 5. VERBALE DI RIPRESA DEI LAVORI ----
+function bodyRipresa(c, s, dx){
+  const dl = dataInLettere(s.data_ripresa || today());
+  const comune = dx.comune || c?.stazione_appaltante || '';
+  let html = '';
+  html += '<p>L\'anno <strong>'+dl.anno+'</strong> il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>'
+    + (comune?' nel Comune di '+esc(comune):'') + ', il sottoscritto ' + esc(dx.redattore||'')
+    + ', in qualit&agrave; di Direttore dei Lavori, ha convocato sui luoghi di cantiere l\'Impresa esecutrice'
+    + (dx.impresa_referente ? ', nella persona di '+esc(dx.impresa_referente) : '') + ',</p>';
+  html += '<ul>';
+  if(dx.data_consegna_originale) html += '<li>considerato il verbale di consegna dei lavori del '+fmt(dx.data_consegna_originale)+';</li>';
+  html += '<li>considerato il verbale di sospensione dei lavori'+(dx.numero_verbale_sospensione?' n. '+esc(dx.numero_verbale_sospensione):'')+' del '+fmt(s.data)+' con il quale i lavori furono sospesi a motivo di: '+esc(s.motivo||'—')+';</li>';
+  const giorniSosp = s.giorni_sospensione || s.giorni_calendario;
+  html += '<li>considerato che i lavori sono rimasti sospesi complessivamente per n. '+(giorniSosp!=null?giorniSosp:'—')+' giorni solari e consecutivi;</li>';
+  html += '<li>constatato che le opere la cui esecuzione rimaneva interrotta erano le seguenti: '+esc(dx.opere_interrotte||'la totalit&agrave; delle lavorazioni')+';</li>';
+  html += '<li>rilevato lo stato delle attrezzature e dei materiali presenti in cantiere: '+esc(dx.stato_attrezzature||'—')+';</li>';
+  html += '<li>rilevato che sono cessate le cause che impedivano di procedere con le necessarie regolarit&agrave; e continuit&agrave; tali da garantire la perfetta esecuzione delle opere.</li>';
+  html += '</ul>';
+  html += '<p>redige il presente verbale con il quale viene stabilito che i lavori in oggetto siano ripresi a decorrere dalla data del '+fmt(s.data_ripresa)
+    + (s.nuova_fine_lavori ? ' e la loro ultimazione, in conseguenza del periodo di sospensione, dovr&agrave; avvenire entro il '+fmt(s.nuova_fine_lavori)+'.' : '.') + '</p>';
+  html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dagli intervenuti.</p>';
+  return html;
+}
+
+// ---- 6. VERBALE DI CONSEGNA LAVORI ----
+function bodyConsegnaLavori(c, v, dx){
+  const dl = dataInLettere(v.data);
+  const comune = dx.comune || c?.stazione_appaltante || '';
+  const importo = c?.importo ? fmtEur(c.importo) : '—';
+  const redattore = v.redattore || dx.redattore || '';
+  let html = '';
+  html += '<ul>';
+  if(dx.delibera) html += '<li><strong>Visto</strong> il progetto dei lavori sopra indicati approvato con '+esc(dx.delibera)+(dx.progettista?' e redatto da '+esc(dx.progettista):'')+', di importo complessivo pari a '+importo+';</li>';
+  if(dx.rup_nome) html += '<li><strong>Previa</strong> Autorizzazione del Responsabile Unico del Progetto '+esc(dx.rup_nome)+';</li>';
+  if(dx.data_avviso_impresa) html += '<li><strong>Previo</strong> avviso all\'Impresa appaltatrice inviato in data '+fmt(dx.data_avviso_impresa)+';</li>';
+  html += '</ul>';
+  html += '<p>L\'anno <strong>'+dl.anno+'</strong> il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>'
+    + (comune?' nel Comune di '+esc(comune):'') + ', il sottoscritto ' + esc(redattore)
+    + ', in qualit&agrave; di Direttore dei Lavori, alla presenza continua degli intervenuti, &egrave; convenuto sul luogo in cui devono essere eseguiti i lavori'
+    + (dx.legale_rappresentante ? ', con il sig. '+esc(dx.legale_rappresentante)+', in qualit&agrave; di Legale Rappresentante dell\'Impresa appaltatrice '+esc(c?.impresa||'') : '')
+    + ' ed ha proceduto alla consegna dei lavori di che trattasi, attenendosi alle prescrizioni riportate nel capitolato speciale e nel d.lgs. 36/2023.</p>';
+  html += '<p>Ha pertanto verificato, con la scorta del progetto sopra indicato, la corrispondenza tra i dati dello stesso e l\'attuale stato di fatto e le opere da eseguire sulle quali ha fornito ampi chiarimenti.</p>';
+  html += '<p>Alla presenza continua degli intervenuti, il sottoscritto Direttore dei Lavori ha:</p><ul>'
+    + '<li>designato i lavori da eseguire, riscontrando le condizioni e circostanze che consentono l\'immediata esecuzione dei lavori stessi;</li>'
+    + '<li>dato lettura delle norme e condizioni di esecuzione contrattuali aggiungendo le spiegazioni chieste a quelle trovate opportune.</li></ul>';
+  if(dx.legale_rappresentante){
+    html += '<p>Il sig. '+esc(dx.legale_rappresentante)+', in qualit&agrave; di Legale Rappresentante dell\'Impresa appaltatrice '+esc(c?.impresa||'')
+      + ', dichiara di essere pienamente a conoscenza di tutte le circostanze di fatto e di luogo inerenti l\'esecuzione dei lavori e di tutti gli obblighi accollati all\'Impresa dalle prescrizioni tecniche del capitolato speciale dell\'appalto e di accettare la consegna dei lavori senza sollevare riserva od eccezione alcuna, restando inteso che dalla data del presente verbale decorre il tempo utile per dare compiuti tutti i lavori'
+      + (dx.giorni_lavori ? ', stabiliti in '+dx.giorni_lavori+' ('+numToWordsIT(parseInt(dx.giorni_lavori))+') giorni dalla data del presente verbale' : '') + '.'
+      + (dx.data_fine_lavori ? ' L\'ultimazione dei lavori quindi, dovr&agrave; avvenire entro il '+fmt(dx.data_fine_lavori)+'.' : '')
+      + '</p>';
+  }
+  html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dagli intervenuti.</p>';
+  return html;
+}
+
+// ---- 7. VERBALE DI CONSEGNA PARZIALE LAVORI ----
+function bodyConsegnaParziale(c, v, dx){
+  const dl = dataInLettere(v.data);
+  const comune = dx.comune || c?.stazione_appaltante || '';
+  const importo = c?.importo ? fmtEur(c.importo) : '—';
+  const redattore = v.redattore || dx.redattore || '';
+  let html = '';
+  html += '<ul>';
+  if(dx.delibera) html += '<li><strong>Visto</strong> il progetto dei lavori sopra indicati approvato con '+esc(dx.delibera)+(dx.progettista?' e redatto da '+esc(dx.progettista):'')+', di importo complessivo pari a '+importo+';</li>';
+  if(dx.nota_aggiudicazione) html += '<li><strong>Vista</strong> la nota '+esc(dx.nota_aggiudicazione)+' con la quale veniva comunicata l\'aggiudicazione dei suddetti lavori all\'Impresa '+esc(c?.impresa||'')+';</li>';
+  if(dx.rup_nome) html += '<li><strong>Previa</strong> Autorizzazione del Responsabile Unico del Progetto '+esc(dx.rup_nome)+';</li>';
+  html += '<li><strong>Previo</strong> avviso all\'Impresa appaltatrice;</li>';
+  html += '</ul>';
+  html += '<p>L\'anno <strong>'+dl.anno+'</strong> il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>'
+    + (comune?' nel Comune di '+esc(comune):'') + ', il sottoscritto ' + esc(redattore)
+    + ', in qualit&agrave; di Direttore dei Lavori, alla presenza continua degli intervenuti, &egrave; convenuto sul luogo in cui devono essere eseguiti i lavori'
+    + (dx.dt_impresa_nome ? ', con '+esc(dx.dt_impresa_nome)+', in qualit&agrave; di Direttore Tecnico dell\'Impresa appaltatrice '+esc(c?.impresa||'') : '')
+    + ' ed ha proceduto alla consegna parziale dei lavori di che trattasi, attenendosi alle prescrizioni riportate nel capitolato speciale e nel d.lgs. 36/2023.</p>';
+  html += '<p>Ha pertanto constatato che l\'area di intervento non &egrave; al momento disponibile nella sua interezza per i seguenti motivi: '+esc(dx.area_motivo||'—')+'.</p>';
+  html += '<p>Accertato che una parte dell\'area di intervento &egrave; libera da persone e cose e che lo stato attuale &egrave; tale da non impedire l\'avvio e la prosecuzione dei lavori per i tratti accessibili ricadenti su di essa:</p>';
+  html += '<ul>'
+    + '<li>ha designato i lavori da eseguire sull\'area al momento disponibile relativi alle seguenti opere: '+esc(dx.opere_disponibili||'—')+';</li>'
+    + '<li>dato indicazione delle aree, dei locali, e delle condizioni di disponibilit&agrave; dei mezzi d\'opera per l\'esecuzione dei lavori dell\'esecutore, nonch&eacute; l\'ubicazione e la capacit&agrave; di cave e discariche concesse o comunque a disposizione dell\'Appaltatore;</li>'
+    + '<li>ha dato lettura delle norme e condizioni di esecuzioni contrattuali aggiungendo le spiegazioni chieste a quelle trovate opportune, tanto al personale subalterno quanto all\'Appaltatore;</li>'
+    + '<li>ha fornito le indicazioni necessarie per il tracciamento dei lavori in appalto e si &egrave; proceduto con il collocamento di sagome e capisaldi e quanto altro necessario per l\'esatta individuazione delle opere da eseguire.</li>'
+    + '</ul>';
+  if(dx.dt_impresa_nome){
+    html += '<p>Il sig. '+esc(dx.dt_impresa_nome)+' in qualit&agrave; di Direttore Tecnico dell\'Impresa '+esc(c?.impresa||'')
+      + ', fornito gi&agrave; di copia del contratto ed allegati relativi, ha dichiarato di non aver difficolt&agrave; o dubbi, di essere perfettamente a conoscenza di tutti i suoi obblighi e di accettare col presente atto senza eccezioni di sorta la formale consegna parziale dei lavori su indicati, i quali saranno iniziati per i tratti disponibili nelle more della consegna dei restanti lavori in appalto. All\'uopo l\'Appaltatore presenter&agrave; il programma di esecuzione dei lavori prioritari da compiere secondo le indicazioni del presente verbale.</p>';
+  }
+  html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dagli intervenuti.</p>';
+  return html;
+}
+
+// ---- 8. VERBALE DI CONSTATAZIONE DELLO STATO DEI LUOGHI ----
+function bodyConstatazioneStatoLuoghi(c, v, dx){
+  const presenti = parsePresentiList(v.presenti);
+  let html = '';
+  html += '<p><strong>Presenti</strong></p>';
+  html += listaPresentiHtml(presenti);
+
+  if(dx.premesse){
+    html += '<p><strong>Premesso che</strong></p><ul>';
+    dx.premesse.split('\n').map(function(s){return s.trim();}).filter(Boolean).forEach(function(riga){
+      html += '<li>'+esc(riga)+'</li>';
+    });
+    html += '</ul>';
+  }
+
+  html += '<p><strong>Accertamenti &mdash; stato dei luoghi</strong></p>';
+  html += '<p>All\'esito del sopralluogo effettuato in data odierna, il Direttore dei Lavori ha rilevato quanto segue:</p>';
+
+  const campi = [
+    ['maestranze','Presenza maestranze e personale impresa'],
+    ['attrezzature','Presenza di attrezzature, macchinari e mezzi operativi'],
+    ['lavorazioni_corso','Lavorazioni in corso di esecuzione'],
+    ['stato_avanzamento','Stato di avanzamento delle lavorazioni rilevato'],
+    ['condizioni_sicurezza','Condizioni di sicurezza del cantiere (recinzioni, cartellonistica, ecc.)']
+  ];
+  campi.forEach(function(f){
+    if(dx[f[0]]){
+      html += '<p><u>'+f[1]+':</u></p>'+paraP(dx[f[0]]);
+    }
+  });
+
+  if(dx.doc_fotografica!==false){
+    html += '<p>&Egrave; stata effettuata documentazione fotografica, allegata al presente verbale e depositata agli atti del cantiere ai sensi dell\'art. 14, comma 3, del D.M. 49/2018.</p>';
+  }
+
+  if(dx.prescrizioni){
+    html += '<p><strong>Prescrizioni e richieste'+(dx.ods_numero?' &mdash; Ordine di servizio n. '+esc(dx.ods_numero):'')+'</strong></p><ol>';
+    dx.prescrizioni.split('\n').map(function(s){return s.trim();}).filter(Boolean).forEach(function(riga){
+      html += '<li>'+esc(riga)+'</li>';
+    });
+    html += '</ol>';
+  }
+
+  if(dx.prossima_verifica_data){
+    html += '<p><strong>Fissazione della successiva verifica</strong></p>';
+    html += '<p>Il Direttore dei Lavori fissa un\'ulteriore verifica dello stato dei luoghi per il giorno '+fmt(dx.prossima_verifica_data)
+      + (dx.prossima_verifica_ora?', con inizio alle ore '+esc(dx.prossima_verifica_ora):'')
+      + ', al fine di accertare '+(esc(dx.prossima_verifica_scopo)||'l\'avvenuta ripresa delle lavorazioni senza soluzione di continuit&agrave;')+'.</p>';
+  }
+
+  if(dx.rilievi_finali){
+    html += '<p><strong>Ulteriori rilievi e dichiarazioni dei presenti</strong></p>';
+    html += paraP(dx.rilievi_finali);
+  }
+
+  html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dagli intervenuti.</p>';
+  if(dx.trasmissione) html += '<p style="font-size:11px;color:#6C757D">'+esc(dx.trasmissione)+'</p>';
+  if(dx.restituzione_firmata!==false){
+    html += '<p style="font-size:11px;color:#6C757D">L\'impresa esecutrice &egrave; tenuta a restituire il presente verbale debitamente firmato per avvenuta conoscenza, ai sensi dell\'art. 3, comma 3, del D.M. 49/2018, fatta salva la facolt&agrave; di iscrivere le proprie riserve nelle forme di legge.</p>';
+  }
+  return html;
+}
+
+// ---- 9. CERTIFICATO DI ULTIMAZIONE LAVORI ----
+function bodyCertificatoUltimazione(c, v, dx){
+  const dl = dataInLettere(v.data);
+  const comune = dx.comune || c?.stazione_appaltante || '';
+  const redattore = v.redattore || dx.redattore || '';
+  let html = '';
+  html += '<p>L\'anno <strong>'+dl.anno+'</strong> il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>'
+    + (comune?', nel Comune di '+esc(comune):'') + ', il sottoscritto ' + esc(redattore)
+    + ', in qualit&agrave; di Direttore dei Lavori,</p>';
+  html += '<ul>'
+    + '<li>viste le norme in vigore sulle modalit&agrave; di svolgimento delle funzioni di direzione e controllo tecnico, contabile e amministrativo dell\'esecuzione del contratto;</li>'
+    + '<li>considerato che ai sensi del contratto il tempo utile per ultimare i lavori'
+    + (dx.giorni_contrattuali ? ', stabilito in '+esc(dx.giorni_contrattuali)+' giorni naturali e consecutivi' : '')
+    + (dx.data_scadenza_prevista ? ' scadeva in data '+fmt(dx.data_scadenza_prevista) : '') + ';</li>'
+    + '</ul>';
+  html += '<p>a seguito dei riscontri eseguiti in contraddittorio con l\'Impresa relativi alla effettiva esecuzione dei lavori,</p>';
+  html += '<p class="center" style="font-weight:800;letter-spacing:.06em">CERTIFICA</p>';
+  const ritardo = dx.tempo_utile==='no';
+  html += '<p><strong>che i lavori in oggetto risultano ultimati in data '+fmt(dx.data_ultimazione)+' e che gli stessi sono stati eseguiti '
+    + (ritardo
+        ? 'con un ritardo di '+esc(dx.giorni_ritardo||'—')+' giorni rispetto al termine contrattuale'+(dx.motivo_ritardo? ', per le seguenti motivazioni: '+esc(dx.motivo_ritardo) : '')
+        : 'in tempo utile')
+    + '.</strong></p>';
+  if(dx.note) html += paraP(dx.note);
+  return html;
+}
+
+// ---- 10. CERTIFICATO DI ULTIMAZIONE LAVORI CON OPERE DA COMPLETARE ----
+function bodyCertificatoUltimazioneConOpere(c, v, dx){
+  const dl = dataInLettere(v.data);
+  const comune = dx.comune || c?.stazione_appaltante || '';
+  const giorniCompl = dx.giorni_completamento || '60';
+  const redattore = v.redattore || dx.redattore || '';
+  let html = '';
+  html += '<p>L\'anno <strong>'+dl.anno+'</strong> il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>'
+    + (comune?', nel Comune di '+esc(comune):'') + ', il sottoscritto ' + esc(redattore)
+    + ', in qualit&agrave; di Direttore dei Lavori,</p>';
+  html += '<ul>'
+    + '<li>viste le norme in vigore sulle modalit&agrave; di svolgimento delle funzioni di direzione e controllo tecnico, contabile e amministrativo dell\'esecuzione del contratto;</li>'
+    + '<li>considerato che ai sensi del contratto il tempo utile per ultimare i lavori'
+    + (dx.giorni_contrattuali ? ', stabilito in '+esc(dx.giorni_contrattuali)+' giorni naturali e consecutivi' : '')
+    + (dx.data_scadenza_prevista ? ' scadeva in data '+fmt(dx.data_scadenza_prevista) : '') + ';</li>'
+    + '</ul>';
+  html += '<p>a seguito dei riscontri eseguiti in contraddittorio con l\'Impresa relativi alla effettiva esecuzione dei lavori,</p>';
+  html += '<p class="center" style="font-weight:800;letter-spacing:.06em">CERTIFICA</p>';
+  html += '<p><strong>che i lavori in oggetto possono considerarsi ultimati in data '+fmt(dx.data_ultimazione)+';</strong> tuttavia si assegna un termine perentorio non superiore a <strong>'
+    + giorniCompl+' ('+numToWordsIT(parseInt(giorniCompl))+') giorni</strong> dalla data del presente certificato, per il completamento di lavorazioni di piccola entit&agrave; non incidenti sull\'uso e sulla funzionalit&agrave; dei lavori, di seguito elencate:</p>';
+  if(dx.opere_da_completare){
+    html += '<ul>';
+    dx.opere_da_completare.split('\n').map(function(s){return s.trim();}).filter(Boolean).forEach(function(riga){
+      html += '<li>'+esc(riga)+'</li>';
+    });
+    html += '</ul>';
+  }
+  html += '<p>Si rende noto che il mancato rispetto del nuovo termine specificato comporta l\'inefficacia del presente certificato di ultimazione e la necessit&agrave; di redazione di nuovo certificato che accerti l\'avvenuto completamento delle lavorazioni sopraindicate.</p>';
+  return html;
+}
+
+// ---- 11. VERBALE DI PRESA IN CONSEGNA ANTICIPATA (RICONSEGNA ANTICIPATA) DELLE OPERE ----
+function bodyRiconsegnaAnticipata(c, v, dx){
+  const dl = dataInLettere(v.data);
+  const comune = dx.comune || c?.stazione_appaltante || '';
+  const redattore = v.redattore || dx.redattore || '';
+  let html = '';
+  html += '<p>L\'anno <strong>'+dl.anno+'</strong> il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>'
+    + (comune?', nel Comune di '+esc(comune):'') + ', il sottoscritto ' + esc(redattore)
+    + ', in qualit&agrave; di Direttore dei Lavori, &egrave; convenuto alla presenza dei signori:</p>';
+  html += '<ol>'
+    + '<li>'+esc(redattore||'—')+', Direttore dei Lavori</li>'
+    + '<li>'+esc(dx.legale_rappresentante||'—')+', titolare/legale rappresentante dell\'Impresa</li>'
+    + '<li>'+esc(dx.rup_nome||'—')+', Responsabile Unico del Procedimento</li>'
+    + '</ol>';
+  html += '<p><strong>Premesso</strong></p><ul>';
+  if(dx.data_consegna_originale) html += '<li>che con verbale in data '+fmt(dx.data_consegna_originale)+' &egrave; avvenuta la consegna dei lavori all\'Impresa appaltatrice;</li>';
+  if(dx.data_ultimazione_opere) html += '<li>che i lavori sono stati ultimati dall\'appaltatore in data '+fmt(dx.data_ultimazione_opere)+';</li>';
+  html += '<li>che '+(dx.collaudo_statico_necessario===false?'non ':'')+'risulta necessario effettuare il collaudo statico;</li>';
+  if(dx.allacciamenti_eseguiti!==false) html += '<li>sono stati eseguiti i necessari allacciamenti idrici, elettrici e fognari alle reti dei pubblici servizi;</li>';
+  if(dx.certificazioni_prodotte!==false) html += '<li>sono state prodotte le dovute certificazioni di conformit&agrave; degli impianti idrici e termici;</li>';
+  if(dx.nota_ente_numero) html += '<li>che l\'Ente appaltante con nota prot. n. '+esc(dx.nota_ente_numero)+(dx.nota_ente_data?' del '+fmt(dx.nota_ente_data):'')+' ha chiesto all\'Impresa appaltatrice ed al Direttore dei Lavori la necessit&agrave; di avere in uso l\'opera prima del collaudo definitivo;</li>';
+  if(dx.nota_impresa_numero) html += '<li>che l\'Impresa appaltatrice ha concesso con nota n. '+esc(dx.nota_impresa_numero)+(dx.nota_impresa_data?' del '+fmt(dx.nota_impresa_data):'')+' l\'utilizzo '+esc(dx.oggetto_consegna||'di quanto sopra')+' prima del collaudo definitivo delle opere da essa eseguite, rimanendo essa sempre responsabile dei difetti di costruzione e della cattiva qualit&agrave; dei materiali impiegati che eventualmente venissero riscontrati durante la visita di collaudo;</li>';
+  html += '</ul>';
+  html += '<p>i convenuti procedono ad una dettagliata ricognizione dei luoghi e ad una verifica funzionale delle opere oggetto della consegna di seguito descritte:</p>';
+  html += paraP(dx.descrizione_opere);
+  html += '<p>Gli intervenuti hanno constatato che tutte le opere consegnate sono in perfetto stato di conservazione e di manutenzione e sono privi di difetti o vizi palesi di alcun genere.</p>';
+  html += '<p>L\'Impresa appaltatrice, con la presente riconsegna, viene sollevata da qualsiasi responsabilit&agrave; per danni a persone o cose che dovessero verificarsi durante l\'uso dell\'opera oggetto della consegna provvisoria, mentre resta responsabile della cattiva qualit&agrave; dei materiali impiegati, delle insufficienze derivanti dall\'osservanza delle prescrizioni del capitolato d\'appalto e dei difetti di costruzione che eventualmente venissero riscontrate dal collaudatore all\'atto della visita di collaudo.</p>';
+  html += '<p>Si procede, quindi, alla riconsegna delle opere al legale rappresentante dell\'Ente appaltante.</p>';
+  html += '<p>Il presente verbale in triplice originale, previa lettura, viene sottoscritto dai convenuti come segue.</p>';
+  return html;
+}
+
+// ============================================================
+// VERBALI — dispatcher generazione PDF firmabile
+// ============================================================
+async function apriVerbaleFirmabile(id){
+  const w = window.open('about:blank', '_blank'); // aperta subito in risposta al click, evita blocco popup Safari/iPad dopo l'await
+  if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per generare il documento.'); return; }
+  try{
+    const {data:v, error:errV} = await sb.from('verbali').select('*').eq('id',id).single();
+    if(errV) throw errV;
+    if(!v){ w.close(); return; }
+    const c = getCantiereObj(v.cantiere_id);
+    const dx = v.dati_extra || {};
+    let corpoHtml, titolo, normativa, metaRows, comune='', provincia='';
+
+    if(v.tipo==='sopralluogo_periodico'){
+      titolo = 'Verbale di sopralluogo periodico';
+      corpoHtml = bodySopralluogoPeriodico(c, v, dx);
+      metaRows = [
+        ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+        ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+        ['R.U.P.', esc(dx.rup_nome||'')],
+        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+      ];
+    } else if(v.tipo==='verifica_ods'){
+      titolo = 'Verbale di verifica adempimento ordine di servizio';
+      corpoHtml = bodyVerificaODS(c, v, dx);
+      metaRows = [
+        ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+        ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+        ['IMPRESA', esc(c?.impresa||'')],
+        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+      ];
+    } else if(v.tipo==='consegna_lavori'){
+      titolo = 'Verbale di consegna lavori';
+      normativa = 'd.lgs. 36/2023 All. II.14 art.3 comma 9';
+      comune = dx.comune || c?.stazione_appaltante || '';
+      corpoHtml = bodyConsegnaLavori(c, v, dx);
+      metaRows = [
+        ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+        ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+        ['IMPRESA', esc(c?.impresa||'')],
+        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+      ];
+    } else if(v.tipo==='consegna_parziale'){
+      titolo = 'Verbale di consegna parziale lavori';
+      normativa = 'd.lgs. 36/2023 All. II.14 art.3 comma 9';
+      comune = dx.comune || c?.stazione_appaltante || '';
+      corpoHtml = bodyConsegnaParziale(c, v, dx);
+      metaRows = [
+        ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+        ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+        ['R.U.P.', esc(dx.rup_nome||'')],
+        ['IMPRESA', esc(c?.impresa||'')],
+        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+      ];
+    } else if(v.tipo==='constatazione_stato_luoghi'){
+      titolo = 'Verbale di constatazione dello stato dei luoghi';
+      corpoHtml = bodyConstatazioneStatoLuoghi(c, v, dx);
+      metaRows = [
+        ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+        ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+        ['IMPRESA', esc(c?.impresa||'')],
+        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+      ];
+    } else if(v.tipo==='certificato_ultimazione'){
+      titolo = 'Certificato di ultimazione lavori';
+      normativa = 'd.lgs. 36/2023 All. II.14';
+      comune = dx.comune || c?.stazione_appaltante || '';
+      corpoHtml = bodyCertificatoUltimazione(c, v, dx);
+      metaRows = [
+        ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+        ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+        ['IMPRESA', esc(c?.impresa||'')],
+        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+      ];
+    } else if(v.tipo==='certificato_ultimazione_con_opere'){
+      titolo = 'Certificato di ultimazione lavori con opere da completare';
+      normativa = 'd.lgs. 36/2023 All. II.14';
+      comune = dx.comune || c?.stazione_appaltante || '';
+      corpoHtml = bodyCertificatoUltimazioneConOpere(c, v, dx);
+      metaRows = [
+        ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+        ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+        ['IMPRESA', esc(c?.impresa||'')],
+        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+      ];
+    } else if(v.tipo==='riconsegna_anticipata'){
+      titolo = 'Verbale di presa in consegna anticipata delle opere';
+      normativa = 'd.lgs. 36/2023 All. II.14 art. 24';
+      comune = dx.comune || c?.stazione_appaltante || '';
+      corpoHtml = bodyRiconsegnaAnticipata(c, v, dx);
+      metaRows = [
+        ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+        ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+        ['IMPRESA', esc(c?.impresa||'')],
+        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+      ];
+    } else {
+      const tipoLabelMap = {sopralluogo:'Verbale di sopralluogo',constatazione:'Verbale di constatazione',riunione:'Verbale di riunione di cantiere',fine_lavori:'Verbale di fine lavori',altro:'Verbale'};
+      titolo = tipoLabelMap[v.tipo] || 'Verbale';
+      corpoHtml = bodyGenericoVerbale(c, v);
+      metaRows = [
+        ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+        ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+        ['IMPRESA', esc(c?.impresa||'')]
+      ];
+    }
+
+    const presenti = parsePresentiList(v.presenti);
+    const redattoreDefault = v.redattore || dx.redattore || '';
+    const firmatariDefaultMap = {
+      riconsegna_anticipata: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:dx.legale_rappresentante||'',ruolo:"L'Impresa"},{nome:dx.rup_nome||'',ruolo:'Il R.U.P.'}],
+      certificato_ultimazione: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:'',ruolo:"L'Impresa"}],
+      certificato_ultimazione_con_opere: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:'',ruolo:"L'Impresa"}],
+      consegna_lavori: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:dx.legale_rappresentante||'',ruolo:"L'Impresa"}],
+      consegna_parziale: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:dx.dt_impresa_nome||'',ruolo:"L'Impresa"}]
+    };
+    const firmatariDefault = firmatariDefaultMap[v.tipo] || [{nome:'',ruolo:'Il Direttore dei Lavori'},{nome:'',ruolo:"L'Impresa"}];
+
+    apriDocumentoFirmabile({
+      titolo: titolo,
+      normativa: normativa||'',
+      comune: comune||'', provincia: provincia||'',
+      metaRows: metaRows,
+      corpoHtml: corpoHtml,
+      luogo: comune || c?.stazione_appaltante || c?.nome || '',
+      dataDoc: v.data,
+      firmatari: presenti.length ? presenti : firmatariDefault,
+      recordTable: 'verbali',
+      recordId: v.id,
+      existingWindow: w
+    });
+  }catch(e){
+    console.error('apriVerbaleFirmabile', e);
+    try{ w.close(); }catch(e2){}
+    alert('Errore nella generazione del verbale: '+(e?.message||e));
+  }
+}
+
+function toggleVerbaleExtra(prefix){
+  const tipo = document.getElementById(prefix+'_tipo').value;
+  ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata'].forEach(function(t){
+    const el = document.getElementById(prefix+'_extra_'+t);
+    if(el) el.style.display = (tipo===t) ? 'block' : 'none';
+  });
+}
+
+function extraFieldsSopralluogoHtml(prefix, dx){
+  dx = dx || {};
+  return `<div id="${prefix}_extra_sopralluogo_periodico" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli sopralluogo periodico</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Luogo cantiere</label>
+        <input class="form-control" id="${prefix}_luogo" value="${esc(dx.luogo||'')}" placeholder="Es. Via Roma 12, Treia (MC)"></div>
+      <div class="form-group"><label class="form-label">R.U.P.</label>
+        <input class="form-control" id="${prefix}_rup" value="${esc(dx.rup_nome||'')}"></div>
+      <div class="form-group"><label class="form-label">Esito verifica *</label>
+        <select class="form-control" id="${prefix}_esito" onchange="document.getElementById('${prefix}_rilievi_wrap').style.display=this.value==='non_conforme'?'block':'none'">
+          <option value="conforme"${dx.esito!=='non_conforme'?' selected':''}>Conforme</option>
+          <option value="non_conforme"${dx.esito==='non_conforme'?' selected':''}>Non conforme</option>
+        </select></div>
+    </div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Accertamenti / disposizioni impartite</label>
+      <textarea class="form-control" id="${prefix}_accertamenti" rows="3">${esc(dx.accertamenti||'')}</textarea></div>
+    <div class="form-group" id="${prefix}_rilievi_wrap" style="margin-top:12px;display:${dx.esito==='non_conforme'?'block':'none'}">
+      <label class="form-label">Rilievi / non conformit&agrave; riscontrate</label>
+      <textarea class="form-control" id="${prefix}_rilievi" rows="3">${esc(dx.rilievi||'')}</textarea></div>
+  </div>`;
+}
+
+function extraFieldsVerificaODSHtml(prefix, dx){
+  dx = dx || {};
+  return `<div id="${prefix}_extra_verifica_ods" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli verifica adempimento OdS / stato luoghi</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">N. Ordine di Servizio</label>
+        <input class="form-control" id="${prefix}_ods_num" value="${esc(dx.ods_numero||'')}" placeholder="Es. 12"></div>
+      <div class="form-group"><label class="form-label">Esito generale *</label>
+        <select class="form-control" id="${prefix}_esito_gen">
+          <option value="adempiente"${dx.esito_generale==='adempiente'?' selected':''}>Adempiente</option>
+          <option value="parzialmente_adempiente"${dx.esito_generale==='parzialmente_adempiente'?' selected':''}>Parzialmente adempiente</option>
+          <option value="inadempiente"${dx.esito_generale==='inadempiente'?' selected':''}>Inadempiente</option>
+        </select></div>
+    </div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Premesse (richiami a OdS/verbali precedenti)</label>
+      <div class="form-hint">Una riga per ogni punto elenco</div>
+      <textarea class="form-control" id="${prefix}_premesse" rows="3">${esc(dx.premesse||'')}</textarea></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Dettaglio prescrizioni verificate</label>
+      <div class="form-hint">Una riga per prescrizione, formato: <code>Descrizione | completa|parziale|non_eseguita</code></div>
+      <textarea class="form-control" id="${prefix}_prescrizioni" rows="4" placeholder="Completamento copertura | non_eseguita&#10;Opere fognarie | parziale">${esc(dx.prescrizioni||'')}</textarea></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Constatazione stato dei luoghi</label>
+      <textarea class="form-control" id="${prefix}_stato_luoghi" rows="3">${esc(dx.stato_luoghi||'')}</textarea></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Conseguenze dell'inadempimento (se non adempiente)</label>
+      <textarea class="form-control" id="${prefix}_conseguenze" rows="3">${esc(dx.conseguenze||'')}</textarea></div>
+    <div class="form-grid" style="margin-top:12px">
+      <div class="form-group"><label class="form-label">Data prossima riunione</label>
+        <input class="form-control" type="date" id="${prefix}_prossima_riunione" value="${dx.prossima_riunione||''}"></div>
+      <div class="form-group"><label class="form-label">Nota trasmissione</label>
+        <input class="form-control" id="${prefix}_trasmissione" value="${esc(dx.trasmissione||"Il presente verbale viene trasmesso a mezzo pec all'impresa, al RUP.")}"></div>
+    </div>
+  </div>`;
+}
+
+function extraFieldsConsegnaLavoriHtml(prefix, dx){
+  dx = dx || {};
+  return `<div id="${prefix}_extra_consegna_lavori" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli consegna lavori</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Comune</label>
+        <input class="form-control" id="${prefix}_cl_comune" value="${esc(dx.comune||'')}"></div>
+      <div class="form-group"><label class="form-label">Delibera di approvazione progetto</label>
+        <input class="form-control" id="${prefix}_cl_delibera" value="${esc(dx.delibera||'')}" placeholder="Es. D.G.C. n. 167 del 22/08/2024"></div>
+      <div class="form-group"><label class="form-label">Progettista</label>
+        <input class="form-control" id="${prefix}_cl_progettista" value="${esc(dx.progettista||'')}"></div>
+      <div class="form-group"><label class="form-label">R.U.P.</label>
+        <input class="form-control" id="${prefix}_cl_rup" value="${esc(dx.rup_nome||'')}"></div>
+      <div class="form-group"><label class="form-label">Data avviso all'Impresa</label>
+        <input class="form-control" type="date" id="${prefix}_cl_avviso" value="${dx.data_avviso_impresa||''}"></div>
+      <div class="form-group"><label class="form-label">Legale Rappresentante Impresa</label>
+        <input class="form-control" id="${prefix}_cl_legale" value="${esc(dx.legale_rappresentante||'')}"></div>
+      <div class="form-group"><label class="form-label">Giorni per ultimazione lavori</label>
+        <input class="form-control" type="number" id="${prefix}_cl_giorni" value="${dx.giorni_lavori||''}"></div>
+      <div class="form-group"><label class="form-label">Data ultimazione lavori</label>
+        <input class="form-control" type="date" id="${prefix}_cl_fine" value="${dx.data_fine_lavori||''}"></div>
+    </div>
+  </div>`;
+}
+
+function extraFieldsConsegnaParzialeHtml(prefix, dx){
+  dx = dx || {};
+  return `<div id="${prefix}_extra_consegna_parziale" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli consegna parziale lavori</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Comune</label>
+        <input class="form-control" id="${prefix}_cp_comune" value="${esc(dx.comune||'')}"></div>
+      <div class="form-group"><label class="form-label">Delibera di approvazione progetto</label>
+        <input class="form-control" id="${prefix}_cp_delibera" value="${esc(dx.delibera||'')}"></div>
+      <div class="form-group"><label class="form-label">Progettista</label>
+        <input class="form-control" id="${prefix}_cp_progettista" value="${esc(dx.progettista||'')}"></div>
+      <div class="form-group"><label class="form-label">Nota di aggiudicazione</label>
+        <input class="form-control" id="${prefix}_cp_nota" value="${esc(dx.nota_aggiudicazione||'')}" placeholder="Es. n. 123 del 01/01/2024"></div>
+      <div class="form-group"><label class="form-label">R.U.P.</label>
+        <input class="form-control" id="${prefix}_cp_rup" value="${esc(dx.rup_nome||'')}"></div>
+      <div class="form-group"><label class="form-label">Direttore Tecnico Impresa</label>
+        <input class="form-control" id="${prefix}_cp_dt" value="${esc(dx.dt_impresa_nome||'')}"></div>
+      <div class="form-group span-2"><label class="form-label">Motivo indisponibilit&agrave; area</label>
+        <textarea class="form-control" id="${prefix}_cp_motivo" rows="2">${esc(dx.area_motivo||'')}</textarea></div>
+      <div class="form-group span-2"><label class="form-label">Opere eseguibili sull'area disponibile</label>
+        <textarea class="form-control" id="${prefix}_cp_opere" rows="2">${esc(dx.opere_disponibili||'')}</textarea></div>
+    </div>
+  </div>`;
+}
+
+function extraFieldsConstatazioneLuoghiHtml(prefix, dx){
+  dx = dx || {};
+  return `<div id="${prefix}_extra_constatazione_stato_luoghi" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli constatazione stato dei luoghi</div>
+    <div class="form-group"><label class="form-label">Premesso che (una riga per punto elenco)</label>
+      <textarea class="form-control" id="${prefix}_csl_premesse" rows="2">${esc(dx.premesse||'')}</textarea></div>
+    <div class="form-grid" style="margin-top:12px">
+      <div class="form-group"><label class="form-label">Presenza maestranze e personale impresa</label>
+        <textarea class="form-control" id="${prefix}_csl_maestranze" rows="2">${esc(dx.maestranze||'')}</textarea></div>
+      <div class="form-group"><label class="form-label">Presenza attrezzature/macchinari/mezzi</label>
+        <textarea class="form-control" id="${prefix}_csl_attrezzature" rows="2">${esc(dx.attrezzature||'')}</textarea></div>
+      <div class="form-group"><label class="form-label">Lavorazioni in corso di esecuzione</label>
+        <textarea class="form-control" id="${prefix}_csl_lavorazioni" rows="2">${esc(dx.lavorazioni_corso||'')}</textarea></div>
+      <div class="form-group"><label class="form-label">Stato di avanzamento rilevato</label>
+        <textarea class="form-control" id="${prefix}_csl_avanzamento" rows="2">${esc(dx.stato_avanzamento||'')}</textarea></div>
+      <div class="form-group span-2"><label class="form-label">Condizioni di sicurezza del cantiere</label>
+        <textarea class="form-control" id="${prefix}_csl_sicurezza" rows="2">${esc(dx.condizioni_sicurezza||'')}</textarea></div>
+    </div>
+    <div class="form-group" style="margin-top:12px">
+      <label class="form-label"><input type="checkbox" id="${prefix}_csl_docfoto" ${dx.doc_fotografica!==false?'checked':''}> Include menzione documentazione fotografica allegata (art. 14 c.3 D.M. 49/2018)</label>
+    </div>
+    <div class="form-grid" style="margin-top:12px">
+      <div class="form-group"><label class="form-label">N. Ordine di servizio (se presente)</label>
+        <input class="form-control" id="${prefix}_csl_ods" value="${esc(dx.ods_numero||'')}"></div>
+    </div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Prescrizioni e richieste (una per riga, numerate automaticamente)</label>
+      <textarea class="form-control" id="${prefix}_csl_prescrizioni" rows="3">${esc(dx.prescrizioni||'')}</textarea></div>
+    <div class="form-grid" style="margin-top:12px">
+      <div class="form-group"><label class="form-label">Data prossima verifica</label>
+        <input class="form-control" type="date" id="${prefix}_csl_prox_data" value="${dx.prossima_verifica_data||''}"></div>
+      <div class="form-group"><label class="form-label">Ora prossima verifica</label>
+        <input class="form-control" type="time" id="${prefix}_csl_prox_ora" value="${dx.prossima_verifica_ora||''}"></div>
+      <div class="form-group span-2"><label class="form-label">Scopo prossima verifica</label>
+        <input class="form-control" id="${prefix}_csl_prox_scopo" value="${esc(dx.prossima_verifica_scopo||"l'avvenuta ripresa delle lavorazioni senza soluzione di continuità")}"></div>
+    </div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Ulteriori rilievi e dichiarazioni dei presenti</label>
+      <textarea class="form-control" id="${prefix}_csl_rilievi" rows="2">${esc(dx.rilievi_finali||'')}</textarea></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Nota trasmissione</label>
+      <input class="form-control" id="${prefix}_csl_trasmissione" value="${esc(dx.trasmissione||"Il presente verbale viene trasmesso a mezzo pec all'impresa, al RUP.")}"></div>
+    <div class="form-group" style="margin-top:12px">
+      <label class="form-label"><input type="checkbox" id="${prefix}_csl_restituzione" ${dx.restituzione_firmata!==false?'checked':''}> Include richiesta di restituzione verbale firmato (art. 3 c.3 D.M. 49/2018)</label>
+    </div>
+  </div>`;
+}
+
+function extraFieldsCertUltimazioneHtml(prefix, dx){
+  dx = dx || {};
+  return `<div id="${prefix}_extra_certificato_ultimazione" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli certificato di ultimazione lavori</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Comune</label>
+        <input class="form-control" id="${prefix}_cu_comune" value="${esc(dx.comune||'')}"></div>
+      <div class="form-group"><label class="form-label">Giorni contrattuali</label>
+        <input class="form-control" type="number" id="${prefix}_cu_giornicontr" value="${dx.giorni_contrattuali||''}"></div>
+      <div class="form-group"><label class="form-label">Data scadenza prevista</label>
+        <input class="form-control" type="date" id="${prefix}_cu_scadenza" value="${dx.data_scadenza_prevista||''}"></div>
+      <div class="form-group"><label class="form-label">Data ultimazione effettiva *</label>
+        <input class="form-control" type="date" id="${prefix}_cu_ultimazione" value="${dx.data_ultimazione||''}"></div>
+      <div class="form-group"><label class="form-label">Eseguiti in tempo utile?</label>
+        <select class="form-control" id="${prefix}_cu_tempoutile" onchange="document.getElementById('${prefix}_cu_ritardo_wrap').style.display=this.value==='no'?'block':'none'">
+          <option value="si"${dx.tempo_utile!=='no'?' selected':''}>S&igrave;</option>
+          <option value="no"${dx.tempo_utile==='no'?' selected':''}>No, in ritardo</option>
+        </select></div>
+    </div>
+    <div class="form-grid" id="${prefix}_cu_ritardo_wrap" style="margin-top:12px;display:${dx.tempo_utile==='no'?'grid':'none'}">
+      <div class="form-group"><label class="form-label">Giorni di ritardo</label>
+        <input class="form-control" type="number" id="${prefix}_cu_giorniritardo" value="${dx.giorni_ritardo||''}"></div>
+      <div class="form-group"><label class="form-label">Motivazioni del ritardo</label>
+        <input class="form-control" id="${prefix}_cu_motivoritardo" value="${esc(dx.motivo_ritardo||'')}"></div>
+    </div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Note aggiuntive</label>
+      <textarea class="form-control" id="${prefix}_cu_note" rows="2">${esc(dx.note||'')}</textarea></div>
+  </div>`;
+}
+
+function extraFieldsCertUltimazioneConOpereHtml(prefix, dx){
+  dx = dx || {};
+  return `<div id="${prefix}_extra_certificato_ultimazione_con_opere" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli certificato di ultimazione con opere da completare</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Comune</label>
+        <input class="form-control" id="${prefix}_cuo_comune" value="${esc(dx.comune||'')}"></div>
+      <div class="form-group"><label class="form-label">Giorni contrattuali</label>
+        <input class="form-control" type="number" id="${prefix}_cuo_giornicontr" value="${dx.giorni_contrattuali||''}"></div>
+      <div class="form-group"><label class="form-label">Data scadenza prevista</label>
+        <input class="form-control" type="date" id="${prefix}_cuo_scadenza" value="${dx.data_scadenza_prevista||''}"></div>
+      <div class="form-group"><label class="form-label">Data ultimazione (con riserva) *</label>
+        <input class="form-control" type="date" id="${prefix}_cuo_ultimazione" value="${dx.data_ultimazione||''}"></div>
+      <div class="form-group"><label class="form-label">Giorni per completamento</label>
+        <input class="form-control" type="number" id="${prefix}_cuo_giornicompl" value="${dx.giorni_completamento||'60'}"></div>
+    </div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Lavorazioni residue da completare (una per riga)</label>
+      <textarea class="form-control" id="${prefix}_cuo_opere" rows="3">${esc(dx.opere_da_completare||'')}</textarea></div>
+  </div>`;
+}
+
+function extraFieldsRiconsegnaAnticipataHtml(prefix, dx){
+  dx = dx || {};
+  return `<div id="${prefix}_extra_riconsegna_anticipata" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli verbale di presa in consegna anticipata (riconsegna anticipata) delle opere</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Comune</label>
+        <input class="form-control" id="${prefix}_ra_comune" value="${esc(dx.comune||'')}"></div>
+      <div class="form-group"><label class="form-label">Titolare/Legale Rappresentante Impresa</label>
+        <input class="form-control" id="${prefix}_ra_legale" value="${esc(dx.legale_rappresentante||'')}"></div>
+      <div class="form-group"><label class="form-label">R.U.P.</label>
+        <input class="form-control" id="${prefix}_ra_rup" value="${esc(dx.rup_nome||'')}"></div>
+      <div class="form-group"><label class="form-label">Data verbale di consegna lavori</label>
+        <input class="form-control" type="date" id="${prefix}_ra_dataconsegna" value="${dx.data_consegna_originale||''}"></div>
+      <div class="form-group"><label class="form-label">Data ultimazione lavori</label>
+        <input class="form-control" type="date" id="${prefix}_ra_dataultimazione" value="${dx.data_ultimazione_opere||''}"></div>
+      <div class="form-group"><label class="form-label">Collaudo statico necessario?</label>
+        <select class="form-control" id="${prefix}_ra_collaudo">
+          <option value="si"${dx.collaudo_statico_necessario!==false?' selected':''}>S&igrave;</option>
+          <option value="no"${dx.collaudo_statico_necessario===false?' selected':''}>No</option>
+        </select></div>
+    </div>
+    <div class="form-grid" style="margin-top:12px">
+      <div class="form-group"><label class="form-label"><input type="checkbox" id="${prefix}_ra_allacci" ${dx.allacciamenti_eseguiti!==false?'checked':''}> Allacciamenti idrici/elettrici/fognari eseguiti</label></div>
+      <div class="form-group"><label class="form-label"><input type="checkbox" id="${prefix}_ra_certif" ${dx.certificazioni_prodotte!==false?'checked':''}> Certificazioni di conformit&agrave; impianti prodotte</label></div>
+    </div>
+    <div class="form-grid" style="margin-top:12px">
+      <div class="form-group"><label class="form-label">N. nota Ente appaltante</label>
+        <input class="form-control" id="${prefix}_ra_notaente_num" value="${esc(dx.nota_ente_numero||'')}"></div>
+      <div class="form-group"><label class="form-label">Data nota Ente</label>
+        <input class="form-control" type="date" id="${prefix}_ra_notaente_data" value="${dx.nota_ente_data||''}"></div>
+      <div class="form-group"><label class="form-label">N. nota Impresa</label>
+        <input class="form-control" id="${prefix}_ra_notaimp_num" value="${esc(dx.nota_impresa_numero||'')}"></div>
+      <div class="form-group"><label class="form-label">Data nota Impresa</label>
+        <input class="form-control" type="date" id="${prefix}_ra_notaimp_data" value="${dx.nota_impresa_data||''}"></div>
+      <div class="form-group span-2"><label class="form-label">Oggetto della consegna anticipata</label>
+        <input class="form-control" id="${prefix}_ra_oggetto" value="${esc(dx.oggetto_consegna||'')}" placeholder="Es. della palestra e degli spogliatoi (includere l'articolo)"></div>
+    </div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Descrizione delle opere consegnate</label>
+      <textarea class="form-control" id="${prefix}_ra_descrizione" rows="3">${esc(dx.descrizione_opere||'')}</textarea></div>
+  </div>`;
+}
+
+function raccogliDatiExtraVerbale(prefix, tipo){
+  if(tipo==='sopralluogo_periodico'){
+    return {
+      luogo: document.getElementById(prefix+'_luogo')?.value.trim()||null,
+      rup_nome: document.getElementById(prefix+'_rup')?.value.trim()||null,
+      esito: document.getElementById(prefix+'_esito')?.value||'conforme',
+      accertamenti: document.getElementById(prefix+'_accertamenti')?.value.trim()||null,
+      rilievi: document.getElementById(prefix+'_rilievi')?.value.trim()||null
+    };
+  }
+  if(tipo==='verifica_ods'){
+    return {
+      ods_numero: document.getElementById(prefix+'_ods_num')?.value.trim()||null,
+      esito_generale: document.getElementById(prefix+'_esito_gen')?.value||null,
+      premesse: document.getElementById(prefix+'_premesse')?.value.trim()||null,
+      prescrizioni: document.getElementById(prefix+'_prescrizioni')?.value.trim()||null,
+      stato_luoghi: document.getElementById(prefix+'_stato_luoghi')?.value.trim()||null,
+      conseguenze: document.getElementById(prefix+'_conseguenze')?.value.trim()||null,
+      prossima_riunione: document.getElementById(prefix+'_prossima_riunione')?.value||null,
+      trasmissione: document.getElementById(prefix+'_trasmissione')?.value.trim()||null
+    };
+  }
+  if(tipo==='consegna_lavori'){
+    return {
+      comune: document.getElementById(prefix+'_cl_comune')?.value.trim()||null,
+      delibera: document.getElementById(prefix+'_cl_delibera')?.value.trim()||null,
+      progettista: document.getElementById(prefix+'_cl_progettista')?.value.trim()||null,
+      rup_nome: document.getElementById(prefix+'_cl_rup')?.value.trim()||null,
+      data_avviso_impresa: document.getElementById(prefix+'_cl_avviso')?.value||null,
+      legale_rappresentante: document.getElementById(prefix+'_cl_legale')?.value.trim()||null,
+      giorni_lavori: document.getElementById(prefix+'_cl_giorni')?.value||null,
+      data_fine_lavori: document.getElementById(prefix+'_cl_fine')?.value||null
+    };
+  }
+  if(tipo==='consegna_parziale'){
+    return {
+      comune: document.getElementById(prefix+'_cp_comune')?.value.trim()||null,
+      delibera: document.getElementById(prefix+'_cp_delibera')?.value.trim()||null,
+      progettista: document.getElementById(prefix+'_cp_progettista')?.value.trim()||null,
+      nota_aggiudicazione: document.getElementById(prefix+'_cp_nota')?.value.trim()||null,
+      rup_nome: document.getElementById(prefix+'_cp_rup')?.value.trim()||null,
+      dt_impresa_nome: document.getElementById(prefix+'_cp_dt')?.value.trim()||null,
+      area_motivo: document.getElementById(prefix+'_cp_motivo')?.value.trim()||null,
+      opere_disponibili: document.getElementById(prefix+'_cp_opere')?.value.trim()||null
+    };
+  }
+  if(tipo==='constatazione_stato_luoghi'){
+    return {
+      premesse: document.getElementById(prefix+'_csl_premesse')?.value.trim()||null,
+      maestranze: document.getElementById(prefix+'_csl_maestranze')?.value.trim()||null,
+      attrezzature: document.getElementById(prefix+'_csl_attrezzature')?.value.trim()||null,
+      lavorazioni_corso: document.getElementById(prefix+'_csl_lavorazioni')?.value.trim()||null,
+      stato_avanzamento: document.getElementById(prefix+'_csl_avanzamento')?.value.trim()||null,
+      condizioni_sicurezza: document.getElementById(prefix+'_csl_sicurezza')?.value.trim()||null,
+      doc_fotografica: document.getElementById(prefix+'_csl_docfoto')?.checked !== false,
+      ods_numero: document.getElementById(prefix+'_csl_ods')?.value.trim()||null,
+      prescrizioni: document.getElementById(prefix+'_csl_prescrizioni')?.value.trim()||null,
+      prossima_verifica_data: document.getElementById(prefix+'_csl_prox_data')?.value||null,
+      prossima_verifica_ora: document.getElementById(prefix+'_csl_prox_ora')?.value||null,
+      prossima_verifica_scopo: document.getElementById(prefix+'_csl_prox_scopo')?.value.trim()||null,
+      rilievi_finali: document.getElementById(prefix+'_csl_rilievi')?.value.trim()||null,
+      trasmissione: document.getElementById(prefix+'_csl_trasmissione')?.value.trim()||null,
+      restituzione_firmata: document.getElementById(prefix+'_csl_restituzione')?.checked !== false
+    };
+  }
+  if(tipo==='certificato_ultimazione'){
+    return {
+      comune: document.getElementById(prefix+'_cu_comune')?.value.trim()||null,
+      giorni_contrattuali: document.getElementById(prefix+'_cu_giornicontr')?.value||null,
+      data_scadenza_prevista: document.getElementById(prefix+'_cu_scadenza')?.value||null,
+      data_ultimazione: document.getElementById(prefix+'_cu_ultimazione')?.value||null,
+      tempo_utile: document.getElementById(prefix+'_cu_tempoutile')?.value||'si',
+      giorni_ritardo: document.getElementById(prefix+'_cu_giorniritardo')?.value||null,
+      motivo_ritardo: document.getElementById(prefix+'_cu_motivoritardo')?.value.trim()||null,
+      note: document.getElementById(prefix+'_cu_note')?.value.trim()||null
+    };
+  }
+  if(tipo==='certificato_ultimazione_con_opere'){
+    return {
+      comune: document.getElementById(prefix+'_cuo_comune')?.value.trim()||null,
+      giorni_contrattuali: document.getElementById(prefix+'_cuo_giornicontr')?.value||null,
+      data_scadenza_prevista: document.getElementById(prefix+'_cuo_scadenza')?.value||null,
+      data_ultimazione: document.getElementById(prefix+'_cuo_ultimazione')?.value||null,
+      giorni_completamento: document.getElementById(prefix+'_cuo_giornicompl')?.value||'60',
+      opere_da_completare: document.getElementById(prefix+'_cuo_opere')?.value.trim()||null
+    };
+  }
+  if(tipo==='riconsegna_anticipata'){
+    return {
+      comune: document.getElementById(prefix+'_ra_comune')?.value.trim()||null,
+      legale_rappresentante: document.getElementById(prefix+'_ra_legale')?.value.trim()||null,
+      rup_nome: document.getElementById(prefix+'_ra_rup')?.value.trim()||null,
+      data_consegna_originale: document.getElementById(prefix+'_ra_dataconsegna')?.value||null,
+      data_ultimazione_opere: document.getElementById(prefix+'_ra_dataultimazione')?.value||null,
+      collaudo_statico_necessario: document.getElementById(prefix+'_ra_collaudo')?.value !== 'no',
+      allacciamenti_eseguiti: document.getElementById(prefix+'_ra_allacci')?.checked !== false,
+      certificazioni_prodotte: document.getElementById(prefix+'_ra_certif')?.checked !== false,
+      nota_ente_numero: document.getElementById(prefix+'_ra_notaente_num')?.value.trim()||null,
+      nota_ente_data: document.getElementById(prefix+'_ra_notaente_data')?.value||null,
+      nota_impresa_numero: document.getElementById(prefix+'_ra_notaimp_num')?.value.trim()||null,
+      nota_impresa_data: document.getElementById(prefix+'_ra_notaimp_data')?.value||null,
+      oggetto_consegna: document.getElementById(prefix+'_ra_oggetto')?.value.trim()||null,
+      descrizione_opere: document.getElementById(prefix+'_ra_descrizione')?.value.trim()||null
+    };
+  }
+  return null;
+}
+
+// ============================================================
+// SOSPENSIONI — generazione verbale di sospensione / ripresa firmabile
+// ============================================================
+async function openModalGeneraVerbaleSospensione(sospId, tipoVerbale){
+  const {data:s} = await sb.from('sospensioni').select('*').eq('id',sospId).single();
+  if(!s) return;
+  const c = getCantiereObj(s.cantiere_id);
+
+  // prova a suggerire il referente impresa dal team
+  let impresaRef = '';
+  try{
+    const {data:team} = await sb.from('cantiere_utenti').select('ruolo,utente_id').eq('cantiere_id',s.cantiere_id).eq('ruolo','dt_impresa');
+    if(team && team.length){
+      const {data:prof} = await sb.from('profiles').select('nome,cognome').eq('id',team[0].utente_id).single();
+      if(prof) impresaRef = `${prof.nome||''} ${prof.cognome||''}`.trim();
+    }
+  }catch(e){}
+
+  const redattoreDefault = `${currentUser.nome||''} ${currentUser.cognome||''}`.trim() + (ROLE_LABELS[currentRole]?` (${ROLE_LABELS[currentRole]})`:'');
+  const isRipresa = tipoVerbale==='ripresa';
+
+  let campiSpecifici = '';
+  if(!isRipresa){
+    campiSpecifici = `
+      <div class="form-group"><label class="form-label">Data consegna lavori (per richiamo)</label>
+        <input class="form-control" type="date" id="gvs_dataconsegna" value="${c?.data_consegna||''}"></div>
+      <div class="form-group span-2"><label class="form-label">Stato avanzamento lavori riscontrato</label>
+        <textarea class="form-control" id="gvs_stato_avanz" rows="2" placeholder="Es. realizzazione delle fondazioni del fabbricato"></textarea></div>
+      <div class="form-group"><label class="form-label">Sospensione a fasce orarie &mdash; dalle</label>
+        <input class="form-control" type="time" id="gvs_fascia_da"></div>
+      <div class="form-group"><label class="form-label">Sospensione a fasce orarie &mdash; alle</label>
+        <input class="form-control" type="time" id="gvs_fascia_a"></div>
+      <div class="form-group span-2"><div class="form-hint">Lascia vuoti i campi fascia oraria per generare il testo di sospensione totale standard.</div></div>`;
+  } else {
+    campiSpecifici = `
+      <div class="form-group"><label class="form-label">Data verbale di consegna lavori</label>
+        <input class="form-control" type="date" id="gvs_dataconsegna_orig" value="${c?.data_consegna||''}"></div>
+      <div class="form-group"><label class="form-label">N. verbale di sospensione</label>
+        <input class="form-control" id="gvs_num_sosp" placeholder="Es. 01"></div>
+      <div class="form-group span-2"><label class="form-label">Opere la cui esecuzione rimaneva interrotta</label>
+        <textarea class="form-control" id="gvs_opere_interrotte" rows="2" placeholder="Es. la totalit&agrave; delle lavorazioni"></textarea></div>
+      <div class="form-group span-2"><label class="form-label">Stato attrezzature e materiali in cantiere</label>
+        <textarea class="form-control" id="gvs_stato_attrezz" rows="2"></textarea></div>`;
+  }
+
+  openModal(`Genera verbale di ${isRipresa?'ripresa':'sospensione'} lavori`, `
+    <div class="alert alert-info" style="font-size:12px">
+      Il documento verr&agrave; generato in una nuova scheda su carta intestata Studio SCS, pronto per la firma di tutti i presenti direttamente su iPad.
+    </div>
+    <div class="form-grid">
+      <div class="form-group span-2"><label class="form-label">Direttore dei Lavori (redattore) *</label>
+        <input class="form-control" id="gvs_redattore" value="${esc(redattoreDefault)}"></div>
+      <div class="form-group"><label class="form-label">Referente Impresa esecutrice</label>
+        <input class="form-control" id="gvs_impresa_ref" value="${esc(impresaRef)}"></div>
+      <div class="form-group"><label class="form-label">Comune</label>
+        <input class="form-control" id="gvs_comune" value="${esc(c?.stazione_appaltante||'')}"></div>
+      ${campiSpecifici}
+      <div class="form-group span-2"><label class="form-label">Presenti (uno per riga, formato "Nome (Ruolo)")</label>
+        <textarea class="form-control" id="gvs_presenti" rows="3" placeholder="Ing. Francesco Stortoni (Direttore dei Lavori)&#10;Sig. Mario Rossi (Impresa)"></textarea>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="generaVerbaleSospensionePDF('${sospId}','${tipoVerbale}')">&#128424;&#65039; Genera documento</button>
+    </div>`);
+}
+
+async function generaVerbaleSospensionePDF(sospId, tipoVerbale){
+  const w = window.open('about:blank', '_blank'); // aperta subito in risposta al click, evita blocco popup Safari/iPad dopo l'await
+  if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per generare il documento.'); return; }
+  try{
+    const {data:s, error:errS} = await sb.from('sospensioni').select('*').eq('id',sospId).single();
+    if(errS) throw errS;
+    if(!s){ w.close(); return; }
+    const c = getCantiereObj(s.cantiere_id);
+    const isRipresa = tipoVerbale==='ripresa';
+
+    const dx = {
+      redattore: document.getElementById('gvs_redattore').value.trim(),
+      impresa_referente: document.getElementById('gvs_impresa_ref').value.trim(),
+      comune: document.getElementById('gvs_comune').value.trim()
+    };
+    if(!isRipresa){
+      dx.data_consegna = document.getElementById('gvs_dataconsegna').value||null;
+      dx.stato_avanzamento = document.getElementById('gvs_stato_avanz').value.trim()||null;
+      dx.fascia_oraria_da = document.getElementById('gvs_fascia_da').value||null;
+      dx.fascia_oraria_a = document.getElementById('gvs_fascia_a').value||null;
+    } else {
+      dx.data_consegna_originale = document.getElementById('gvs_dataconsegna_orig').value||null;
+      dx.numero_verbale_sospensione = document.getElementById('gvs_num_sosp').value.trim()||null;
+      dx.opere_interrotte = document.getElementById('gvs_opere_interrotte').value.trim()||null;
+      dx.stato_attrezzature = document.getElementById('gvs_stato_attrezz').value.trim()||null;
+    }
+    const presentiTxt = document.getElementById('gvs_presenti').value.trim();
+    const presenti = parsePresentiList(presentiTxt);
+
+    const corpoHtml = isRipresa ? bodyRipresa(c, s, dx) : bodySospensione(c, s, dx);
+    const metaRows = [
+      ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+      ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+      ['IMPRESA', esc(c?.impresa||'')],
+      ['CONTRATTO', esc(c?.estremi_contratto||'')]
+    ];
+
+    closeModal();
+    apriDocumentoFirmabile({
+      titolo: isRipresa ? 'Verbale di ripresa dei lavori' : ('Verbale di sospensione dei lavori'+(s.tipo_sospensione==='parziale'?' (parziale)':'')),
+      normativa: 'd.lgs. 36/2023 art. 121 &mdash; art. 107 d.lgs. 50/2016 (ove applicabile)',
+      comune: dx.comune, provincia: '',
+      metaRows: metaRows,
+      corpoHtml: corpoHtml,
+      luogo: dx.comune || c?.nome || '',
+      dataDoc: isRipresa ? (s.data_ripresa||today()) : s.data,
+      firmatari: presenti.length ? presenti : [{nome:dx.impresa_referente||'',ruolo:"L'Impresa"},{nome:dx.redattore||'',ruolo:'Il Direttore dei Lavori'}],
+      recordTable: 'sospensioni',
+      recordId: s.id,
+      existingWindow: w
+    });
+  }catch(e){
+    console.error('generaVerbaleSospensionePDF', e);
+    try{ w.close(); }catch(e2){}
+    alert('Errore nella generazione del verbale: '+(e?.message||e));
+  }
 }
 
 
