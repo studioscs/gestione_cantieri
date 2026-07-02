@@ -4610,6 +4610,7 @@ async function generaReportGiornale(cantiereId){
 
   const w=window.open('','_blank');
   w.document.write(`<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0">
   <title>Giornale dei Lavori &mdash; ${esc(c?.nome||'')}</title>
   <style>
 
@@ -4643,6 +4644,54 @@ async function generaReportGiornale(cantiereId){
   .footer-doc{margin:10px 20px 0;padding-top:6px;border-top:1px solid #dee2e6;display:flex;justify-content:space-between;font-size:7.5px;color:#95A8B0}
   @page{margin:10mm;size:A4 landscape}
   @media print{body{font-size:8.5px}.no-print{display:none}}
+
+  /* ===== MOBILE / IPAD ===== */
+  @media screen and (max-width:1100px){
+    body{font-size:9px}
+    /* contenitore scrollabile orizzontalmente */
+    .table-scroll-wrap{
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+      margin:0 10px 10px;
+      border:1px solid #dee2e6;
+      border-radius:3px;
+    }
+    /* rimuovi i margini laterali dalla sezione tavola */
+    .table-scroll-wrap .sezione{margin:0}
+    /* la tabella mantiene larghezza minima leggibile */
+    table.t{
+      min-width:900px;
+      font-size:8px;
+    }
+    table.t th{font-size:7px;padding:3px 4px}
+    table.t td{padding:3px 4px;font-size:8px}
+    /* intestazione più compatta */
+    .intestazione{padding:10px 12px 8px}
+    .intestazione-logo img{height:36px}
+    .intestazione-iso img{height:36px}
+    .studio-info{font-size:7.5px}
+    .studio-info strong{font-size:9px}
+    /* hint scroll visibile */
+    .scroll-hint{
+      display:block;
+      font-size:8px;
+      color:#95A8B0;
+      text-align:center;
+      padding:4px;
+      background:#f8f9fa;
+    }
+  }
+  @media screen and (min-width:1101px){
+    .scroll-hint{display:none}
+    .table-scroll-wrap{overflow:visible;border:none;margin:0}
+  }
+  /* Landscape su iPad (>900px in landscape) */
+  @media screen and (min-width:900px) and (orientation:landscape){
+    body{font-size:9px}
+    table.t{font-size:8.5px;min-width:unset}
+    table.t th{font-size:7.5px}
+    .scroll-hint{display:none}
+  }
 
   </style></head><body>
 
@@ -4681,7 +4730,8 @@ async function generaReportGiornale(cantiereId){
     <div class="kpi-box"><div class="v">${Math.round(totLav/Math.max(giorni.length,1)*100)}%</div><div class="l">% utilizzo</div></div>
   </div>
 
-  <div class="sezione">
+  <span class="scroll-hint">&#8592; scorri per vedere tutta la tabella &#8594;</span>
+  <div class="table-scroll-wrap"><div class="sezione">
     <table class="t">
       <colgroup>
         <col style="width:85px"><col style="width:100px"><col style="width:65px">
@@ -4695,7 +4745,7 @@ async function generaReportGiornale(cantiereId){
       </tr></thead>
       <tbody>${righeHtml}</tbody>
     </table>
-  </div>
+  </div></div><!-- /table-scroll-wrap -->
 
   <div class="footer-doc">
     <span>Studio Tecnico SCS S.r.l. tra Professionisti &mdash; P.I. 02077580435 &mdash; Tenuto a cura del Direttore dei Lavori</span>
