@@ -19,6 +19,8 @@ h1{font-size:20px;font-weight:700}h2{font-size:16px;font-weight:600}h3{font-size
 .app{display:flex;flex-direction:column;min-height:100vh}
 .topbar{background:var(--primary);color:white;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
 .topbar-brand{display:flex;align-items:center;gap:12px}
+.menu-toggle{display:none;background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:6px;width:36px;height:36px;font-size:18px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0}
+.sidebar-backdrop{display:none;position:fixed;inset:56px 0 0 0;background:rgba(0,0,0,0.4);z-index:90}
 .topbar-brand span{font-size:16px;font-weight:700;letter-spacing:-0.02em}
 .topbar-brand small{font-size:11px;opacity:0.6}
 .topbar-right{display:flex;align-items:center;gap:16px}
@@ -134,7 +136,20 @@ textarea.form-control{resize:vertical;min-height:80px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .text-muted{color:var(--muted)}.text-right{text-align:right}.mt-16{margin-top:16px}
 .hidden{display:none!important}.w-full{width:100%}
-@media(max-width:768px){.kpi-row{grid-template-columns:1fr 1fr}.form-grid,.form-grid-3{grid-template-columns:1fr}.form-group.span-2,.form-group.span-3{grid-column:span 1}.sidebar{display:none}}
+@media(max-width:768px){
+  .kpi-row{grid-template-columns:1fr 1fr}
+  .form-grid,.form-grid-3{grid-template-columns:1fr}
+  .form-group.span-2,.form-group.span-3{grid-column:span 1}
+}
+/* Menu a scomparsa (drawer): telefoni in verticale (<=768px) e telefoni in
+   orizzontale (altezza schermo bassa: iPhone landscape ~390-430px di altezza).
+   L'iPad, anche in orizzontale, ha altezza >500px quindi mantiene la sidebar fissa. */
+@media(max-width:768px), (max-height:500px) and (orientation:landscape){
+  .menu-toggle{display:flex}
+  .sidebar{position:fixed;top:56px;left:0;height:calc(100vh - 56px);z-index:95;transform:translateX(-100%);transition:transform 220ms ease;box-shadow:2px 0 12px rgba(0,0,0,0.15)}
+  .sidebar.open{transform:translateX(0)}
+  .sidebar-backdrop.open{display:block}
+}
 @media print{.sidebar,.topbar,.btn,.modal-overlay{display:none!important}.main{padding:0}.card{box-shadow:none;border:1px solid #ccc}}
 </style>
 </head>
@@ -167,14 +182,18 @@ textarea.form-control{resize:vertical;min-height:80px}
 <!-- APP -->
 <div class="app hidden" id="appScreen">
   <div class="topbar">
-    <div class="topbar-brand"><span>🏗️ GestioneCantiere</span><small>SCS</small></div>
+    <div class="topbar-brand">
+      <button class="menu-toggle" id="menuToggle" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+      <span>🏗️ GestioneCantiere</span><small>SCS</small>
+    </div>
     <div class="topbar-right">
       <div class="user-badge"><span id="topbarUser">—</span><span class="role-pill" id="topbarRole">—</span></div>
       <button class="btn btn-secondary btn-sm" onclick="doLogout()">Esci</button>
     </div>
   </div>
   <div class="layout">
-    <nav class="sidebar">
+    <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
+    <nav class="sidebar" id="sidebar">
       <div class="cantiere-selector">
         <label>Cantiere attivo</label>
         <select id="cantiereSel" onchange="selectCantiere(this.value)"><option value="">— Seleziona —</option></select>
@@ -378,7 +397,21 @@ function selectCantiere(id, skipView){
 }
 
 let _viewToken = 0;
+function toggleSidebar(){
+  const sb = document.getElementById('sidebar');
+  if(!sb) return;
+  if(sb.classList.contains('open')) closeSidebar(); else openSidebar();
+}
+function openSidebar(){
+  document.getElementById('sidebar')?.classList.add('open');
+  document.getElementById('sidebarBackdrop')?.classList.add('open');
+}
+function closeSidebar(){
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('sidebarBackdrop')?.classList.remove('open');
+}
 async function showView(view){
+  closeSidebar(); // su mobile: chiude il drawer quando si sceglie una sezione
   const myToken = ++_viewToken; // ogni chiamata ottiene un numero crescente; solo l'ultima puo' scrivere nel DOM
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active', el.dataset.view===view));
   const main = document.getElementById('mainContent');
