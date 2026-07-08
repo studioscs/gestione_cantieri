@@ -366,7 +366,7 @@ async function doLogout(){
 // ============================================================
 // NAV
 // ============================================================
-function selectCantiere(id){
+function selectCantiere(id, skipView){
   currentCantiere = id || null;
   const r = myCantieri.find(x=>x.cantiere.id===id);
   currentRole = r ? r.ruolo : null;
@@ -374,16 +374,25 @@ function selectCantiere(id){
   const nav = document.getElementById('navCantiere');
   nav.style.opacity = id?'1':'0.4';
   nav.style.pointerEvents = id?'auto':'none';
-  if(id) showView('cantieri');
+  if(id && !skipView) showView('cantieri');
 }
 
+let _viewToken = 0;
 async function showView(view){
+  const myToken = ++_viewToken; // ogni chiamata ottiene un numero crescente; solo l'ultima puo' scrivere nel DOM
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active', el.dataset.view===view));
   const main = document.getElementById('mainContent');
   main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   const views = {dashboard:renderDashboard,cantieri:renderCantieri,fasi:renderFasi,sospensioni:renderSospensioni,varianti:renderVarianti,giornale:renderGiornale,ods:renderODS,comunicazioni:renderComunicazioni,verbali:renderVerbali,liste:renderListe,sal:renderSAL,ditte:renderDitte,team:renderTeam,report:renderReport};
-  try { main.innerHTML = await views[view](); }
-  catch(e){ console.error(e); main.innerHTML = `<div class="alert alert-error">Errore caricamento: ${e.message}</div>`; }
+  try {
+    const out = await views[view]();
+    if(myToken !== _viewToken) return; // nel frattempo e' partita una navigazione piu' recente: non sovrascrivere
+    main.innerHTML = out;
+  }
+  catch(e){
+    if(myToken !== _viewToken) return;
+    console.error(e); main.innerHTML = `<div class="alert alert-error">Errore caricamento: ${e.message}</div>`;
+  }
 }
 
 // ============================================================
@@ -445,7 +454,7 @@ async function renderDashboard(){
 
 function jumpToCantiere(id){
   document.getElementById('cantiereSel').value=id;
-  selectCantiere(id);
+  selectCantiere(id, true); // true = non cambiare vista qui: ci pensa showView('fasi') sotto, evita la corsa fra le due render async
   showView('fasi');
 }
 
