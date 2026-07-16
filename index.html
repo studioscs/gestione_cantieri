@@ -4413,7 +4413,7 @@ async function stampaODS(id){
   const c=getCantiereObj(o.cantiere_id);
   const firme=o.firme||[];
   const w=window.open('','_blank');
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(o.numero)}</title>
+  scriviPopupHtml(w, `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${esc(o.numero)}</title>
   <style>body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:13px;margin:40px;color:#212529}
   .header{text-align:center;margin-bottom:32px;border-bottom:2px solid #1F3864;padding-bottom:16px}
   .meta-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;font-size:12px}
@@ -4437,7 +4437,6 @@ async function stampaODS(id){
     <div style="margin-top:8px;font-size:12px">${esc(f.nome)}</div>
     <div style="font-size:11px;color:#6C757D;margin-top:4px">${f.stato==='firmato'?'✅ Firmato '+fmt(f.data):f.stato==='presa_visione'?'👁️ Presa visione '+fmt(f.data):'⏳ In attesa'}</div></div>`).join('')}</div>
   <script>window.onload=()=>window.print()<\/script></body></html>`);
-  w.document.close();
 }
 
 async function generaReportSA(cantiereId){
@@ -4473,7 +4472,8 @@ async function generaReportSA(cantiereId){
   const now=new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
 
   const w=window.open('','_blank');
-  w.document.write(`<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
+  scriviPopupHtml(w, `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Report SA \u2014 ${esc(c?.nome||'')}</title>
   <style>
 
@@ -4669,7 +4669,6 @@ async function generaReportSA(cantiereId){
   </div>
 
   <script>window.onload=()=>window.print()<\/script></body></html>`);
-  w.document.close();
 }
 
 async function generaReportGiornale(cantiereId){
@@ -4754,7 +4753,7 @@ async function generaReportGiornale(cantiereId){
   }
 
   const w=window.open('','_blank');
-  w.document.write(`<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
+  scriviPopupHtml(w, `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0">
   <title>Giornale dei Lavori &mdash; ${esc(c?.nome||'')}</title>
   <style>
@@ -4902,7 +4901,6 @@ async function generaReportGiornale(cantiereId){
   </div>
 
   <script>window.onload=()=>window.print()<\/script></body></html>`);
-  w.document.close();
 }
 
 
@@ -5045,9 +5043,14 @@ function apriDocumentoFirmabile(opts){
   html += '<script>'+PDF_ENGINE_JS(firmatariIniziali)+'<\/script>';
   html += '</body></html>';
 
-  // Su Safari macOS un documento creato con document.write su about:blank viene
-  // scartato dopo window.print() (pagina bianca). Dando al documento un URL reale
-  // (blob:) il problema non si presenta. Fallback a document.write se Blob non disponibile.
+  scriviPopupHtml(w, html);
+}
+
+// Helper condiviso per tutti i popup di stampa.
+// Su Safari macOS un documento creato con document.write su about:blank viene
+// scartato dopo window.print() (pagina bianca). Dando al documento un URL reale
+// (blob:) il problema non si presenta. Fallback a document.write se Blob non disponibile.
+function scriviPopupHtml(w, html){
   try{
     const blobDoc = new Blob([html], {type:'text/html;charset=utf-8'});
     w.location.href = URL.createObjectURL(blobDoc);
@@ -5700,7 +5703,9 @@ const PRELIEVO_TIPI = {
       {key:'sigla', label:'Sigla campione'},
       {key:'diametro', label:'Diametro (mm)'},
       {key:'tipo_acciaio', label:'Tipo acciaio (es. B450C)'},
-      {key:'produttore', label:'Produttore / Centro di trasformazione'},
+      {key:'fornitore', label:'Fornitore'},
+      {key:'attestato_fornitore', label:'Attestato qualifica Fornitore (n. e data)'},
+      {key:'centro_trasformazione', label:'Centro di trasformazione'},
       {key:'attestato_ct', label:'Attestato qualifica Centro Trasf. (n. e data)'},
       {key:'destinazione', label:'Destinazione (parte strutturale)'},
       {key:'ddt', label:'DDT / Marchio'}
@@ -5715,7 +5720,9 @@ const PRELIEVO_TIPI = {
     cols: [
       {key:'sigla', label:'Sigla campione'},
       {key:'tipo_acciaio', label:'Tipo acciaio (S235/S275/S355)'},
-      {key:'provenienza', label:'Provenienza (Centro Trasf. / Acciaieria / Rivenditore)'},
+      {key:'fornitore', label:'Fornitore'},
+      {key:'attestato_fornitore', label:'Attestato qualifica Fornitore (n. e data)'},
+      {key:'centro_trasformazione', label:'Centro di trasformazione'},
       {key:'attestato_ct', label:'Attestato qualifica Centro Trasf. (n. e data)'},
       {key:'destinazione', label:'Destinazione (parte strutturale)'},
       {key:'ddt', label:'DDT'}
@@ -5732,7 +5739,10 @@ const PRELIEVO_TIPI = {
       {key:'tipo', label:'Tipo (rete / traliccio)'},
       {key:'diametro', label:'Diametro filo (mm)'},
       {key:'maglia', label:'Maglia (mm)'},
-      {key:'produttore', label:'Produttore / Centro trasformazione'},
+      {key:'fornitore', label:'Fornitore'},
+      {key:'attestato_fornitore', label:'Attestato qualifica Fornitore (n. e data)'},
+      {key:'centro_trasformazione', label:'Centro di trasformazione'},
+      {key:'attestato_ct', label:'Attestato qualifica Centro Trasf. (n. e data)'},
       {key:'destinazione', label:'Destinazione (parte strutturale)'}
     ],
     firmatariRuoli: ['Il Direttore dei Lavori', 'L\'incaricato della custodia dei campioni', 'Per l\'Impresa esecutrice']
