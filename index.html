@@ -5971,7 +5971,10 @@ function prelievoCampioneRigaHtml(prefix, cfg, row, idx){
   let html = `<div class="prelievo-riga" style="border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:8px;background:var(--surface)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
       <span style="font-size:11px;color:var(--muted);font-weight:700">Campione ${idx+1}</span>
-      <button type="button" class="sig-remove" style="border:none;background:none;color:#DC3545;cursor:pointer;font-size:11px" onclick="prelievoRemoveRiga(this)">rimuovi</button>
+      <div style="display:flex;gap:10px">
+        <button type="button" style="border:none;background:none;color:var(--primary);cursor:pointer;font-size:11px" onclick="prelievoDuplicaRiga(this)">&#128203; duplica</button>
+        <button type="button" class="sig-remove" style="border:none;background:none;color:#DC3545;cursor:pointer;font-size:11px" onclick="prelievoRemoveRiga(this)">rimuovi</button>
+      </div>
     </div>
     <div class="form-grid">`;
   cfg.cols.forEach(col=>{
@@ -6000,10 +6003,27 @@ function prelievoRemoveRiga(btn){
   const rows = riga.parentElement;
   if(rows.querySelectorAll('.prelievo-riga').length<=1){ alert('Deve restare almeno un campione.'); return; }
   riga.remove();
-  // rinumera le etichette
+  prelievoRinumeraRighe(rows);
+}
+
+function prelievoRinumeraRighe(rows){
   rows.querySelectorAll('.prelievo-riga').forEach((r,i)=>{
     const lbl = r.querySelector('span'); if(lbl) lbl.textContent = 'Campione '+(i+1);
   });
+}
+
+function prelievoDuplicaRiga(btn){
+  const riga = btn.closest('.prelievo-riga');
+  const rows = riga.parentElement;
+  // clona la riga con i valori ATTUALI digitati dall'utente (non i dati originali)
+  const clone = riga.cloneNode(true);
+  // gli <input> clonati con cloneNode NON copiano il valore digitato: lo ricopiamo a mano
+  const origInputs = riga.querySelectorAll('.prelievo-campo');
+  const cloneInputs = clone.querySelectorAll('.prelievo-campo');
+  origInputs.forEach((inp,i)=>{ if(cloneInputs[i]) cloneInputs[i].value = inp.value; });
+  // inserisci la copia subito dopo la riga originale
+  riga.after(clone);
+  prelievoRinumeraRighe(rows);
 }
 
 // quando cambia il tipo, rigenera l'editor colonne (svuota i campioni perché le colonne cambiano)
