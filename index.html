@@ -435,7 +435,7 @@ async function showView(view){
 const fmt = d => d ? new Date(d).toLocaleDateString('it-IT') : '—';
 const fmtEur = n => new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'}).format(n||0);
 const today = () => new Date().toISOString().split('T')[0];
-function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function esc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function statoFaseBadge(s){const m={attesa:['badge-grey','In attesa'],in_corso:['badge-yellow','In corso'],completata:['badge-blue','Completata'],verificata_dl:['badge-green','Verificata DL']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function odsStatoBadge(s){const m={bozza:['badge-grey','Bozza'],emessa:['badge-blue','Emessa'],ricevuta:['badge-yellow','Ricevuta'],accettata:['badge-green','Accettata'],contestata:['badge-red','Contestata']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
@@ -5736,6 +5736,9 @@ const PRELIEVO_TIPI = {
       {key:'sigla', label:'Sigla prelievo'},
       {key:'n_provini', label:'N. provini'},
       {key:'classe', label:'Classe resistenza (es. C25/30)'},
+      {key:'classe_esposizione', label:'Classe di esposizione (es. XC2)'},
+      {key:'targa_betoniera', label:'Targa betoniera'},
+      {key:'fpc', label:'Estremi FPC (processo di produzione)'},
       {key:'ddt', label:'DDT / Bolla fornitura'},
       {key:'destinazione', label:'Destinazione (getto / parte strutturale)'},
       {key:'slump', label:'Consistenza / Slump'}
