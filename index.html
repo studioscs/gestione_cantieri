@@ -784,7 +784,7 @@ async function copiaGiornoGiornale(id, dataSorgente){
   const mezziRows = (mezzi.length ? mezzi : ['']).map((m,i)=>`
     <div style="display:flex;gap:6px;margin-bottom:4px" id="mezzo_row_${i}">
       <input class="form-control" style="font-size:12px" id="mezzo_${i}" value="${esc(m||'')}" placeholder="es. Autobetoniera, Gru...">
-      <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="rimuoviMezzo(${i})">✕</button>
+      <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="rimuoviRigaMezzo(${i})">✕</button>
     </div>`).join('');
 
   // Calcola la data del giorno successivo non ancora registrato come suggerimento
@@ -840,7 +840,7 @@ async function copiaGiornoGiornale(id, dataSorgente){
     <div style="margin-top:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <label class="form-label" style="margin:0">Mezzi / Attrezzature</label>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiMezzo()">+ Mezzo</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiRigaMezzo()">+ Mezzo</button>
       </div>
       <div id="gl_mezzi_body">${mezziRows}</div>
     </div>
@@ -5045,9 +5045,17 @@ function apriDocumentoFirmabile(opts){
   html += '<script>'+PDF_ENGINE_JS(firmatariIniziali)+'<\/script>';
   html += '</body></html>';
 
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+  // Su Safari macOS un documento creato con document.write su about:blank viene
+  // scartato dopo window.print() (pagina bianca). Dando al documento un URL reale
+  // (blob:) il problema non si presenta. Fallback a document.write se Blob non disponibile.
+  try{
+    const blobDoc = new Blob([html], {type:'text/html;charset=utf-8'});
+    w.location.href = URL.createObjectURL(blobDoc);
+  }catch(eBlob){
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  }
 }
 
 const PDF_ENGINE_CSS = `
@@ -5938,6 +5946,7 @@ async function renderPrelievi(){
       <td style="text-align:right;white-space:nowrap">
         <button class="btn btn-primary btn-sm" onclick="apriPrelievoFirmabile('${p.id}')">📄 PDF / Firma</button>
         ${can('write')?`<button class="btn btn-secondary btn-sm" onclick="openModalEditPrelievo('${p.id}')">✏️</button>`:''}
+        ${can('write')?`<button class="btn btn-secondary btn-sm" title="Duplica verbale" onclick="openModalDuplicaPrelievo('${p.id}')">📋</button>`:''}
         ${can('write')?`<button class="btn btn-secondary btn-sm" onclick="eliminaPrelievo('${p.id}')">🗑️</button>`:''}
       </td>
     </tr>`;
@@ -6220,6 +6229,27 @@ async function salvaPrelievo(){
 }
 
 // ---- modifica ----
+// ---- duplica: apre il modale "nuovo" precompilato con i dati di un verbale esistente ----
+async function openModalDuplicaPrelievo(id){
+  const {data:src, error} = await sb.from('verbali_prelievo').select('*').eq('id',id).single();
+  if(error||!src){ alert('Verbale da duplicare non trovato'); return; }
+  // copia profonda dei dati; data = oggi, numero azzerato, firme NON copiate
+  const seed = {
+    tipo_prelievo: src.tipo_prelievo,
+    numero: '',
+    data: today(),
+    redattore: src.redattore,
+    dati_prelievo: JSON.parse(JSON.stringify(src.dati_prelievo || {}))
+  };
+  openModal('Duplica verbale di prelievo', `
+    <div class="alert alert-info" style="font-size:12px">Copia del verbale ${esc(src.numero||'')} del ${fmt(src.data)} — modifica ciò che cambia e salva: verrà creato un <strong>nuovo</strong> verbale.</div>
+    ${prelievoFormHtml('np', seed, {})}
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaPrelievo()">Salva come nuovo verbale</button>
+    </div>`);
+}
+
 async function openModalEditPrelievo(id){
   const {data:p} = await sb.from('verbali_prelievo').select('*').eq('id',id).single();
   if(!p) return;
