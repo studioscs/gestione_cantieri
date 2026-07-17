@@ -2699,6 +2699,11 @@ async function apriModalConDati(listaId, sorgente, dataTarget, rigaTargetId){
       <label class="form-label">Note generali</label>
       <input class="form-control" id="nr_note" value="${esc(sorgente.note||'')}">
     </div>
+    ${currentRole==='cse'?`<div class="form-group" style="margin-top:10px">
+      <label class="form-label" style="color:#856404">Annotazione CSE &mdash; Sicurezza</label>
+      <div style="font-size:11px;color:#856404;margin-bottom:4px">Visibile solo al CSE &mdash; osservazioni su presenze, DPI, anomalie</div>
+      <textarea class="form-control" id="nr_note_cse_area" rows="3" placeholder="Es. Verificata presenza DPI per tutti gli operatori..."></textarea>
+    </div>`:''}
     <input type="hidden" id="nr_note_cse" value="">
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
@@ -2706,14 +2711,6 @@ async function apriModalConDati(listaId, sorgente, dataTarget, rigaTargetId){
         ? `<button class="btn btn-primary" onclick="salvaEditRiga('${rigaTargetId}')">Salva giorno</button>`
         : `<button class="btn btn-primary" onclick="salvaRiga('${listaId}')">Salva giorno</button>`}
     </div>`);
-
-  // Mostra box CSE se applicabile
-  if(currentRole==='cse'){
-    setTimeout(()=>{
-      const b=document.getElementById('cse_box_new');
-      if(b) b.style.display='block';
-    },50);
-  }
 }
 
 async function openModalNuovaRiga(listaId){
