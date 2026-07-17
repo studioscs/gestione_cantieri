@@ -5024,7 +5024,7 @@ function apriDocumentoFirmabile(opts){
 
   let html = '<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">';
   html += '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
-  html += '<title>'+esc(opts.titolo||'Verbale')+'</title><style>'+PDF_ENGINE_CSS+'</style></head><body>';
+  html += '<title>'+esc(opts.fileName||opts.titolo||'Verbale')+'</title><style>'+PDF_ENGINE_CSS+'</style></head><body>';
   html += '<div class="no-print toolbar">';
   html += '<button class="tb-ghost" onclick="window.close()">&#10005; Chiudi</button>';
   html += '<button class="tb-secondary" onclick="addFirmatario(\'\',\'\')">+ Aggiungi firmatario</button>';
@@ -5044,6 +5044,44 @@ function apriDocumentoFirmabile(opts){
   html += '</body></html>';
 
   scriviPopupHtml(w, html);
+}
+
+// ============================================================
+// Nomi file PDF — schema: {commessa}_{AAMMGG}_{CODICE}[_{num}]_firmato
+// La "commessa" è la parte del nome cantiere prima di " - "
+// (es. "2025_06 - Palestra" -> "2025_06"). Il titolo del documento
+// è ciò che il browser propone come nome file al salvataggio del PDF.
+// ============================================================
+function sanitizzaNomeFile(s){
+  return (s==null?'':String(s)).trim().replace(/\s+/g,'_').replace(/[\\\/:*?"<>|#%&{}]/g,'').replace(/_{2,}/g,'_');
+}
+function codiceCommessa(c){
+  let nome = (c?.nome||'').trim();
+  if(nome.includes(' - ')) nome = nome.split(' - ')[0];
+  return sanitizzaNomeFile(nome) || 'CANTIERE';
+}
+function dataYYMMDD(d){
+  if(!d) return '';
+  const p = String(d).split('-');
+  return (p[0]||'').slice(2) + (p[1]||'') + (p[2]||'').slice(0,2);
+}
+const VERBALE_FILE_CODE = {
+  consegna_lavori:'VER_CL', consegna_parziale:'VER_CLP',
+  sopralluogo_periodico:'VER_SOP', sopralluogo:'VER_SOP',
+  constatazione:'VER_CON', constatazione_stato_luoghi:'VER_STALUO',
+  certificato_ultimazione:'VER_UL', certificato_ultimazione_con_opere:'VER_ULCO',
+  riconsegna_anticipata:'VER_PCA', riunione:'VER_RIU',
+  verifica_ods:'VER_ODS', fine_lavori:'VER_GEN', altro:'VER_GEN'
+};
+const PRELIEVO_FILE_CODE = {
+  acciaio_carpenteria:'ACC', barre_ca:'AC-CA', reti_tralicci:'RT-CA',
+  calcestruzzo:'CA', bulloni:'BUL', malta:'MAL', muratura:'MRT',
+  frp:'FRP', frcm:'FRCM', crm:'CRM', generico:'GEN-STR'
+};
+function nomeFileVerbale(c, data, codice, numero){
+  let n = codiceCommessa(c) + '_' + dataYYMMDD(data) + '_' + codice;
+  if(numero) n += '_' + sanitizzaNomeFile(numero);
+  return n + '_firmato';
 }
 
 // Helper condiviso per tutti i popup di stampa.
@@ -6320,6 +6358,7 @@ async function apriPrelievoFirmabile(id){
       corpoHtml: corpoHtml,
       luogo: comune || c?.nome || '',
       dataDoc: p.data,
+      fileName: nomeFileVerbale(c, p.data, 'VERPREL_'+(PRELIEVO_FILE_CODE[p.tipo_prelievo]||'GEN-STR'), p.numero),
       firmatari: firmatari.length ? firmatari : [{nome:redattore,ruolo:'Il Direttore dei Lavori'}],
       recordTable: 'verbali_prelievo',
       recordId: p.id,
@@ -6460,6 +6499,7 @@ async function apriVerbaleFirmabile(id){
       corpoHtml: corpoHtml,
       luogo: comune || c?.stazione_appaltante || c?.nome || '',
       dataDoc: v.data,
+      fileName: nomeFileVerbale(c, v.data, VERBALE_FILE_CODE[v.tipo]||'VER_GEN', v.numero),
       firmatari: presenti.length ? presenti : firmatariDefault,
       recordTable: 'verbali',
       recordId: v.id,
@@ -6929,6 +6969,16 @@ async function generaVerbaleSospensionePDF(sospId, tipoVerbale){
       ['CONTRATTO', esc(c?.estremi_contratto||'')]
     ];
 
+    // progressivo nn per VSLnn/VRLnn: posizione cronologica della sospensione nel cantiere
+    let progressivo = '';
+    try{
+      const {data:tutte} = await sb.from('sospensioni').select('id,data').eq('cantiere_id',s.cantiere_id).order('data',{ascending:true});
+      const idx = (tutte||[]).findIndex(x=>x.id===s.id);
+      if(idx>=0) progressivo = String(idx+1).padStart(2,'0');
+    }catch(eProg){ console.error('progressivo sospensione', eProg); }
+    const dataDocSosp = isRipresa ? (s.data_ripresa||today()) : s.data;
+    const fileNameSosp = nomeFileVerbale(c, dataDocSosp, (isRipresa?'VRL':'VSL')+progressivo, null);
+
     closeModal();
     apriDocumentoFirmabile({
       titolo: isRipresa ? 'Verbale di ripresa dei lavori' : ('Verbale di sospensione dei lavori'+(s.tipo_sospensione==='parziale'?' (parziale)':'')),
@@ -6937,7 +6987,8 @@ async function generaVerbaleSospensionePDF(sospId, tipoVerbale){
       metaRows: metaRows,
       corpoHtml: corpoHtml,
       luogo: dx.comune || c?.nome || '',
-      dataDoc: isRipresa ? (s.data_ripresa||today()) : s.data,
+      dataDoc: dataDocSosp,
+      fileName: fileNameSosp,
       firmatari: presenti.length ? presenti : [{nome:dx.impresa_referente||'',ruolo:"L'Impresa"},{nome:dx.redattore||'',ruolo:'Il Direttore dei Lavori'}],
       recordTable: 'sospensioni',
       recordId: s.id,
