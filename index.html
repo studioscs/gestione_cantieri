@@ -1592,6 +1592,12 @@ async function openModalNuovaVariante(){
         <div class="form-hint" style="font-size:11px;color:#ADB5BD">Calcolata automaticamente — non modificare</div>
       </div>
       <div class="form-group">
+        <label class="form-label">Nuovo importo contrattuale (€)</label>
+        <input class="form-control" type="number" step="0.01" id="nv_importo_nuovo" placeholder="Es. 285000.00" oninput="aggiornaDeltaVariante('nv')">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Importo complessivo del contratto <strong>dopo</strong> questa variante</div>
+        <div class="form-hint" id="nv_delta_hint" style="font-size:11px;color:var(--primary)"></div>
+      </div>
+      <div class="form-group">
         <label class="form-label">Data approvazione variante</label>
         <input class="form-control" type="date" id="nv_data_approv">
         <div class="form-hint">Data del provvedimento di approvazione della SA</div>
@@ -1628,6 +1634,7 @@ async function salvaVariante(){
     nuova_fine_lavori: document.getElementById('nv_fine_calc').value||null,
     data_approvazione: document.getElementById('nv_data_approv').value||null,
     estremi_approvazione: document.getElementById('nv_estremi_approv').value.trim()||null,
+    importo_contratto_nuovo: parseFloat(document.getElementById('nv_importo_nuovo').value)||null,
     created_by: currentUser.id
   });
   if(error){ alert(error.message); return; }
@@ -1679,6 +1686,12 @@ async function openModalEditVariante(id){
         <input class="form-control" type="number" id="ev_giorni" value="${v.giorni_concessi||0}" min="0">
       </div>
       <div class="form-group">
+        <label class="form-label">Nuovo importo contrattuale (€)</label>
+        <input class="form-control" type="number" step="0.01" id="ev_importo_nuovo" value="${v.importo_contratto_nuovo!=null?v.importo_contratto_nuovo:''}" oninput="aggiornaDeltaVariante('ev')">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Importo complessivo del contratto <strong>dopo</strong> questa variante</div>
+        <div class="form-hint" id="ev_delta_hint" style="font-size:11px;color:var(--primary)"></div>
+      </div>
+      <div class="form-group">
         <label class="form-label">Data approvazione variante</label>
         <input class="form-control" type="date" id="ev_data_approv" value="${v.data_approvazione||''}">
       </div>
@@ -1703,7 +1716,8 @@ async function salvaEditVariante(id){
     data_firma: document.getElementById('ev_firma').value||null,
     giorni_concessi: giorniConcessiEdit||null,
     data_approvazione: document.getElementById('ev_data_approv').value||null,
-    estremi_approvazione: document.getElementById('ev_estremi_approv').value.trim()||null
+    estremi_approvazione: document.getElementById('ev_estremi_approv').value.trim()||null,
+    importo_contratto_nuovo: parseFloat(document.getElementById('ev_importo_nuovo').value)||null
   }).eq('id',id);
   if(error){ alert(error.message); return; }
 
@@ -3395,9 +3409,23 @@ function openModalNuovoCantiere(){
         <input class="form-control" type="date" id="f_df">
         <div class="form-hint" style="font-size:11px;color:#ADB5BD">Data originaria — non viene mai modificata</div>
       </div>
-      <div class="form-group span-2"><label class="form-label">Estremi del contratto</label>
-        <input class="form-control" id="f_estremi" placeholder="Es. Rep. n. 123 del 01/01/2024 — Registro Particolare n. 456">
-        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Repertorio, data stipula, CIG, riferimento atto</div>
+      <div class="form-group"><label class="form-label">Contratto — Rep. n.</label>
+        <input class="form-control" id="f_rep" placeholder="Es. 1234">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Solo il numero di repertorio</div>
+      </div>
+      <div class="form-group"><label class="form-label">Contratto — data stipula</label>
+        <input class="form-control" type="date" id="f_datacontr">
+      </div>
+      <div class="form-group"><label class="form-label">Di cui oneri sicurezza (€)</label>
+        <input class="form-control" type="number" step="0.01" id="f_oneri" placeholder="Es. 12500.00">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Non soggetti a ribasso</div>
+      </div>
+      <div class="form-group"><label class="form-label">Ribasso offerto (%)</label>
+        <input class="form-control" type="number" step="0.001" id="f_ribasso" placeholder="Es. 12.345">
+      </div>
+      <div class="form-group span-2"><label class="form-label">Estremi del contratto (testo libero)</label>
+        <input class="form-control" id="f_estremi" placeholder="Es. Registro Particolare n. 456 — riferimenti aggiuntivi">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Note aggiuntive: se compilati i campi sopra, la frase contrattuale viene composta automaticamente nei verbali</div>
       </div>
       <div class="form-group span-2"><label class="form-label">Cartella foto Box</label>
         <input class="form-control" id="f_link_box" placeholder="https://app.box.com/folder/...">
@@ -3420,6 +3448,10 @@ async function salvaCantiere(){
     impresa:document.getElementById('f_impresa').value.trim(),importo,
     stato:document.getElementById('f_stato').value,
     estremi_contratto:document.getElementById('f_estremi').value.trim()||null,
+    numero_repertorio:document.getElementById('f_rep').value.trim()||null,
+    data_contratto:document.getElementById('f_datacontr').value||null,
+    oneri_sicurezza:parseFloat(document.getElementById('f_oneri').value)||null,
+    ribasso_percentuale:parseFloat(document.getElementById('f_ribasso').value)||null,
     link_box:document.getElementById('f_link_box').value.trim()||null,
     data_consegna:document.getElementById('f_dc').value||null,
     data_fine_contratto:document.getElementById('f_df').value||null,
@@ -3475,8 +3507,21 @@ function openModalEditCantiere(id){
         <input class="form-control" type="date" id="e_dfa" value="${c.data_fine_aggiornata||c.data_fine||''}" readonly style="background:#f8f9fa;color:var(--muted)">
         <div class="form-hint" style="font-size:11px;color:#ADB5BD">Calcolata automaticamente da sospensioni e proroghe</div>
       </div>
-      <div class="form-group span-2"><label class="form-label">Estremi del contratto</label>
-        <input class="form-control" id="e_estremi" value="${esc(c.estremi_contratto||'')}" placeholder="Es. Rep. n. 123 del 01/01/2024">
+      <div class="form-group"><label class="form-label">Contratto — Rep. n.</label>
+        <input class="form-control" id="e_rep" value="${esc(c.numero_repertorio||'')}" placeholder="Es. 1234">
+      </div>
+      <div class="form-group"><label class="form-label">Contratto — data stipula</label>
+        <input class="form-control" type="date" id="e_datacontr" value="${c.data_contratto||''}">
+      </div>
+      <div class="form-group"><label class="form-label">Di cui oneri sicurezza (€)</label>
+        <input class="form-control" type="number" step="0.01" id="e_oneri" value="${c.oneri_sicurezza!=null?c.oneri_sicurezza:''}">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Non soggetti a ribasso</div>
+      </div>
+      <div class="form-group"><label class="form-label">Ribasso offerto (%)</label>
+        <input class="form-control" type="number" step="0.001" id="e_ribasso" value="${c.ribasso_percentuale!=null?c.ribasso_percentuale:''}">
+      </div>
+      <div class="form-group span-2"><label class="form-label">Estremi del contratto (testo libero)</label>
+        <input class="form-control" id="e_estremi" value="${esc(c.estremi_contratto||'')}" placeholder="Note aggiuntive">
       </div>
       <div class="form-group span-2"><label class="form-label">Cartella foto Box</label>
         <input class="form-control" id="e_link_box" value="${esc(c.link_box||'')}" placeholder="https://app.box.com/folder/...">
@@ -3502,6 +3547,10 @@ async function salvaEditCantiere(id){
     data_consegna: document.getElementById('e_dc').value||null,
     data_fine_contratto: document.getElementById('e_dfc').value||null,
     estremi_contratto: document.getElementById('e_estremi').value.trim()||null,
+    numero_repertorio: document.getElementById('e_rep').value.trim()||null,
+    data_contratto: document.getElementById('e_datacontr').value||null,
+    oneri_sicurezza: parseFloat(document.getElementById('e_oneri').value)||null,
+    ribasso_percentuale: parseFloat(document.getElementById('e_ribasso').value)||null,
     link_box: document.getElementById('e_link_box').value.trim()||null
   }).eq('id',id);
   if(error){alert(error.message);return;}
@@ -5009,8 +5058,6 @@ function parseNomeRuolo(s){
 function apriDocumentoFirmabile(opts){
   const w = opts.existingWindow || window.open('about:blank', '_blank');
   if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per generare il documento.'); return; }
-  w.RECORD_TABLE = opts.recordTable || null;
-  w.RECORD_ID = opts.recordId || null;
 
   const headerHtml = letterheadHeaderHtml();
   const footerHtml = letterheadFooterHtml();
@@ -5023,18 +5070,33 @@ function apriDocumentoFirmabile(opts){
   let html = '<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">';
   html += '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
   html += '<title>'+esc(opts.fileName||opts.titolo||'Verbale')+'</title><style>'+PDF_ENGINE_CSS+'</style></head><body>';
+  // I riferimenti al record devono vivere DENTRO il documento: assegnarli come
+  // proprieta' della finestra prima della navigazione al blob li perderebbe.
+  html += '<script>window.RECORD_TABLE='+JSON.stringify(opts.recordTable||null)
+       +  ';window.RECORD_ID='+JSON.stringify(opts.recordId||null)
+       +  ';window.FILE_NAME='+JSON.stringify(opts.fileName||opts.titolo||'Verbale')
+       +  ';window.DOC_TITOLO='+JSON.stringify(opts.titolo||'Verbale')+';<\/script>';
   html += '<div class="no-print toolbar">';
   html += '<button class="tb-ghost" onclick="window.close()">&#10005; Chiudi</button>';
   html += '<button class="tb-secondary" onclick="addFirmatario(\'\',\'\')">+ Aggiungi firmatario</button>';
   html += '<button class="tb-secondary" onclick="clearAllSig()">&#129529; Cancella firme</button>';
   html += (opts.recordTable ? '<button class="tb-secondary" onclick="salvaFirmeNelGestionale()">&#128190; Salva firme nel gestionale</button>' : '');
+  html += '<button class="tb-secondary" onclick="apriPannelloInvio()">&#9993;&#65039; Invia via email</button>';
   html += '<button class="tb-primary" onclick="window.print()">&#128424;&#65039; Genera PDF (firma e stampa)</button>';
   html += '</div>';
+  html += '<div id="pannelloInvio" class="no-print" style="display:none;background:#EEF2F8;border-bottom:1px solid #ADB5BD;padding:12px 16px;font-size:12px;line-height:1.5">'
+       +  '<div style="font-weight:700;color:#1F3864;margin-bottom:6px">Invio del verbale via email</div>'
+       +  '<div id="invioIstruzioni" style="margin-bottom:8px"></div>'
+       +  '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+       +  '<button class="tb-primary" onclick="condividiPdf()">&#128228; Genera PDF e condividi</button>'
+       +  '<button class="tb-secondary" onclick="apriMailPrecompilata()">&#9993;&#65039; Apri Mail con testo precompilato</button>'
+       +  '<button class="tb-ghost" onclick="document.getElementById(\'pannelloInvio\').style.display=\'none\'">Chiudi</button>'
+       +  '</div></div>';
   html += '<div id="saveConfirm" class="no-print" style="display:none;background:#D4EDDA;color:#155724;padding:8px 16px;font-size:12px;text-align:center">&#9989; Firme salvate nel gestionale.</div>';
   html += '<div class="doc-wrap"><table class="doc-table"><thead><tr><td>'+headerHtml+'</td></tr></thead>';
   html += '<tfoot><tr><td>'+footerHtml+'</td></tr></tfoot>';
   html += '<tbody><tr><td>';
-  html += titleHtml + metaHtml + '<div class="corpo">'+opts.corpoHtml+'</div>' + luogoDataHtml;
+  html += titleHtml + metaHtml + (opts.contrattoHtml||'') + '<div class="corpo">'+opts.corpoHtml+'</div>' + luogoDataHtml;
   html += '<div id="firmeContainer" class="firme-wrap"></div>';
   if(opts.allegatiHtml) html += opts.allegatiHtml;
   html += '</td></tr></tbody></table></div>';
@@ -5076,6 +5138,78 @@ const PRELIEVO_FILE_CODE = {
   calcestruzzo:'CA', bulloni:'BUL', malta:'MAL', muratura:'MRT',
   frp:'FRP', frcm:'FRCM', crm:'CRM', generico:'GEN-STR'
 };
+// ============================================================
+// DATI DI CONTRATTO — frase contrattuale + richiamo varianti
+// ============================================================
+// Compone: "Contratto Rep. n. X del GG/MM/AAAA, importo € Y di cui € Z per
+// oneri della sicurezza non soggetti a ribasso, ribasso del W%, oltre IVA di legge."
+function frasecontratto(c){
+  if(!c) return '';
+  const parti = [];
+  if(c.numero_repertorio) parti.push('Rep. n. '+esc(c.numero_repertorio));
+  if(c.data_contratto) parti.push('del '+fmt(c.data_contratto));
+  let s = parti.length ? 'Contratto '+parti.join(' ') : (c.estremi_contratto ? 'Contratto '+esc(c.estremi_contratto) : '');
+  if(c.importo){
+    s += (s?', ':'Contratto di ')+'importo di '+fmtEur(c.importo);
+    if(c.oneri_sicurezza) s += ' di cui '+fmtEur(c.oneri_sicurezza)+' per oneri della sicurezza non soggetti a ribasso';
+    if(c.ribasso_percentuale!=null && c.ribasso_percentuale!=='') s += ', ribasso del '+esc(c.ribasso_percentuale)+'%';
+    s += ', oltre IVA di legge';
+  }
+  if(!s) return '';
+  if(parti.length && c.estremi_contratto) s += ' ('+esc(c.estremi_contratto)+')';
+  return s+'.';
+}
+
+// Blocco completo da inserire nei verbali: contratto + varianti intervenute.
+// varianti = array ordinato per numero (dalla tabella varianti).
+function bloccoDatiContrattoHtml(c, varianti){
+  const frase = frasecontratto(c);
+  const conImporto = (varianti||[]).filter(v=>v.importo_contratto_nuovo!=null);
+  if(!frase && !conImporto.length) return '';
+  let html = '<div class="contratto-box">';
+  html += '<div class="contratto-tit">Dati contrattuali</div>';
+  if(frase) html += '<p style="margin:2px 0">'+frase+'</p>';
+  if(conImporto.length){
+    html += '<p style="margin:6px 0 2px"><strong>Varianti intervenute:</strong></p><ul style="margin:0 0 2px 16px;padding:0">';
+    conImporto.forEach(v=>{
+      const tipoL = v.tipo_atto==='atto_aggiuntivo' ? 'Atto aggiuntivo' : 'Atto di sottomissione';
+      let r = 'Variante n. '+esc(v.numero)+' del '+fmt(v.data)+' ('+tipoL+')';
+      if(v.estremi_approvazione) r += ', approvata con '+esc(v.estremi_approvazione);
+      r += ' &mdash; nuovo importo contrattuale '+fmtEur(v.importo_contratto_nuovo);
+      if(v.giorni_concessi) r += ', con proroga di '+esc(v.giorni_concessi)+' giorni';
+      html += '<li>'+r+'.</li>';
+    });
+    html += '</ul>';
+    const ultimo = conImporto[conImporto.length-1];
+    html += '<p style="margin:4px 0 0"><strong>Importo contrattuale vigente: '+fmtEur(ultimo.importo_contratto_nuovo)+'.</strong></p>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// Carica cantiere + varianti e restituisce il blocco pronto per il PDF.
+async function caricaBloccoContratto(cantiereId){
+  try{
+    const c = getCantiereObj(cantiereId);
+    const {data:varianti} = await sb.from('varianti').select('*').eq('cantiere_id',cantiereId).order('numero');
+    return bloccoDatiContrattoHtml(c, varianti||[]);
+  }catch(e){ console.error('caricaBloccoContratto', e); return ''; }
+}
+
+// Mostra nel form variante la differenza rispetto all'importo vigente
+function aggiornaDeltaVariante(prefix){
+  const el = document.getElementById(prefix+'_importo_nuovo');
+  const hint = document.getElementById(prefix+'_delta_hint');
+  if(!el||!hint) return;
+  const c = getCantiereObj();
+  const base = parseFloat(c?.importo)||0;
+  const nuovo = parseFloat(el.value);
+  if(!nuovo||!base){ hint.textContent=''; return; }
+  const d = nuovo-base;
+  const pct = base ? (d/base*100) : 0;
+  hint.textContent = (d>=0?'+':'') + fmtEur(d) + ' rispetto all\'importo contrattuale originario ('+(d>=0?'+':'')+pct.toFixed(2)+'%)';
+}
+
 function nomeFileVerbale(c, data, codice, numero){
   let n = codiceCommessa(c) + '_' + dataYYMMDD(data) + '_' + codice;
   if(numero) n += '_' + sanitizzaNomeFile(numero);
@@ -5123,6 +5257,8 @@ body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12.5px;co
 .corpo li{margin-bottom:5px;line-height:1.55}
 .corpo strong{color:#1F3864}
 .corpo .center{text-align:center}
+.contratto-box{border:1px solid #ADB5BD;border-left:3px solid #1F3864;background:#F8F9FA;padding:8px 10px;margin:0 0 12px;font-size:10.5px;line-height:1.45}
+.contratto-tit{font-weight:700;color:#1F3864;font-size:10px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
 .campioni-table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:10px}
 .campioni-table th{border:1px solid #ADB5BD;background:#1F3864;color:#fff;padding:5px 6px;text-align:left;font-weight:700;vertical-align:middle;line-height:1.2}
 .campioni-table td{border:1px solid #ADB5BD;padding:6px;vertical-align:top;min-height:22px}
@@ -5244,6 +5380,53 @@ function PDF_ENGINE_JS(firmatariIniziali){
       if(res.error){ alert('Errore salvataggio: '+res.error.message); return; }
       var el = document.getElementById('saveConfirm');
       if(el) el.style.display='block';
+    }
+
+    // ---------- Invio via email ----------
+    function isAppleTouch(){
+      var ua = navigator.userAgent || '';
+      return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    }
+    function nomeFilePdf(){ return (window.FILE_NAME || document.title || 'Verbale') + '.pdf'; }
+    function corpoMessaggio(){
+      var righe = [];
+      document.querySelectorAll('.firma-block').forEach(function(b){
+        var inputs = b.querySelectorAll('.sig-name-inputs input');
+        var nome = inputs[0] ? inputs[0].value.trim() : '';
+        var ruolo = inputs[1] ? inputs[1].value.trim() : '';
+        if(nome || ruolo) righe.push('- ' + (ruolo || 'Firmatario') + ': ' + (nome || '________'));
+      });
+      var t = 'In allegato il verbale in oggetto.\\n\\n'
+            + 'Documento: ' + (window.DOC_TITOLO || '') + '\\n'
+            + 'File: ' + nomeFilePdf() + '\\n';
+      if(righe.length) t += '\\nFirmatari:\\n' + righe.join('\\n') + '\\n';
+      return t;
+    }
+    function apriPannelloInvio(){
+      var p = document.getElementById('pannelloInvio');
+      var istr = document.getElementById('invioIstruzioni');
+      if(istr){
+        istr.innerHTML = isAppleTouch()
+          ? 'Su iPad il PDF si allega dalla schermata di stampa: premi <strong>Genera PDF e condividi</strong>, poi nell\\'anteprima tocca l\\'icona <strong>Condividi</strong> in alto e scegli <strong>Mail</strong> &mdash; il PDF viene allegato automaticamente.'
+          : 'Per allegare il PDF: premi <strong>Genera PDF e condividi</strong>, salva il file, poi allegalo al messaggio. In alternativa apri subito Mail con il testo gi&agrave; pronto e allega il PDF a mano (i browser non possono allegare file automaticamente).';
+      }
+      if(p) p.style.display = (p.style.display==='none' || !p.style.display) ? 'block' : 'none';
+    }
+    async function condividiPdf(){
+      // Se il dispositivo supporta la condivisione nativa, proviamo prima quella
+      if(navigator.share && isAppleTouch()){
+        try{
+          await navigator.share({ title: nomeFilePdf(), text: corpoMessaggio() });
+          return;
+        }catch(e){ /* utente ha annullato o non supportato: si prosegue con la stampa */ }
+      }
+      window.print();
+    }
+    function apriMailPrecompilata(){
+      var corpo = corpoMessaggio()
+        + '\\n---\\nNOTA: allegare il file ' + nomeFilePdf() + ' generato dal pulsante "Genera PDF".\\n';
+      window.location.href = 'mailto:?subject=' + encodeURIComponent(window.FILE_NAME || document.title || 'Verbale')
+        + '&body=' + encodeURIComponent(corpo);
     }
     (function(){
       var iniziali = ${JSON.stringify(firmatariIniziali)};
@@ -6357,6 +6540,7 @@ async function apriPrelievoFirmabile(id){
       luogo: comune || c?.nome || '',
       dataDoc: p.data,
       fileName: nomeFileVerbale(c, p.data, 'VERPREL_'+(PRELIEVO_FILE_CODE[p.tipo_prelievo]||'GEN-STR'), p.numero),
+      contrattoHtml: await caricaBloccoContratto(p.cantiere_id),
       firmatari: firmatari.length ? firmatari : [{nome:redattore,ruolo:'Il Direttore dei Lavori'}],
       recordTable: 'verbali_prelievo',
       recordId: p.id,
@@ -6498,6 +6682,7 @@ async function apriVerbaleFirmabile(id){
       luogo: comune || c?.stazione_appaltante || c?.nome || '',
       dataDoc: v.data,
       fileName: nomeFileVerbale(c, v.data, VERBALE_FILE_CODE[v.tipo]||'VER_GEN', v.numero),
+      contrattoHtml: await caricaBloccoContratto(v.cantiere_id),
       firmatari: presenti.length ? presenti : firmatariDefault,
       recordTable: 'verbali',
       recordId: v.id,
@@ -6992,6 +7177,7 @@ async function generaVerbaleSospensionePDF(sospId, tipoVerbale){
       luogo: dx.comune || c?.nome || '',
       dataDoc: dataDocSosp,
       fileName: fileNameSosp,
+      contrattoHtml: await caricaBloccoContratto(s.cantiere_id),
       firmatari: presenti.length ? presenti : [{nome:dx.impresa_referente||'',ruolo:"L'Impresa"},{nome:dx.redattore||'',ruolo:'Il Direttore dei Lavori'}],
       recordTable: 'sospensioni',
       recordId: s.id,
