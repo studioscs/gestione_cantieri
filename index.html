@@ -5136,7 +5136,7 @@ function apriDocumentoFirmabile(opts){
   html += '<div class="doc-wrap"><table class="doc-table"><thead><tr><td>'+headerHtml+'</td></tr></thead>';
   html += '<tfoot><tr><td>'+footerHtml+'</td></tr></tfoot>';
   html += '<tbody><tr><td>';
-  html += titleHtml + metaHtml + (opts.contrattoHtml||'') + '<div class="corpo">'+opts.corpoHtml+'</div>' + luogoDataHtml;
+  html += titleHtml + metaHtml + '<div class="corpo">'+opts.corpoHtml+'</div>' + luogoDataHtml;
   html += '<div id="firmeContainer" class="firme-wrap"></div>';
   if(opts.allegatiHtml) html += opts.allegatiHtml;
   html += '</td></tr></tbody></table></div>';
@@ -5178,66 +5178,59 @@ const PRELIEVO_FILE_CODE = {
   calcestruzzo:'CA', bulloni:'BUL', malta:'MAL', muratura:'MRT',
   frp:'FRP', frcm:'FRCM', crm:'CRM', generico:'GEN-STR'
 };
-// ============================================================
-// DATI DI CONTRATTO — frase contrattuale + richiamo varianti
-// ============================================================
-// Compone: "Contratto Rep. n. X del GG/MM/AAAA, importo € Y di cui € Z per
-// oneri della sicurezza non soggetti a ribasso, ribasso del W%, oltre IVA di legge."
-function frasecontratto(c){
+// Testo contrattuale compatto per la riga CONTRATTO della tabella superiore.
+// Es. "Rep. n. 1234 del 10/03/2025 — € 250.000,00 di cui € 12.500,00 per oneri
+//      della sicurezza non soggetti a ribasso, ribasso del 12,345%, oltre IVA di legge"
+function testoContrattoRiga(c){
   if(!c) return '';
   const parti = [];
   if(c.numero_repertorio) parti.push('Rep. n. '+esc(c.numero_repertorio));
   if(c.data_contratto) parti.push('del '+fmt(c.data_contratto));
-  let s = parti.length ? 'Contratto '+parti.join(' ') : (c.estremi_contratto ? 'Contratto '+esc(c.estremi_contratto) : '');
+  let s = parti.join(' ');
   if(c.importo){
-    s += (s?', ':'Contratto di ')+'importo di '+fmtEur(c.importo);
-    if(c.oneri_sicurezza) s += ' di cui '+fmtEur(c.oneri_sicurezza)+' per oneri della sicurezza non soggetti a ribasso';
-    if(c.ribasso_percentuale!=null && c.ribasso_percentuale!=='') s += ', ribasso del '+esc(c.ribasso_percentuale)+'%';
-    s += ', oltre IVA di legge';
+    let imp = fmtEur(c.importo);
+    if(c.oneri_sicurezza) imp += ' di cui '+fmtEur(c.oneri_sicurezza)+' per oneri della sicurezza non soggetti a ribasso';
+    if(c.ribasso_percentuale!=null && c.ribasso_percentuale!=='') imp += ', ribasso del '+esc(c.ribasso_percentuale)+'%';
+    imp += ', oltre IVA di legge';
+    s = s ? s+' &mdash; '+imp : imp;
   }
-  if(!s) return '';
-  if(parti.length && c.estremi_contratto) s += ' ('+esc(c.estremi_contratto)+')';
-  return s+'.';
+  if(c.estremi_contratto) s = s ? s+' ('+esc(c.estremi_contratto)+')' : esc(c.estremi_contratto);
+  return s;
 }
 
-// Blocco completo da inserire nei verbali: contratto + varianti intervenute.
-// varianti = array ordinato per numero (dalla tabella varianti).
-function bloccoDatiContrattoHtml(c, varianti){
-  const frase = frasecontratto(c);
+// Riga CONTRATTO pronta per metaRows (null se non ci sono dati: metaBlockHtml la salta)
+function rigaContratto(c){
+  const t = testoContrattoRiga(c);
+  return t ? ['CONTRATTO', t] : null;
+}
+
+// Righe aggiuntive per le varianti intervenute (una riga per variante + importo vigente)
+function righeVarianti(varianti){
   const conImporto = (varianti||[]).filter(v=>v.importo_contratto_nuovo!=null);
-  if(!frase && !conImporto.length) return '';
-  let html = '<div class="contratto-box">';
-  html += '<div class="contratto-tit">Dati contrattuali</div>';
-  if(frase) html += '<p style="margin:2px 0">'+frase+'</p>';
-  if(conImporto.length){
-    html += '<p style="margin:6px 0 2px"><strong>Varianti intervenute:</strong></p><ul style="margin:0 0 2px 16px;padding:0">';
-    conImporto.forEach(v=>{
-      const tipoL = v.tipo_atto==='atto_aggiuntivo' ? 'Atto aggiuntivo' : 'Atto di sottomissione';
-      let r = 'Variante n. '+esc(v.numero)+' del '+fmt(v.data)+' ('+tipoL+')';
-      if(v.estremi_approvazione) r += ', approvata con '+esc(v.estremi_approvazione);
-      r += ' &mdash; nuovo importo contrattuale '+fmtEur(v.importo_contratto_nuovo);
-      if(v.oneri_sicurezza_nuovo!=null) r += ' di cui '+fmtEur(v.oneri_sicurezza_nuovo)+' per oneri della sicurezza non soggetti a ribasso';
-      if(v.giorni_concessi) r += ', con proroga di '+esc(v.giorni_concessi)+' giorni';
-      html += '<li>'+r+'.</li>';
-    });
-    html += '</ul>';
-    const ultimo = conImporto[conImporto.length-1];
-    let vig = '<strong>Importo contrattuale vigente: '+fmtEur(ultimo.importo_contratto_nuovo);
-    if(ultimo.oneri_sicurezza_nuovo!=null) vig += ', di cui '+fmtEur(ultimo.oneri_sicurezza_nuovo)+' per oneri della sicurezza non soggetti a ribasso';
-    vig += '.</strong>';
-    html += '<p style="margin:4px 0 0">'+vig+'</p>';
-  }
-  html += '</div>';
-  return html;
+  if(!conImporto.length) return [];
+  const righe = [];
+  conImporto.forEach(v=>{
+    const tipoL = v.tipo_atto==='atto_aggiuntivo' ? 'Atto aggiuntivo' : 'Atto di sottomissione';
+    let t = tipoL+' del '+fmt(v.data);
+    if(v.estremi_approvazione) t += ', approvato con '+esc(v.estremi_approvazione);
+    t += ' &mdash; nuovo importo contrattuale '+fmtEur(v.importo_contratto_nuovo);
+    if(v.oneri_sicurezza_nuovo!=null) t += ' di cui '+fmtEur(v.oneri_sicurezza_nuovo)+' per oneri della sicurezza non soggetti a ribasso';
+    if(v.giorni_concessi) t += ', con proroga di '+esc(v.giorni_concessi)+' giorni';
+    righe.push(['VARIANTE N. '+esc(v.numero), t]);
+  });
+  const u = conImporto[conImporto.length-1];
+  let vig = fmtEur(u.importo_contratto_nuovo);
+  if(u.oneri_sicurezza_nuovo!=null) vig += ' di cui '+fmtEur(u.oneri_sicurezza_nuovo)+' per oneri della sicurezza non soggetti a ribasso';
+  righe.push(['IMPORTO VIGENTE', vig]);
+  return righe;
 }
 
-// Carica cantiere + varianti e restituisce il blocco pronto per il PDF.
-async function caricaBloccoContratto(cantiereId){
+// Carica le varianti e restituisce le righe da accodare alla tabella superiore.
+async function caricaRigheVarianti(cantiereId){
   try{
-    const c = getCantiereObj(cantiereId);
     const {data:varianti} = await sb.from('varianti').select('*').eq('cantiere_id',cantiereId).order('numero');
-    return bloccoDatiContrattoHtml(c, varianti||[]);
-  }catch(e){ console.error('caricaBloccoContratto', e); return ''; }
+    return righeVarianti(varianti||[]);
+  }catch(e){ console.error('caricaRigheVarianti', e); return []; }
 }
 
 // Mostra nel form variante la differenza rispetto all'importo vigente
@@ -5321,8 +5314,6 @@ body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12.5px;co
 .corpo li{margin-bottom:5px;line-height:1.55}
 .corpo strong{color:#1F3864}
 .corpo .center{text-align:center}
-.contratto-box{border:1px solid #ADB5BD;border-left:3px solid #1F3864;background:#F8F9FA;padding:8px 10px;margin:0 0 12px;font-size:10.5px;line-height:1.45}
-.contratto-tit{font-weight:700;color:#1F3864;font-size:10px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
 .campioni-table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:10px}
 .campioni-table th{border:1px solid #ADB5BD;background:#1F3864;color:#fff;padding:5px 6px;text-align:left;font-weight:700;vertical-align:middle;line-height:1.2}
 .campioni-table td{border:1px solid #ADB5BD;padding:6px;vertical-align:top;min-height:22px}
@@ -5532,7 +5523,7 @@ function bodySopralluogoPeriodico(c, v, dx){
     html += '<p><strong>Accertamenti effettuati / disposizioni impartite:</strong></p>';
     html += paraP(dx.accertamenti);
   }
-  if(!esitoConforme && dx.rilievi){
+  if(dx.rilievi){
     html += '<p><strong>Rilievi e non conformit&agrave; riscontrate:</strong></p>';
     html += paraP(dx.rilievi);
   }
@@ -5584,7 +5575,7 @@ function bodyVerificaODS(c, v, dx){
     html += paraP(dx.stato_luoghi);
   }
 
-  if(dx.esito_generale && dx.esito_generale!=='adempiente' && dx.conseguenze){
+  if(dx.conseguenze){
     html += '<p><strong>Conseguenze dell\'inadempimento in corso</strong></p>';
     html += paraP(dx.conseguenze);
   }
@@ -6599,12 +6590,11 @@ async function apriPrelievoFirmabile(id){
       titolo: cfg.titolo,
       normativa: cfg.normativa,
       comune: comune, provincia: '',
-      metaRows: null, // il corpo contiene già il blocco lavori/presenti
+      metaRows: [rigaContratto(c)].concat(await caricaRigheVarianti(p.cantiere_id)),
       corpoHtml: corpoHtml,
       luogo: comune || c?.nome || '',
       dataDoc: p.data,
       fileName: nomeFileVerbale(c, p.data, 'VERPREL_'+(PRELIEVO_FILE_CODE[p.tipo_prelievo]||'GEN-STR'), p.numero),
-      contrattoHtml: await caricaBloccoContratto(p.cantiere_id),
       firmatari: firmatari.length ? firmatari : [{nome:redattore,ruolo:'Il Direttore dei Lavori'}],
       recordTable: 'verbali_prelievo',
       recordId: p.id,
@@ -6639,7 +6629,7 @@ async function apriVerbaleFirmabile(id){
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
         ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
         ['R.U.P.', esc(dx.rup_nome||'')],
-        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+        rigaContratto(c)
       ];
     } else if(v.tipo==='verifica_ods'){
       titolo = 'Verbale di verifica adempimento ordine di servizio';
@@ -6648,7 +6638,7 @@ async function apriVerbaleFirmabile(id){
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
         ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
         ['IMPRESA', esc(c?.impresa||'')],
-        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+        rigaContratto(c)
       ];
     } else if(v.tipo==='consegna_lavori'){
       titolo = 'Verbale di consegna lavori';
@@ -6659,7 +6649,7 @@ async function apriVerbaleFirmabile(id){
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
         ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
         ['IMPRESA', esc(c?.impresa||'')],
-        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+        rigaContratto(c)
       ];
     } else if(v.tipo==='consegna_parziale'){
       titolo = 'Verbale di consegna parziale lavori';
@@ -6671,7 +6661,7 @@ async function apriVerbaleFirmabile(id){
         ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
         ['R.U.P.', esc(dx.rup_nome||'')],
         ['IMPRESA', esc(c?.impresa||'')],
-        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+        rigaContratto(c)
       ];
     } else if(v.tipo==='constatazione_stato_luoghi'){
       titolo = 'Verbale di constatazione dello stato dei luoghi';
@@ -6680,7 +6670,7 @@ async function apriVerbaleFirmabile(id){
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
         ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
         ['IMPRESA', esc(c?.impresa||'')],
-        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+        rigaContratto(c)
       ];
     } else if(v.tipo==='certificato_ultimazione'){
       titolo = 'Certificato di ultimazione lavori';
@@ -6691,7 +6681,7 @@ async function apriVerbaleFirmabile(id){
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
         ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
         ['IMPRESA', esc(c?.impresa||'')],
-        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+        rigaContratto(c)
       ];
     } else if(v.tipo==='certificato_ultimazione_con_opere'){
       titolo = 'Certificato di ultimazione lavori con opere da completare';
@@ -6702,7 +6692,7 @@ async function apriVerbaleFirmabile(id){
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
         ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
         ['IMPRESA', esc(c?.impresa||'')],
-        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+        rigaContratto(c)
       ];
     } else if(v.tipo==='riconsegna_anticipata'){
       titolo = 'Verbale di presa in consegna anticipata delle opere';
@@ -6713,7 +6703,7 @@ async function apriVerbaleFirmabile(id){
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
         ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
         ['IMPRESA', esc(c?.impresa||'')],
-        ['CONTRATTO', esc(c?.estremi_contratto||'')]
+        rigaContratto(c)
       ];
     } else {
       const tipoLabelMap = {sopralluogo:'Verbale di sopralluogo',constatazione:'Verbale di constatazione',riunione:'Verbale di riunione di cantiere',fine_lavori:'Verbale di fine lavori',altro:'Verbale'};
@@ -6741,12 +6731,11 @@ async function apriVerbaleFirmabile(id){
       titolo: titolo,
       normativa: normativa||'',
       comune: comune||'', provincia: provincia||'',
-      metaRows: metaRows,
+      metaRows: (metaRows||[]).concat(await caricaRigheVarianti(v.cantiere_id)),
       corpoHtml: corpoHtml,
       luogo: comune || c?.stazione_appaltante || c?.nome || '',
       dataDoc: v.data,
       fileName: nomeFileVerbale(c, v.data, VERBALE_FILE_CODE[v.tipo]||'VER_GEN', v.numero),
-      contrattoHtml: await caricaBloccoContratto(v.cantiere_id),
       firmatari: presenti.length ? presenti : firmatariDefault,
       recordTable: 'verbali',
       recordId: v.id,
@@ -7218,7 +7207,7 @@ async function generaVerbaleSospensionePDF(sospId, tipoVerbale){
       ['LAVORI', esc(c?.descrizione||c?.nome||'')],
       ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
       ['IMPRESA', esc(c?.impresa||'')],
-      ['CONTRATTO', esc(c?.estremi_contratto||'')]
+      rigaContratto(c)
     ];
 
     // progressivo nn per VSLnn/VRLnn: posizione cronologica della sospensione nel cantiere
@@ -7236,12 +7225,11 @@ async function generaVerbaleSospensionePDF(sospId, tipoVerbale){
       titolo: isRipresa ? 'Verbale di ripresa dei lavori' : ('Verbale di sospensione dei lavori'+(s.tipo_sospensione==='parziale'?' (parziale)':'')),
       normativa: 'd.lgs. 36/2023 art. 121 &mdash; art. 107 d.lgs. 50/2016 (ove applicabile)',
       comune: dx.comune, provincia: '',
-      metaRows: metaRows,
+      metaRows: (metaRows||[]).concat(await caricaRigheVarianti(s.cantiere_id)),
       corpoHtml: corpoHtml,
       luogo: dx.comune || c?.nome || '',
       dataDoc: dataDocSosp,
       fileName: fileNameSosp,
-      contrattoHtml: await caricaBloccoContratto(s.cantiere_id),
       firmatari: presenti.length ? presenti : [{nome:dx.impresa_referente||'',ruolo:"L'Impresa"},{nome:dx.redattore||'',ruolo:'Il Direttore dei Lavori'}],
       recordTable: 'sospensioni',
       recordId: s.id,
