@@ -1598,6 +1598,12 @@ async function openModalNuovaVariante(){
         <div class="form-hint" id="nv_delta_hint" style="font-size:11px;color:var(--primary)"></div>
       </div>
       <div class="form-group">
+        <label class="form-label">Di cui oneri sicurezza (€)</label>
+        <input class="form-control" type="number" step="0.01" id="nv_oneri_nuovo" placeholder="Es. 14200.00" oninput="aggiornaDeltaVariante('nv')">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Quota per la sicurezza non soggetta a ribasso, compresa nel nuovo importo</div>
+        <div class="form-hint" id="nv_oneri_hint" style="font-size:11px;color:var(--primary)"></div>
+      </div>
+      <div class="form-group">
         <label class="form-label">Data approvazione variante</label>
         <input class="form-control" type="date" id="nv_data_approv">
         <div class="form-hint">Data del provvedimento di approvazione della SA</div>
@@ -1635,6 +1641,7 @@ async function salvaVariante(){
     data_approvazione: document.getElementById('nv_data_approv').value||null,
     estremi_approvazione: document.getElementById('nv_estremi_approv').value.trim()||null,
     importo_contratto_nuovo: parseFloat(document.getElementById('nv_importo_nuovo').value)||null,
+    oneri_sicurezza_nuovo: parseFloat(document.getElementById('nv_oneri_nuovo').value)||null,
     created_by: currentUser.id
   });
   if(error){ alert(error.message); return; }
@@ -1692,6 +1699,12 @@ async function openModalEditVariante(id){
         <div class="form-hint" id="ev_delta_hint" style="font-size:11px;color:var(--primary)"></div>
       </div>
       <div class="form-group">
+        <label class="form-label">Di cui oneri sicurezza (€)</label>
+        <input class="form-control" type="number" step="0.01" id="ev_oneri_nuovo" value="${v.oneri_sicurezza_nuovo!=null?v.oneri_sicurezza_nuovo:''}" oninput="aggiornaDeltaVariante('ev')">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Quota per la sicurezza non soggetta a ribasso, compresa nel nuovo importo</div>
+        <div class="form-hint" id="ev_oneri_hint" style="font-size:11px;color:var(--primary)"></div>
+      </div>
+      <div class="form-group">
         <label class="form-label">Data approvazione variante</label>
         <input class="form-control" type="date" id="ev_data_approv" value="${v.data_approvazione||''}">
       </div>
@@ -1717,7 +1730,8 @@ async function salvaEditVariante(id){
     giorni_concessi: giorniConcessiEdit||null,
     data_approvazione: document.getElementById('ev_data_approv').value||null,
     estremi_approvazione: document.getElementById('ev_estremi_approv').value.trim()||null,
-    importo_contratto_nuovo: parseFloat(document.getElementById('ev_importo_nuovo').value)||null
+    importo_contratto_nuovo: parseFloat(document.getElementById('ev_importo_nuovo').value)||null,
+    oneri_sicurezza_nuovo: parseFloat(document.getElementById('ev_oneri_nuovo').value)||null
   }).eq('id',id);
   if(error){ alert(error.message); return; }
 
@@ -2952,6 +2966,20 @@ async function eliminaRiga(id, listaId){
 // ============================================================
 // SAL — STATI DI AVANZAMENTO LAVORI
 // ============================================================
+// Gli importi dei SAL sono PROGRESSIVI: ogni SAL espone il totale delle
+// lavorazioni eseguite dall'inizio dei lavori, e detrae i certificati di
+// pagamento precedenti. Il totale lordo di cantiere e' quindi quello
+// dell'ULTIMO SAL, non la somma di tutti (che conterebbe piu' volte
+// le stesse lavorazioni).
+function ultimoSAL(sals){
+  if(!sals || !sals.length) return null;
+  return sals.reduce((max,s)=>((s.numero||0) > (max.numero||0) ? s : max), sals[0]);
+}
+function salLordoProgressivo(sals){
+  const u = ultimoSAL(sals);
+  return u ? ((u.importo_lavori||0)+(u.importo_sicurezza||0)) : 0;
+}
+
 async function renderSAL(){
   if(!currentCantiere) return noCantiere();
   const c = getCantiereObj();
@@ -2972,13 +3000,13 @@ async function renderSAL(){
 
   // Totali
   if(sals && sals.length){
-    const totLordo = sals.reduce((a,s)=>a+(s.importo_lavori||0)+(s.importo_sicurezza||0),0);
+    const totLordo = salLordoProgressivo(sals);
     const totNetto = sals.reduce((a,s)=>a+((s.netto_calcolato||s.netto_pagare||0)||0),0);
-    const ultSal = sals[0];
+    const ultSal = ultimoSAL(sals);
     html += `<div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
       <div class="kpi"><div class="kpi-label">SAL emessi</div><div class="kpi-value">${sals.length}</div><div class="kpi-sub">ultimo: SAL n. ${ultSal.numero}</div></div>
-      <div class="kpi"><div class="kpi-label">Totale lavorazioni (lordo)</div><div class="kpi-value" style="font-size:18px">${fmtEur(totLordo)}</div><div class="kpi-sub">lavori eseguiti + sicurezza, al lordo delle detrazioni</div></div>
-      <div class="kpi"><div class="kpi-label">Netto a pagare cumulato</div><div class="kpi-value" style="font-size:18px;color:var(--green)">${fmtEur(totNetto)}</div><div class="kpi-sub">al netto di ritenute</div></div>
+      <div class="kpi"><div class="kpi-label">Totale lavorazioni (lordo)</div><div class="kpi-value" style="font-size:18px">${fmtEur(totLordo)}</div><div class="kpi-sub">progressivo da SAL n. ${ultSal.numero} — lavori + sicurezza, al lordo delle detrazioni</div></div>
+      <div class="kpi"><div class="kpi-label">Netto a pagare cumulato</div><div class="kpi-value" style="font-size:18px;color:var(--green)">${fmtEur(totNetto)}</div><div class="kpi-sub">somma dei netti dei certificati emessi</div></div>
     </div>`;
   }
 
@@ -3037,8 +3065,14 @@ function openModalNuovoSAL(){
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;margin-top:12px">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:12px">IMPORTI LORDI</div>
       <div class="form-grid">
-        <div class="form-group"><label class="form-label">Importo lavori eseguiti (€)</label><input class="form-control" type="number" step="0.01" id="sal_lav" value="0" oninput="aggiornaTotaleSAL()"></div>
-        <div class="form-group"><label class="form-label">Importo sicurezza (€)</label><input class="form-control" type="number" step="0.01" id="sal_sic" value="0" oninput="aggiornaTotaleSAL()"></div>
+        <div class="form-group"><label class="form-label">Importo lavori eseguiti (€)</label>
+          <input class="form-control" type="number" step="0.01" id="sal_lav" value="0" oninput="aggiornaTotaleSAL()">
+          <div class="form-hint" style="font-size:11px;color:#ADB5BD"><strong>Esclusa sicurezza</strong> — importo progressivo dei lavori dall'inizio, al netto degli oneri della sicurezza</div>
+        </div>
+        <div class="form-group"><label class="form-label">Importo sicurezza (€)</label>
+          <input class="form-control" type="number" step="0.01" id="sal_sic" value="0" oninput="aggiornaTotaleSAL()">
+          <div class="form-hint" style="font-size:11px;color:#ADB5BD">Oneri della sicurezza progressivi, non soggetti a ribasso</div>
+        </div>
       </div>
     </div>
 
@@ -3237,8 +3271,14 @@ async function openModalEditSAL(id){
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;margin-top:12px">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:12px">IMPORTI LORDI</div>
       <div class="form-grid">
-        <div class="form-group"><label class="form-label">Importo lavori (€)</label><input class="form-control" type="number" step="0.01" id="es_lav" value="${s.importo_lavori||0}" oninput="aggiornaTotaleSAL('es')"></div>
-        <div class="form-group"><label class="form-label">Importo sicurezza (€)</label><input class="form-control" type="number" step="0.01" id="es_sic" value="${s.importo_sicurezza||0}" oninput="aggiornaTotaleSAL('es')"></div>
+        <div class="form-group"><label class="form-label">Importo lavori (€)</label>
+          <input class="form-control" type="number" step="0.01" id="es_lav" value="${s.importo_lavori||0}" oninput="aggiornaTotaleSAL('es')">
+          <div class="form-hint" style="font-size:11px;color:#ADB5BD"><strong>Esclusa sicurezza</strong> — importo progressivo dei lavori dall'inizio, al netto degli oneri della sicurezza</div>
+        </div>
+        <div class="form-group"><label class="form-label">Importo sicurezza (€)</label>
+          <input class="form-control" type="number" step="0.01" id="es_sic" value="${s.importo_sicurezza||0}" oninput="aggiornaTotaleSAL('es')">
+          <div class="form-hint" style="font-size:11px;color:#ADB5BD">Oneri della sicurezza progressivi, non soggetti a ribasso</div>
+        </div>
       </div>
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;margin-top:10px">
@@ -4513,7 +4553,7 @@ async function generaReportSA(cantiereId){
   const totOpGiornale=(giornale||[]).reduce((a,g)=>{const mae=g.maestranze||[];return a+mae.reduce((b,m)=>b+(m.num||0),0);},0);
   const giorniRegistrati=(giornale||[]).length;
   const giorniAnomalie=(giornale||[]).filter(g=>g.anomalie&&g.anomalie.trim()).length;
-  const totSalLordo=(sal||[]).reduce((a,s)=>a+(s.importo_lavori||0)+(s.importo_sicurezza||0),0);
+  const totSalLordo=salLordoProgressivo(sal||[]);
   const totSalNetto=(sal||[]).reduce((a,s)=>a+((s.netto_calcolato||s.netto_pagare||0)),0);
   const nameOf=ruolo=>{const t=team.find(x=>x.ruolo===ruolo);const p=t?.profilo;return p?((p.nome||'')+' '+(p.cognome||'')).trim()||'\u2014':'\u2014';};
   const now=new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
@@ -4644,7 +4684,7 @@ async function generaReportSA(cantiereId){
       <td><strong>${fmtEur(s.netto_iva_calcolato||s.netto_iva_inclusa||s.netto_calcolato||0)}</strong></td>
       <td>${esc(s.stato||'—')}</td>
     </tr>`).join('')}
-    <tr style="background:#EEF3FA"><td colspan="3"><strong>TOTALE</strong></td>
+    <tr style="background:#EEF3FA"><td colspan="3"><strong>TOTALE</strong><div style="font-size:9px;font-weight:400;color:#6C757D">lordo = progressivo ultimo SAL; netti = somma certificati</div></td>
       <td><strong>${fmtEur(totSalLordo)}</strong></td>
       <td></td><td></td>
       <td><strong>${fmtEur(totSalNetto)}</strong></td>
@@ -5176,12 +5216,16 @@ function bloccoDatiContrattoHtml(c, varianti){
       let r = 'Variante n. '+esc(v.numero)+' del '+fmt(v.data)+' ('+tipoL+')';
       if(v.estremi_approvazione) r += ', approvata con '+esc(v.estremi_approvazione);
       r += ' &mdash; nuovo importo contrattuale '+fmtEur(v.importo_contratto_nuovo);
+      if(v.oneri_sicurezza_nuovo!=null) r += ' di cui '+fmtEur(v.oneri_sicurezza_nuovo)+' per oneri della sicurezza non soggetti a ribasso';
       if(v.giorni_concessi) r += ', con proroga di '+esc(v.giorni_concessi)+' giorni';
       html += '<li>'+r+'.</li>';
     });
     html += '</ul>';
     const ultimo = conImporto[conImporto.length-1];
-    html += '<p style="margin:4px 0 0"><strong>Importo contrattuale vigente: '+fmtEur(ultimo.importo_contratto_nuovo)+'.</strong></p>';
+    let vig = '<strong>Importo contrattuale vigente: '+fmtEur(ultimo.importo_contratto_nuovo);
+    if(ultimo.oneri_sicurezza_nuovo!=null) vig += ', di cui '+fmtEur(ultimo.oneri_sicurezza_nuovo)+' per oneri della sicurezza non soggetti a ribasso';
+    vig += '.</strong>';
+    html += '<p style="margin:4px 0 0">'+vig+'</p>';
   }
   html += '</div>';
   return html;
@@ -5200,14 +5244,34 @@ async function caricaBloccoContratto(cantiereId){
 function aggiornaDeltaVariante(prefix){
   const el = document.getElementById(prefix+'_importo_nuovo');
   const hint = document.getElementById(prefix+'_delta_hint');
-  if(!el||!hint) return;
   const c = getCantiereObj();
   const base = parseFloat(c?.importo)||0;
-  const nuovo = parseFloat(el.value);
-  if(!nuovo||!base){ hint.textContent=''; return; }
-  const d = nuovo-base;
-  const pct = base ? (d/base*100) : 0;
-  hint.textContent = (d>=0?'+':'') + fmtEur(d) + ' rispetto all\'importo contrattuale originario ('+(d>=0?'+':'')+pct.toFixed(2)+'%)';
+  const nuovo = el ? parseFloat(el.value) : NaN;
+  if(hint){
+    if(!nuovo||!base){ hint.textContent=''; }
+    else {
+      const d = nuovo-base;
+      const pct = base ? (d/base*100) : 0;
+      hint.textContent = (d>=0?'+':'') + fmtEur(d) + ' rispetto all\'importo contrattuale originario ('+(d>=0?'+':'')+pct.toFixed(2)+'%)';
+    }
+  }
+  // Oneri sicurezza: confronto con quelli di contratto + coerenza con il nuovo importo
+  const elOn = document.getElementById(prefix+'_oneri_nuovo');
+  const hintOn = document.getElementById(prefix+'_oneri_hint');
+  if(elOn && hintOn){
+    const oneriNuovi = parseFloat(elOn.value);
+    if(!oneriNuovi){ hintOn.textContent=''; hintOn.style.color='var(--primary)'; }
+    else if(nuovo && oneriNuovi>nuovo){
+      hintOn.textContent = 'Attenzione: gli oneri superano il nuovo importo contrattuale.';
+      hintOn.style.color = '#DC3545';
+    } else {
+      const baseOn = parseFloat(c?.oneri_sicurezza)||0;
+      hintOn.style.color = 'var(--primary)';
+      hintOn.textContent = baseOn
+        ? ((oneriNuovi-baseOn>=0?'+':'') + fmtEur(oneriNuovi-baseOn) + ' rispetto agli oneri di contratto')
+        : '';
+    }
+  }
 }
 
 function nomeFileVerbale(c, data, codice, numero){
