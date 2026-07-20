@@ -2057,9 +2057,9 @@ async function openModalNuovoVerbale(){
         <label class="form-label">Oggetto</label>
         <input class="form-control" id="nv2_ogg" placeholder="Es. Verbale di consegna lavori relativi a...">
       </div>
-      <div class="form-group span-2">
+      <div class="form-group span-2" id="nv2_testo_wrap">
         <label class="form-label">Testo del verbale</label>
-        <div class="form-hint">Descrivi sinteticamente quanto constatato, le disposizioni impartite, le decisioni assunte. Per i tipi "Sopralluogo periodico" e "Verifica OdS" questo testo &egrave; facoltativo: il documento firmabile viene generato dai campi strutturati qui sotto.</div>
+        <div class="form-hint">Descrivi sinteticamente quanto constatato, le disposizioni impartite, le decisioni assunte. Questo campo compare solo per i verbali a testo libero: per i tipi strutturati il documento viene generato interamente dai campi dedicati qui sotto.</div>
         <textarea class="form-control" id="nv2_testo" rows="6" placeholder="Es. Il giorno ... alle ore ... si sono riuniti presso il cantiere in oggetto il Direttore dei Lavori Ing. ... e il Rappresentante dell'Impresa ...&#10;&#10;Si constata che...&#10;&#10;Si dispone che..."></textarea>
       </div>
       <div class="form-group span-2">
@@ -2080,6 +2080,7 @@ async function openModalNuovoVerbale(){
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaVerbale()">Salva verbale</button>
     </div>`);
+  toggleVerbaleExtra('nv2');
 }
 
 async function salvaVerbale(){
@@ -2154,7 +2155,7 @@ async function openModalEditVerbale(id){
         <label class="form-label">Oggetto</label>
         <input class="form-control" id="ev2_ogg" value="${esc(v.oggetto||'')}">
       </div>
-      <div class="form-group span-2">
+      <div class="form-group span-2" id="ev2_testo_wrap">
         <label class="form-label">Testo del verbale</label>
         <textarea class="form-control" id="ev2_testo" rows="6">${esc(v.testo||'')}</textarea>
       </div>
@@ -6511,10 +6512,15 @@ async function apriVerbaleFirmabile(id){
 
 function toggleVerbaleExtra(prefix){
   const tipo = document.getElementById(prefix+'_tipo').value;
-  ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata'].forEach(function(t){
+  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata'];
+  TIPI_STRUTTURATI.forEach(function(t){
     const el = document.getElementById(prefix+'_extra_'+t);
     if(el) el.style.display = (tipo===t) ? 'block' : 'none';
   });
+  // Il "Testo del verbale" libero finisce nel PDF solo per i tipi generici:
+  // per i tipi strutturati va nascosto (il documento e' generato dai campi dedicati).
+  const testoWrap = document.getElementById(prefix+'_testo_wrap');
+  if(testoWrap) testoWrap.style.display = TIPI_STRUTTURATI.includes(tipo) ? 'none' : 'block';
 }
 
 function extraFieldsSopralluogoHtml(prefix, dx){
