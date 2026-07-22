@@ -508,6 +508,7 @@ async function renderCantieri(){
         <button class="btn btn-secondary btn-sm" onclick="jumpToCantiere('${c.id}')">Apri cantiere</button>
         ${c.link_box?`<a href="${c.link_box}" target="_blank" class="btn btn-secondary btn-sm">📷 Foto</a>`:''}
         ${r.ruolo==='dl'||r.ruolo==='rup'?`<button class="btn btn-secondary btn-sm" onclick="openModalEditCantiere('${c.id}')">✏️</button>`:''}
+        ${r.ruolo==='dl'?`<button class="btn btn-danger btn-sm" title="Elimina cantiere e tutti i dati collegati" onclick="openModalEliminaCantiere('${c.id}')">🗑️</button>`:''}
       </div></div>
       <div class="form-grid-3" style="gap:12px;margin-bottom:16px">
         <div><div class="form-label">CIG</div><div style="font-size:13px;font-weight:600">${esc(c.cig||'—')}</div></div>
@@ -1020,6 +1021,8 @@ async function renderSospensioni(){
           <div class="btn-group" style="flex-wrap:wrap;margin-top:${isAperta&&can('write')?'6px':'0'}">
           ${!isProroga?`<button class="btn btn-secondary btn-sm" onclick="openModalGeneraVerbaleSospensione('${s.id}','sospensione')">🖨️ Verbale sosp.</button>`:''}
           ${!isProroga&&s.data_ripresa?`<button class="btn btn-secondary btn-sm" onclick="openModalGeneraVerbaleSospensione('${s.id}','ripresa')">🖨️ Verbale ripresa</button>`:''}
+          ${!isProroga?`<button class="btn btn-secondary btn-sm" title="Visualizza il verbale di sospensione generato (sola lettura)" onclick="visualizzaVerbaleSospensione('${s.id}','sospensione')">👁️ Vedi sosp.</button>`:''}
+          ${!isProroga&&s.data_ripresa?`<button class="btn btn-secondary btn-sm" title="Visualizza il verbale di ripresa generato (sola lettura)" onclick="visualizzaVerbaleSospensione('${s.id}','ripresa')">👁️ Vedi ripresa</button>`:''}
           ${can('write')&&!isAperta?`<button class="btn btn-secondary btn-sm" onclick="openModalEditSospensione('${s.id}')">✏️</button>
             <button class="btn btn-danger btn-sm" onclick="eliminaSospensione('${s.id}')">🗑️</button>`:''}
           </div></td>
@@ -1984,6 +1987,7 @@ async function renderVerbali(){
         </div>
         <div class="btn-group">
           <button class="btn btn-secondary btn-sm" onclick="apriVerbaleFirmabile('${v.id}')">🖨️ Genera PDF firmabile</button>
+          <button class="btn btn-secondary btn-sm" title="Visualizza il verbale generato (sola lettura)" onclick="apriVerbaleFirmabile('${v.id}', true)">👁️ Visualizza</button>
           ${can('write')?`
           <button class="btn btn-secondary btn-sm" onclick="openModalEditVerbale('${v.id}')">✏️</button>
           <button class="btn btn-danger btn-sm" onclick="eliminaVerbale('${v.id}')">🗑️</button>`:''}
@@ -3420,6 +3424,106 @@ function closeModalOverlay(e){
       if(ev.target === overlay) closeModal();
     }
     overlay.addEventListener('mouseup', onMouseUp);
+  }
+}
+
+// ============================================================
+// ELIMINAZIONE CANTIERE — con inventario e conferma digitata
+// ============================================================
+// Tabelle collegate al cantiere, nell'ordine di cancellazione
+// (le figlie prima delle madri).
+const TABELLE_CANTIERE = [
+  {t:'verbali_prelievo',   label:'verbali di prelievo strutture'},
+  {t:'verbali',            label:'verbali'},
+  {t:'ods',                label:'ordini di servizio'},
+  {t:'comunicazioni',      label:'comunicazioni'},
+  {t:'giornale_lavori',    label:'registrazioni del giornale lavori'},
+  {t:'sal',                label:'SAL / certificati di pagamento'},
+  {t:'sospensioni',        label:'sospensioni e proroghe'},
+  {t:'varianti',           label:'varianti'},
+  {t:'fasi',               label:'fasi di cronoprogramma'},
+  {t:'ditte',              label:'ditte / subappaltatori'},
+  {t:'cantiere_utenti',    label:'membri del team'}
+];
+
+async function openModalEliminaCantiere(id){
+  const c = getCantiereObj(id);
+  const nome = c?.nome || '';
+  openModal('Elimina cantiere', `
+    <div class="alert alert-error" style="font-size:12px">
+      <strong>Operazione irreversibile.</strong> Verranno eliminati definitivamente il cantiere
+      <strong>${esc(nome)}</strong> e <strong>tutti i dati collegati</strong>, comprese le firme
+      salvate sui verbali. Non &egrave; previsto un cestino: l'unico recupero possibile &egrave; un
+      ripristino del backup di Supabase.
+    </div>
+    <div id="ec_inventario" style="font-size:12px;color:var(--muted);margin-bottom:12px">Conteggio dei dati collegati in corso&hellip;</div>
+    <div class="form-group">
+      <label class="form-label">Per confermare, digita il nome esatto del cantiere</label>
+      <input class="form-control" id="ec_conferma" placeholder="${esc(nome)}" autocomplete="off" oninput="verificaConfermaElimina('${esc(nome).replace(/'/g,"\\'")}')">
+      <div class="form-hint" style="font-size:11px">Deve corrispondere a: <strong>${esc(nome)}</strong></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-danger" id="ec_btn" disabled onclick="eliminaCantiere('${id}')">Elimina definitivamente</button>
+    </div>`);
+  // inventario asincrono: mostra quanti record verranno eliminati
+  try{
+    const conteggi = [];
+    for(const {t,label} of TABELLE_CANTIERE){
+      try{
+        const {count, error} = await sb.from(t).select('id',{count:'exact',head:true}).eq('cantiere_id',id);
+        if(!error && count) conteggi.push(count+' '+label);
+      }catch(e){ /* tabella assente: ignora */ }
+    }
+    const box = document.getElementById('ec_inventario');
+    if(box) box.innerHTML = conteggi.length
+      ? '<strong>Dati che verranno eliminati:</strong><br>'+conteggi.map(esc).join('<br>')
+      : 'Nessun dato collegato: il cantiere risulta vuoto.';
+  }catch(e){
+    const box = document.getElementById('ec_inventario');
+    if(box) box.textContent = 'Impossibile contare i dati collegati.';
+  }
+}
+
+function verificaConfermaElimina(nomeAtteso){
+  const inp = document.getElementById('ec_conferma');
+  const btn = document.getElementById('ec_btn');
+  if(!inp||!btn) return;
+  btn.disabled = inp.value.trim() !== nomeAtteso;
+}
+
+async function eliminaCantiere(id){
+  const btn = document.getElementById('ec_btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Eliminazione in corso…'; }
+  try{
+    // Le liste_righe dipendono dalle liste, non dal cantiere: vanno prima.
+    try{
+      const {data:liste} = await sb.from('liste_settimanali').select('id').eq('cantiere_id',id);
+      for(const l of (liste||[])) await sb.from('liste_righe').delete().eq('lista_id',l.id);
+      await sb.from('liste_settimanali').delete().eq('cantiere_id',id);
+    }catch(e){ console.error('liste', e); }
+
+    // Cancellazione esplicita delle tabelle collegate: funziona anche se
+    // la migrazione ON DELETE CASCADE non e' stata eseguita.
+    for(const {t,label} of TABELLE_CANTIERE){
+      const {error} = await sb.from(t).delete().eq('cantiere_id',id);
+      if(error && error.code!=='42P01'){ // 42P01 = tabella inesistente
+        console.error('eliminazione '+t, error);
+      }
+    }
+
+    const {error} = await sb.from('cantieri').delete().eq('id',id);
+    if(error){ alert('Errore eliminazione cantiere: '+error.message); if(btn){btn.disabled=false;btn.textContent='Elimina definitivamente';} return; }
+
+    // se era il cantiere aperto, esci dal contesto
+    if(currentCantiere===id){ currentCantiere=null; currentRole=null; }
+    myCantieri = (myCantieri||[]).filter(r=>r.cantiere?.id!==id);
+    closeModal();
+    showView('cantieri');
+  }catch(e){
+    console.error('eliminaCantiere', e);
+    alert('Errore durante l\'eliminazione: '+(e?.message||e));
+    if(btn){ btn.disabled=false; btn.textContent='Elimina definitivamente'; }
   }
 }
 
@@ -5115,15 +5219,24 @@ function apriDocumentoFirmabile(opts){
   html += '<script>window.RECORD_TABLE='+JSON.stringify(opts.recordTable||null)
        +  ';window.RECORD_ID='+JSON.stringify(opts.recordId||null)
        +  ';window.FILE_NAME='+JSON.stringify(opts.fileName||opts.titolo||'Verbale')
-       +  ';window.DOC_TITOLO='+JSON.stringify(opts.titolo||'Verbale')+';<\/script>';
+       +  ';window.DOC_TITOLO='+JSON.stringify(opts.titolo||'Verbale')
+       +  ';window.SOLA_LETTURA='+(opts.solaLettura?'true':'false')+';<\/script>';
   html += '<div class="no-print toolbar">';
   html += '<button class="tb-ghost" onclick="window.close()">&#10005; Chiudi</button>';
-  html += '<button class="tb-secondary" onclick="addFirmatario(\'\',\'\')">+ Aggiungi firmatario</button>';
-  html += '<button class="tb-secondary" onclick="clearAllSig()">&#129529; Cancella firme</button>';
-  html += (opts.recordTable ? '<button class="tb-secondary" onclick="salvaFirmeNelGestionale()">&#128190; Salva firme nel gestionale</button>' : '');
+  if(!opts.solaLettura){
+    html += '<button class="tb-secondary" onclick="addFirmatario(\'\',\'\')">+ Aggiungi firmatario</button>';
+    html += '<button class="tb-secondary" onclick="clearAllSig()">&#129529; Cancella firme</button>';
+    html += (opts.recordTable ? '<button class="tb-secondary" onclick="salvaFirmeNelGestionale()">&#128190; Salva firme nel gestionale</button>' : '');
+  }
   html += '<button class="tb-secondary" onclick="apriPannelloInvio()">&#9993;&#65039; Invia via email</button>';
-  html += '<button class="tb-primary" onclick="window.print()">&#128424;&#65039; Genera PDF (firma e stampa)</button>';
+  html += '<button class="tb-primary" onclick="window.print()">&#128424;&#65039; '+(opts.solaLettura?'Stampa / Salva PDF':'Genera PDF (firma e stampa)')+'</button>';
   html += '</div>';
+  if(opts.solaLettura){
+    html += '<div class="no-print" style="background:#FFF3CD;color:#856404;padding:8px 16px;font-size:12px;text-align:center">'
+         +  '&#128065;&#65039; <strong>Sola lettura</strong> &mdash; documento gi&agrave; generato'
+         +  (opts.dataGenerazione ? ' il '+esc(fmt(String(opts.dataGenerazione).slice(0,10))) : '')
+         +  '. Le firme non sono modificabili; per rifirmare usa il pulsante &laquo;PDF / Firma&raquo; dall\'elenco.</div>';
+  }
   html += '<div id="pannelloInvio" class="no-print" style="display:none;background:#EEF2F8;border-bottom:1px solid #ADB5BD;padding:12px 16px;font-size:12px;line-height:1.5">'
        +  '<div style="font-weight:700;color:#1F3864;margin-bottom:6px">Invio del verbale via email</div>'
        +  '<div id="invioIstruzioni" style="margin-bottom:8px"></div>'
@@ -5325,6 +5438,10 @@ body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12.5px;co
 .firma-block{border:1px solid #DEE2E6;border-radius:6px;padding:10px;margin-bottom:14px;page-break-inside:avoid;background:#fff}
 .firma-label{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#6C757D;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:8px}
 canvas.sig-canvas{border:1px dashed #ADB5BD;border-radius:4px;width:100%;height:110px;touch-action:none;background:#fff;display:block;margin-top:6px}
+img.sig-img{display:block;width:100%;max-height:110px;object-fit:contain;object-position:left bottom;border-bottom:1px solid #999;margin-top:6px}
+.sig-vuota{border-bottom:1px solid #999;height:110px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;color:#ADB5BD;font-size:11px;font-style:italic;margin-top:6px}
+.sig-nome{font-weight:700;font-size:12px;color:#212529}
+.sig-ruolo{font-size:11px;color:#6C757D}
 .sig-name-inputs{display:flex;gap:8px;flex:1}
 .sig-name-inputs input{border:1px solid #DEE2E6;border-radius:4px;padding:4px 6px;font-size:11px;font-family:inherit;flex:1;min-width:0}
 .sig-remove{border:none;background:none;color:#DC3545;cursor:pointer;font-size:11px;white-space:nowrap}
@@ -5341,6 +5458,8 @@ canvas.sig-canvas{border:1px dashed #ADB5BD;border-radius:4px;width:100%;height:
   .sig-name-inputs input{border:none!important;border-bottom:1px solid #999!important;background:transparent!important;padding:2px 0}
   .firma-block{border:none;padding:0;page-break-inside:avoid}
   canvas.sig-canvas{border:none;border-bottom:1px solid #999;height:90px}
+  img.sig-img{max-height:90px}
+  .sig-vuota{height:90px}
 }
 `;
 
@@ -5406,6 +5525,22 @@ function PDF_ENGINE_JS(firmatariIniziali){
         +'<div class="no-print" style="text-align:right"><button class="sig-clear" onclick="this.parentElement.previousElementSibling._clear()">Cancella firma</button></div>';
       document.getElementById('firmeContainer').appendChild(wrap);
       initSigPad(wrap.querySelector('canvas'));
+    }
+    // Sola lettura: nomi come testo e firma come immagine gia' acquisita
+    function addFirmatarioLettura(f){
+      var wrap = document.createElement('div');
+      wrap.className='firma-block';
+      var nome = escHtml(f.nome||'');
+      var ruolo = escHtml(f.ruolo||'');
+      var img = f.firma_png
+        ? '<img class="sig-img" src="'+f.firma_png+'" alt="firma">'
+        : '<div class="sig-vuota">Non firmato</div>';
+      wrap.innerHTML =
+        '<div class="firma-label"><div class="sig-name-inputs">'
+        +'<div class="sig-nome">'+(nome||'&mdash;')+'</div>'
+        +'<div class="sig-ruolo">'+(ruolo||'')+'</div>'
+        +'</div></div>' + img;
+      document.getElementById('firmeContainer').appendChild(wrap);
     }
     function clearAllSig(){
       document.querySelectorAll('.sig-canvas').forEach(function(c){ c._clear && c._clear(); });
@@ -5485,7 +5620,11 @@ function PDF_ENGINE_JS(firmatariIniziali){
     }
     (function(){
       var iniziali = ${JSON.stringify(firmatariIniziali)};
-      iniziali.forEach(function(f){ addFirmatario(f.nome, f.ruolo); });
+      if(window.SOLA_LETTURA){
+        iniziali.forEach(function(f){ addFirmatarioLettura(f); });
+      } else {
+        iniziali.forEach(function(f){ addFirmatario(f.nome, f.ruolo); });
+      }
     })();
   `;
 }
@@ -5630,6 +5769,27 @@ function bodySospensione(c, s, dx){
     html += '<p>Rilevato che alla data odierna lo stato di avanzamento dei lavori e delle opere risulta il seguente: '+esc(dx.stato_avanzamento)+'.</p>';
   }
 
+  // ---- Consistenza del cantiere: ACCERTA a) b) c) ----
+  const pers = dx.personale||[], mezzi = dx.mezzi||[];
+  const hasConsistenza = pers.length || mezzi.length || dx.opere_provvisionali;
+  if(hasConsistenza){
+    html += '<p class="center" style="font-weight:800;letter-spacing:.06em">ACCERTA</p>';
+    html += '<p>che alla data odierna risultano presenti in cantiere:</p><ul>';
+    if(pers.length){
+      const tot = consTotalePersonale(pers);
+      html += '<li><strong>Personale</strong> &mdash; n. '+tot+' unit&agrave;, cos&igrave; ripartite: '
+        + consTestoPersonale(pers).join('; ')
+        + (dx.rif_presenze ? ', come da '+esc(dx.rif_presenze) : '') + ';</li>';
+    }
+    if(mezzi.length){
+      html += '<li><strong>Mezzi d\'opera</strong> &mdash; ' + consTestoMezzi(mezzi).join('; ') + ';</li>';
+    }
+    if(dx.opere_provvisionali){
+      html += '<li><strong>Opere provvisionali e impianti di cantiere</strong> &mdash; '+esc(dx.opere_provvisionali)+';</li>';
+    }
+    html += '</ul>';
+  }
+
   if(dx.fascia_oraria_da && dx.fascia_oraria_a){
     html += '<p><strong>Tutto ci&ograve; premesso, il sottoscritto ' + esc(dx.redattore||'') + '</strong></p>';
     html += '<p class="center" style="font-weight:800;letter-spacing:.06em">DISPONE</p>';
@@ -5643,6 +5803,16 @@ function bodySospensione(c, s, dx){
   }
 
   html += '<p>A motivo della sospensione non sono previsti compensi o indennizzi all\'esecutore, salvi i casi disciplinati dalla normativa vigente in materia di sospensione dei lavori pubblici.</p>';
+
+  // ---- DISPONE: contenimento di manodopera e mezzi ----
+  if(hasConsistenza || dx.gg_smobilizzo!=null){
+    html += '<p class="center" style="font-weight:800;letter-spacing:.06em">DISPONE</p>';
+    html += '<p>che l\'Impresa contenga manodopera e mezzi nella misura strettamente necessaria a evitare danni alle opere eseguite e a facilitare la ripresa dei lavori, '
+      + 'ai sensi dell\'art. 107, comma 1, del d.lgs. 50/2016 e dell\'art. 10, comma 1, del d.m. 49/2018'
+      + (dx.gg_smobilizzo!=null ? ', provvedendo allo smobilizzo di quanto eccedente entro gg. '+esc(dx.gg_smobilizzo) : '')
+      + '.</p>';
+  }
+
   html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dagli intervenuti.</p>';
   return html;
 }
@@ -5661,13 +5831,62 @@ function bodyRipresa(c, s, dx){
   html += '<li>considerato il verbale di sospensione dei lavori'+(dx.numero_verbale_sospensione?' n. '+esc(dx.numero_verbale_sospensione):'')+' del '+fmt(s.data)+' con il quale i lavori furono sospesi a motivo di: '+esc(s.motivo||'—')+';</li>';
   const giorniSosp = s.giorni_sospensione || s.giorni_calendario;
   html += '<li>considerato che i lavori sono rimasti sospesi complessivamente per n. '+(giorniSosp!=null?giorniSosp:'—')+' giorni solari e consecutivi;</li>';
+  if(dx.visite_periodiche) html += '<li>viste le visite periodiche intercorse durante il periodo di sospensione: '+esc(dx.visite_periodiche)+';</li>';
   html += '<li>constatato che le opere la cui esecuzione rimaneva interrotta erano le seguenti: '+esc(dx.opere_interrotte||'la totalit&agrave; delle lavorazioni')+';</li>';
-  html += '<li>rilevato lo stato delle attrezzature e dei materiali presenti in cantiere: '+esc(dx.stato_attrezzature||'—')+';</li>';
-  html += '<li>rilevato che sono cessate le cause che impedivano di procedere con le necessarie regolarit&agrave; e continuit&agrave; tali da garantire la perfetta esecuzione delle opere.</li>';
+  if(dx.stato_attrezzature) html += '<li>rilevato lo stato delle attrezzature e dei materiali presenti in cantiere: '+esc(dx.stato_attrezzature)+';</li>';
+  if(dx.stato_opere_danni) html += '<li>rilevato lo stato delle opere ed i danni eventualmente verificatisi durante la sospensione: '+esc(dx.stato_opere_danni)+';</li>';
+  // ELEMENTO OBBLIGATORIO: disposizione di ripresa del RUP
+  if(dx.disposizione_rup || dx.disposizione_rup_data){
+    html += '<li><strong>vista la disposizione di ripresa dei lavori del Responsabile Unico del Progetto</strong>'
+      + (dx.disposizione_rup?' ('+esc(dx.disposizione_rup)+')':'')
+      + (dx.disposizione_rup_data?' in data '+fmt(dx.disposizione_rup_data):'') + ';</li>';
+  }
+  // ELEMENTO OBBLIGATORIO: attestazione cessazione delle cause
+  html += '<li><strong>attestato che sono cessate le cause</strong> che impedivano di procedere con la necessaria regolarit&agrave; e continuit&agrave; tali da garantire la perfetta esecuzione delle opere'
+    + (dx.cessazione_cause ? ': '+esc(dx.cessazione_cause) : '') + '.</li>';
   html += '</ul>';
-  html += '<p>redige il presente verbale con il quale viene stabilito che i lavori in oggetto siano ripresi a decorrere dalla data del '+fmt(s.data_ripresa)
-    + (s.nuova_fine_lavori ? ' e la loro ultimazione, in conseguenza del periodo di sospensione, dovr&agrave; avvenire entro il '+fmt(s.nuova_fine_lavori)+'.' : '.') + '</p>';
-  html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dagli intervenuti.</p>';
+
+  // ---- Consistenza riscontrata alla ripresa, con raffronto ----
+  const pers = dx.personale||[], mezzi = dx.mezzi||[];
+  if(pers.length || mezzi.length){
+    html += '<p><strong>Consistenza del cantiere riscontrata alla data odierna:</strong></p><ul>';
+    if(pers.length){
+      html += '<li><strong>Personale</strong> &mdash; n. '+consTotalePersonale(pers)+' unit&agrave;, cos&igrave; ripartite: '+consTestoPersonale(pers).join('; ')+';</li>';
+    }
+    if(mezzi.length){
+      html += '<li><strong>Mezzi d\'opera</strong> &mdash; '+consTestoMezzi(mezzi).join('; ')+';</li>';
+    }
+    html += '</ul>';
+    // raffronto con quella rilevata alla sospensione
+    const cs = dx.consistenza_sospensione;
+    if(cs && ((cs.personale&&cs.personale.length) || (cs.mezzi&&cs.mezzi.length))){
+      const pSosp = consTotalePersonale(cs.personale), pOra = consTotalePersonale(pers);
+      const mSosp = (cs.mezzi||[]).length, mOra = mezzi.length;
+      const varia = (a,b)=> b===a ? 'invariato' : (b>a ? 'in aumento di '+(b-a) : 'in diminuzione di '+(a-b));
+      html += '<p>Rispetto alla consistenza rilevata al momento della sospensione (personale n. '+pSosp+' unit&agrave;, mezzi n. '+mSosp+'), '
+        + 'si riscontra personale '+varia(pSosp,pOra)+' e mezzi d\'opera '+varia(mSosp,mOra)+'.</p>';
+    }
+  }
+
+  // ---- Dispositivo: ripresa e nuovo termine (OBBLIGATORIO) ----
+  html += '<p>redige il presente verbale con il quale viene stabilito che i lavori in oggetto siano ripresi a decorrere dalla data del '+fmt(s.data_ripresa)+'.</p>';
+  const nuovoTermine = dx.nuovo_termine || s.nuova_fine_lavori;
+  if(nuovoTermine){
+    html += '<p><strong>Il nuovo termine contrattuale per l\'ultimazione dei lavori, indicato dal Responsabile Unico del Progetto'
+      + (dx.nuovo_termine_rif?' ('+esc(dx.nuovo_termine_rif)+')':'')
+      + ', &egrave; fissato al '+fmt(nuovoTermine)+'.</strong></p>';
+  }
+
+  // ---- Riserve dell'esecutore ----
+  if(dx.riserve_tipo==='formulate'){
+    html += '<p>L\'esecutore <strong>ha formulato riserve</strong> in ordine al presente verbale'
+      + (dx.riserve_testo ? ': '+esc(dx.riserve_testo) : '') + '.</p>';
+  } else {
+    html += '<p>L\'esecutore dichiara di <strong>non formulare riserve</strong> in ordine al presente verbale.</p>';
+  }
+  html += '<p style="font-size:11px">Si avverte l\'esecutore che, in caso di mancata sottoscrizione del presente verbale, le eventuali contestazioni dovranno essere iscritte, a pena di decadenza, nel registro di contabilit&agrave; nei modi e nei termini previsti dalla normativa vigente.</p>';
+
+  html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dal Direttore dei Lavori e dall\'esecutore.</p>';
   return html;
 }
 
@@ -6229,6 +6448,7 @@ async function renderPrelievi(){
       <td style="font-size:12px">${esc(nCamp)}</td>
       <td style="text-align:right;white-space:nowrap">
         <button class="btn btn-primary btn-sm" onclick="apriPrelievoFirmabile('${p.id}')">📄 PDF / Firma</button>
+        <button class="btn btn-secondary btn-sm" title="Visualizza il verbale generato (sola lettura)" onclick="apriPrelievoFirmabile('${p.id}', true)">👁️</button>
         ${can('write')?`<button class="btn btn-secondary btn-sm" onclick="openModalEditPrelievo('${p.id}')">✏️</button>`:''}
         ${can('write')?`<button class="btn btn-secondary btn-sm" title="Duplica verbale" onclick="openModalDuplicaPrelievo('${p.id}')">📋</button>`:''}
         ${can('write')?`<button class="btn btn-secondary btn-sm" onclick="eliminaPrelievo('${p.id}')">🗑️</button>`:''}
@@ -6564,7 +6784,7 @@ async function eliminaPrelievo(id){
 }
 
 // ---- generazione PDF firmabile ----
-async function apriPrelievoFirmabile(id){
+async function apriPrelievoFirmabile(id, solaLettura){
   const w = window.open('about:blank','_blank'); // apri subito per evitare popup-block Safari
   try{
     const {data:p, error} = await sb.from('verbali_prelievo').select('*').eq('id',id).single();
@@ -6595,7 +6815,10 @@ async function apriPrelievoFirmabile(id){
       luogo: comune || c?.nome || '',
       dataDoc: p.data,
       fileName: nomeFileVerbale(c, p.data, 'VERPREL_'+(PRELIEVO_FILE_CODE[p.tipo_prelievo]||'GEN-STR'), p.numero),
-      firmatari: firmatari.length ? firmatari : [{nome:redattore,ruolo:'Il Direttore dei Lavori'}],
+      firmatari: (solaLettura && p.firmatari && p.firmatari.length) ? p.firmatari
+                 : (firmatari.length ? firmatari : [{nome:redattore,ruolo:'Il Direttore dei Lavori'}]),
+      solaLettura: !!solaLettura,
+      dataGenerazione: p.pdf_generato_at||null,
       recordTable: 'verbali_prelievo',
       recordId: p.id,
       existingWindow: w
@@ -6611,7 +6834,7 @@ async function apriPrelievoFirmabile(id){
 // ============================================================
 // VERBALI — dispatcher generazione PDF firmabile
 // ============================================================
-async function apriVerbaleFirmabile(id){
+async function apriVerbaleFirmabile(id, solaLettura){
   const w = window.open('about:blank', '_blank'); // aperta subito in risposta al click, evita blocco popup Safari/iPad dopo l'await
   if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per generare il documento.'); return; }
   try{
@@ -6736,7 +6959,10 @@ async function apriVerbaleFirmabile(id){
       luogo: comune || c?.stazione_appaltante || c?.nome || '',
       dataDoc: v.data,
       fileName: nomeFileVerbale(c, v.data, VERBALE_FILE_CODE[v.tipo]||'VER_GEN', v.numero),
-      firmatari: presenti.length ? presenti : firmatariDefault,
+      firmatari: (solaLettura && v.firmatari && v.firmatari.length) ? v.firmatari
+                 : (presenti.length ? presenti : firmatariDefault),
+      solaLettura: !!solaLettura,
+      dataGenerazione: v.pdf_generato_at||null,
       recordTable: 'verbali',
       recordId: v.id,
       existingWindow: w
@@ -7114,8 +7340,174 @@ function raccogliDatiExtraVerbale(prefix, tipo){
 }
 
 // ============================================================
+// CONSISTENZA DI CANTIERE — editor personale / mezzi (sospensione e ripresa)
+// ============================================================
+function consPersonaleRigaHtml(p){
+  p = p || {};
+  return `<div class="cons-pers" style="display:flex;gap:6px;margin-bottom:5px">
+    <input class="form-control cp-qual" style="flex:2;font-size:12px" placeholder="Qualifica / livello" value="${esc(p.qualifica||'')}">
+    <input class="form-control cp-num" style="width:70px;font-size:12px" type="number" min="0" placeholder="n." value="${p.num!=null?p.num:''}" oninput="consAggiornaTotale(this)">
+    <input class="form-control cp-dl" style="flex:2;font-size:12px" placeholder="Datore di lavoro" value="${esc(p.datore||'')}">
+    <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="consRimuoviRiga(this)">&#10005;</button>
+  </div>`;
+}
+function consMezzoRigaHtml(m){
+  m = m || {};
+  return `<div class="cons-mezzo" style="display:flex;gap:6px;margin-bottom:5px">
+    <input class="form-control cm-den" style="flex:2;font-size:12px" placeholder="Denominazione" value="${esc(m.denominazione||'')}">
+    <input class="form-control cm-marca" style="flex:2;font-size:12px" placeholder="Marca e modello" value="${esc(m.marca||'')}">
+    <input class="form-control cm-matr" style="flex:1;font-size:12px" placeholder="Matricola / targa" value="${esc(m.matricola||'')}">
+    <input class="form-control cm-prop" style="flex:1;font-size:12px" placeholder="Propriet&agrave; / locazione" value="${esc(m.proprieta||'')}">
+    <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="consRimuoviRiga(this)">&#10005;</button>
+  </div>`;
+}
+function consRimuoviRiga(btn){
+  const r = btn.closest('.cons-pers') || btn.closest('.cons-mezzo');
+  const box = r ? r.parentElement : null;
+  if(r) r.remove();
+  if(box) consAggiornaTotaleBox(box);
+}
+function consAggiungiPersonale(boxId){
+  const box = document.getElementById(boxId); if(!box) return;
+  const d = document.createElement('div'); d.innerHTML = consPersonaleRigaHtml({});
+  box.appendChild(d.firstChild);
+}
+function consAggiungiMezzo(boxId){
+  const box = document.getElementById(boxId); if(!box) return;
+  const d = document.createElement('div'); d.innerHTML = consMezzoRigaHtml({});
+  box.appendChild(d.firstChild);
+}
+function consAggiornaTotale(inp){
+  const box = inp.closest('.cons-pers') ? inp.closest('.cons-pers').parentElement : null;
+  consAggiornaTotaleBox(box);
+}
+function consAggiornaTotaleBox(box){
+  if(!box) return;
+  let tot = 0;
+  box.querySelectorAll('.cons-pers .cp-num').forEach(i=>{ tot += parseInt(i.value)||0; });
+  const out = document.getElementById(box.id+'_tot');
+  if(out) out.textContent = tot ? ('Totale: '+tot+' unit\u00E0') : '';
+}
+function consEditorPersonaleHtml(boxId, righe){
+  righe = (righe&&righe.length) ? righe : [{}];
+  return `<div id="${boxId}">${righe.map(consPersonaleRigaHtml).join('')}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="consAggiungiPersonale('${boxId}')">+ Riga personale</button>
+      <span id="${boxId}_tot" style="font-size:11px;color:var(--primary);font-weight:700"></span>
+    </div>`;
+}
+function consEditorMezziHtml(boxId, righe){
+  righe = (righe&&righe.length) ? righe : [{}];
+  return `<div id="${boxId}">${righe.map(consMezzoRigaHtml).join('')}</div>
+    <button type="button" class="btn btn-secondary btn-sm" style="margin-top:4px" onclick="consAggiungiMezzo('${boxId}')">+ Riga mezzo</button>`;
+}
+function consRaccogliPersonale(boxId){
+  const out = [];
+  document.querySelectorAll('#'+boxId+' .cons-pers').forEach(r=>{
+    const qualifica = r.querySelector('.cp-qual').value.trim();
+    const num = r.querySelector('.cp-num').value.trim();
+    const datore = r.querySelector('.cp-dl').value.trim();
+    if(qualifica||num||datore) out.push({qualifica, num: num?parseInt(num):null, datore});
+  });
+  return out;
+}
+function consRaccogliMezzi(boxId){
+  const out = [];
+  document.querySelectorAll('#'+boxId+' .cons-mezzo').forEach(r=>{
+    const denominazione = r.querySelector('.cm-den').value.trim();
+    const marca = r.querySelector('.cm-marca').value.trim();
+    const matricola = r.querySelector('.cm-matr').value.trim();
+    const proprieta = r.querySelector('.cm-prop').value.trim();
+    if(denominazione||marca||matricola||proprieta) out.push({denominazione, marca, matricola, proprieta});
+  });
+  return out;
+}
+function consTotalePersonale(righe){
+  return (righe||[]).reduce((a,p)=>a+(parseInt(p.num)||0),0);
+}
+// Testo discorsivo delle righe, per il corpo del verbale
+function consTestoPersonale(righe){
+  return (righe||[]).map(p=>{
+    const parti = [];
+    if(p.qualifica) parti.push(esc(p.qualifica));
+    if(p.num!=null && p.num!=='') parti.push('n. '+esc(p.num));
+    if(p.datore) parti.push('datore di lavoro '+esc(p.datore));
+    return parti.join(' &mdash; ');
+  }).filter(Boolean);
+}
+function consTestoMezzi(righe){
+  return (righe||[]).map(m=>{
+    const parti = [];
+    if(m.denominazione) parti.push(esc(m.denominazione));
+    if(m.marca) parti.push(esc(m.marca));
+    if(m.matricola) parti.push('matr./targa '+esc(m.matricola));
+    if(m.proprieta) parti.push(esc(m.proprieta));
+    return parti.join(', ');
+  }).filter(Boolean);
+}
+
+// ============================================================
 // SOSPENSIONI — generazione verbale di sospensione / ripresa firmabile
 // ============================================================
+// Visualizzazione in sola lettura di un verbale di sospensione/ripresa
+// gia' generato: ricostruisce il documento dai dati salvati, senza form.
+async function visualizzaVerbaleSospensione(sospId, tipoVerbale){
+  const w = window.open('about:blank', '_blank');
+  if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per visualizzare il documento.'); return; }
+  try{
+    const {data:s, error} = await sb.from('sospensioni').select('*').eq('id',sospId).single();
+    if(error||!s){ w.close(); alert('Verbale non trovato'); return; }
+    const c = getCantiereObj(s.cantiere_id);
+    const isRipresa = tipoVerbale==='ripresa';
+    const dv = s.dati_verbale || {};
+    const dx = Object.assign({}, isRipresa ? (dv.ripresa||{}) : (dv.sospensione||{}));
+    if(isRipresa && !dx.consistenza_sospensione) dx.consistenza_sospensione = dv.sospensione || null;
+
+    const corpoHtml = isRipresa ? bodyRipresa(c, s, dx) : bodySospensione(c, s, dx);
+    const metaRows = [
+      ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+      ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+      ['IMPRESA', esc(c?.impresa||'')],
+      rigaContratto(c)
+    ].concat(await caricaRigheVarianti(s.cantiere_id));
+
+    let progressivo = '';
+    try{
+      const {data:tutte} = await sb.from('sospensioni').select('id,data').eq('cantiere_id',s.cantiere_id).order('data',{ascending:true});
+      const idx = (tutte||[]).findIndex(x=>x.id===s.id);
+      if(idx>=0) progressivo = String(idx+1).padStart(2,'0');
+    }catch(eP){ console.error('progressivo', eP); }
+    const dataDoc = isRipresa ? (s.data_ripresa||s.data) : s.data;
+
+    // firme salvate: se assenti, mostra i firmatari attesi senza firma
+    const firmeSalvate = (s.firmatari && s.firmatari.length) ? s.firmatari : [
+      {nome:dx.impresa_referente||'', ruolo:"L'Impresa"},
+      {nome:dx.redattore||'', ruolo:'Il Direttore dei Lavori'}
+    ];
+
+    apriDocumentoFirmabile({
+      titolo: isRipresa ? 'Verbale di ripresa dei lavori' : ('Verbale di sospensione dei lavori'+(s.tipo_sospensione==='parziale'?' (parziale)':'')),
+      normativa: 'd.lgs. 36/2023 art. 121 &mdash; art. 107 d.lgs. 50/2016 (ove applicabile)',
+      comune: dx.comune||'', provincia: '',
+      metaRows: metaRows,
+      corpoHtml: corpoHtml,
+      luogo: dx.comune || c?.nome || '',
+      dataDoc: dataDoc,
+      fileName: nomeFileVerbale(c, dataDoc, (isRipresa?'VRL':'VSL')+progressivo, null),
+      firmatari: firmeSalvate,
+      solaLettura: true,
+      dataGenerazione: s.pdf_generato_at||null,
+      recordTable: 'sospensioni',
+      recordId: s.id,
+      existingWindow: w
+    });
+  }catch(e){
+    console.error('visualizzaVerbaleSospensione', e);
+    try{ w.close(); }catch(e2){}
+    alert('Errore nella visualizzazione del verbale: '+(e?.message||e));
+  }
+}
+
 async function openModalGeneraVerbaleSospensione(sospId, tipoVerbale){
   const {data:s} = await sb.from('sospensioni').select('*').eq('id',sospId).single();
   if(!s) return;
@@ -7127,28 +7519,89 @@ async function openModalGeneraVerbaleSospensione(sospId, tipoVerbale){
   const redattoreDefault = (team.dl && team.dl.nome) || (`${currentUser.nome||''} ${currentUser.cognome||''}`.trim() + (ROLE_LABELS[currentRole]?` (${ROLE_LABELS[currentRole]})`:''));
   const isRipresa = tipoVerbale==='ripresa';
 
+  // dati gia' compilati in precedenza (per riprendere/precompilare)
+  const dv = s.dati_verbale || {};
+  const dSosp = dv.sospensione || {};   // usato dalla ripresa per il raffronto
+  const dPrec = isRipresa ? (dv.ripresa || {}) : dSosp;
+
   let campiSpecifici = '';
   if(!isRipresa){
     campiSpecifici = `
       <div class="form-group"><label class="form-label">Data consegna lavori (per richiamo)</label>
-        <input class="form-control" type="date" id="gvs_dataconsegna" value="${c?.data_consegna||''}"></div>
+        <input class="form-control" type="date" id="gvs_dataconsegna" value="${dPrec.data_consegna||c?.data_consegna||''}"></div>
       <div class="form-group span-2"><label class="form-label">Stato avanzamento lavori riscontrato</label>
-        <textarea class="form-control" id="gvs_stato_avanz" rows="2" placeholder="Es. realizzazione delle fondazioni del fabbricato"></textarea></div>
+        <textarea class="form-control" id="gvs_stato_avanz" rows="2" placeholder="Es. realizzazione delle fondazioni del fabbricato">${esc(dPrec.stato_avanzamento||'')}</textarea></div>
       <div class="form-group"><label class="form-label">Sospensione a fasce orarie &mdash; dalle</label>
-        <input class="form-control" type="time" id="gvs_fascia_da"></div>
+        <input class="form-control" type="time" id="gvs_fascia_da" value="${esc(dPrec.fascia_oraria_da||'')}"></div>
       <div class="form-group"><label class="form-label">Sospensione a fasce orarie &mdash; alle</label>
-        <input class="form-control" type="time" id="gvs_fascia_a"></div>
-      <div class="form-group span-2"><div class="form-hint">Lascia vuoti i campi fascia oraria per generare il testo di sospensione totale standard.</div></div>`;
+        <input class="form-control" type="time" id="gvs_fascia_a" value="${esc(dPrec.fascia_oraria_a||'')}"></div>
+      <div class="form-group span-2"><div class="form-hint">Lascia vuoti i campi fascia oraria per generare il testo di sospensione totale standard.</div></div>
+
+      <div class="form-group span-2" style="border-top:2px solid var(--primary);padding-top:10px;margin-top:6px">
+        <div style="font-weight:700;color:var(--primary);font-size:13px">Consistenza del cantiere alla data odierna</div>
+        <div class="form-hint">Il verbale dar&agrave; atto della consistenza accertata (personale, mezzi, opere provvisionali) e disporr&agrave; il contenimento nella misura strettamente necessaria.</div>
+      </div>
+      <div class="form-group span-2"><label class="form-label">a) Personale presente in cantiere</label>
+        ${consEditorPersonaleHtml('gvs_pers', dPrec.personale)}
+      </div>
+      <div class="form-group span-2"><label class="form-label">b) Mezzi d'opera presenti</label>
+        ${consEditorMezziHtml('gvs_mezzi', dPrec.mezzi)}
+      </div>
+      <div class="form-group span-2"><label class="form-label">c) Opere provvisionali e impianti di cantiere</label>
+        <textarea class="form-control" id="gvs_opere_provv" rows="2" placeholder="Es. ponteggi mq 320, baraccamenti n. 2, gru a torre, quadro elettrico di cantiere">${esc(dPrec.opere_provvisionali||'')}</textarea></div>
+      <div class="form-group"><label class="form-label">Riferimento documentale</label>
+        <input class="form-control" id="gvs_rif_presenze" value="${esc(dPrec.rif_presenze||'registro presenze/POS agli atti')}"></div>
+      <div class="form-group"><label class="form-label">Smobilizzo eccedenze entro (gg.)</label>
+        <input class="form-control" type="number" min="0" id="gvs_gg_smobilizzo" value="${dPrec.gg_smobilizzo!=null?dPrec.gg_smobilizzo:''}" placeholder="Es. 10"></div>`;
   } else {
+    const totSospPers = consTotalePersonale(dSosp.personale);
+    const riepilogoSosp = (dSosp.personale||dSosp.mezzi)
+      ? `<div class="alert alert-info" style="font-size:11px;grid-column:1/-1">Consistenza rilevata alla sospensione: personale ${totSospPers} unit&agrave;, mezzi n. ${(dSosp.mezzi||[]).length}. I campi sotto sono precompilati con quei dati: aggiornali con quanto riscontrato oggi.</div>`
+      : `<div class="alert alert-warning" style="font-size:11px;grid-column:1/-1">Nel verbale di sospensione non risulta registrata la consistenza di cantiere: compila i campi sotto per il raffronto.</div>`;
     campiSpecifici = `
+      <div class="form-group span-2" style="border-top:2px solid var(--primary);padding-top:10px;margin-top:6px">
+        <div style="font-weight:700;color:var(--primary);font-size:13px">Elementi obbligatori</div>
+      </div>
+      <div class="form-group"><label class="form-label">Disposizione di ripresa del RUP &mdash; estremi *</label>
+        <input class="form-control" id="gvs_disp_rup" value="${esc(dPrec.disposizione_rup||'')}" placeholder="Es. nota prot. n. 4512"></div>
+      <div class="form-group"><label class="form-label">Disposizione RUP &mdash; data *</label>
+        <input class="form-control" type="date" id="gvs_disp_rup_data" value="${dPrec.disposizione_rup_data||''}"></div>
+      <div class="form-group span-2"><label class="form-label">Attestazione della cessazione delle cause *</label>
+        <textarea class="form-control" id="gvs_cessazione" rows="2" placeholder="Es. sono cessate le avverse condizioni meteorologiche che impedivano la regolare prosecuzione delle lavorazioni">${esc(dPrec.cessazione_cause||'')}</textarea></div>
+      <div class="form-group"><label class="form-label">Nuovo termine contrattuale indicato dal RUP *</label>
+        <input class="form-control" type="date" id="gvs_nuovo_termine" value="${dPrec.nuovo_termine||s.nuova_fine_lavori||''}"></div>
+      <div class="form-group"><label class="form-label">Estremi indicazione del termine</label>
+        <input class="form-control" id="gvs_nuovo_termine_rif" value="${esc(dPrec.nuovo_termine_rif||'')}" placeholder="Es. come da medesima nota RUP"></div>
+
+      <div class="form-group span-2" style="border-top:2px solid var(--border);padding-top:10px;margin-top:6px">
+        <div style="font-weight:700;color:var(--primary);font-size:13px">Elementi consigliati</div>
+      </div>
       <div class="form-group"><label class="form-label">Data verbale di consegna lavori</label>
-        <input class="form-control" type="date" id="gvs_dataconsegna_orig" value="${c?.data_consegna||''}"></div>
+        <input class="form-control" type="date" id="gvs_dataconsegna_orig" value="${dPrec.data_consegna_originale||c?.data_consegna||''}"></div>
       <div class="form-group"><label class="form-label">N. verbale di sospensione</label>
-        <input class="form-control" id="gvs_num_sosp" placeholder="Es. 01"></div>
+        <input class="form-control" id="gvs_num_sosp" value="${esc(dPrec.numero_verbale_sospensione||'')}" placeholder="Es. 01"></div>
+      <div class="form-group span-2"><label class="form-label">Visite periodiche intercorse durante la sospensione</label>
+        <textarea class="form-control" id="gvs_visite" rows="2" placeholder="Es. visite del 12/03/2026 e del 28/03/2026, senza rilievi">${esc(dPrec.visite_periodiche||'')}</textarea></div>
       <div class="form-group span-2"><label class="form-label">Opere la cui esecuzione rimaneva interrotta</label>
-        <textarea class="form-control" id="gvs_opere_interrotte" rows="2" placeholder="Es. la totalit&agrave; delle lavorazioni"></textarea></div>
+        <textarea class="form-control" id="gvs_opere_interrotte" rows="2" placeholder="Es. la totalit&agrave; delle lavorazioni">${esc(dPrec.opere_interrotte||dSosp.stato_avanzamento||'')}</textarea></div>
       <div class="form-group span-2"><label class="form-label">Stato attrezzature e materiali in cantiere</label>
-        <textarea class="form-control" id="gvs_stato_attrezz" rows="2"></textarea></div>`;
+        <textarea class="form-control" id="gvs_stato_attrezz" rows="2">${esc(dPrec.stato_attrezzature||'')}</textarea></div>
+      <div class="form-group span-2"><label class="form-label">Stato delle opere ed eventuali danni verificatisi durante la sospensione</label>
+        <textarea class="form-control" id="gvs_danni" rows="2" placeholder="Es. le opere risultano integre; non si sono verificati danni">${esc(dPrec.stato_opere_danni||'')}</textarea></div>
+      ${riepilogoSosp}
+      <div class="form-group span-2"><label class="form-label">Personale riscontrato alla ripresa</label>
+        ${consEditorPersonaleHtml('gvs_pers', dPrec.personale || dSosp.personale)}
+      </div>
+      <div class="form-group span-2"><label class="form-label">Mezzi d'opera riscontrati alla ripresa</label>
+        ${consEditorMezziHtml('gvs_mezzi', dPrec.mezzi || dSosp.mezzi)}
+      </div>
+      <div class="form-group"><label class="form-label">Riserve dell'esecutore</label>
+        <select class="form-control" id="gvs_riserve_tipo">
+          <option value="non_formulate"${dPrec.riserve_tipo!=='formulate'?' selected':''}>Non formulate</option>
+          <option value="formulate"${dPrec.riserve_tipo==='formulate'?' selected':''}>Formulate</option>
+        </select></div>
+      <div class="form-group"><label class="form-label">Testo delle riserve (se formulate)</label>
+        <input class="form-control" id="gvs_riserve_testo" value="${esc(dPrec.riserve_testo||'')}"></div>`;
   }
 
   openModal(`Genera verbale di ${isRipresa?'ripresa':'sospensione'} lavori`, `
@@ -7193,12 +7646,40 @@ async function generaVerbaleSospensionePDF(sospId, tipoVerbale){
       dx.stato_avanzamento = document.getElementById('gvs_stato_avanz').value.trim()||null;
       dx.fascia_oraria_da = document.getElementById('gvs_fascia_da').value||null;
       dx.fascia_oraria_a = document.getElementById('gvs_fascia_a').value||null;
+      dx.personale = consRaccogliPersonale('gvs_pers');
+      dx.mezzi = consRaccogliMezzi('gvs_mezzi');
+      dx.opere_provvisionali = document.getElementById('gvs_opere_provv').value.trim()||null;
+      dx.rif_presenze = document.getElementById('gvs_rif_presenze').value.trim()||null;
+      const gg = document.getElementById('gvs_gg_smobilizzo').value;
+      dx.gg_smobilizzo = gg!=='' ? parseInt(gg) : null;
     } else {
+      dx.disposizione_rup = document.getElementById('gvs_disp_rup').value.trim()||null;
+      dx.disposizione_rup_data = document.getElementById('gvs_disp_rup_data').value||null;
+      dx.cessazione_cause = document.getElementById('gvs_cessazione').value.trim()||null;
+      dx.nuovo_termine = document.getElementById('gvs_nuovo_termine').value||null;
+      dx.nuovo_termine_rif = document.getElementById('gvs_nuovo_termine_rif').value.trim()||null;
       dx.data_consegna_originale = document.getElementById('gvs_dataconsegna_orig').value||null;
       dx.numero_verbale_sospensione = document.getElementById('gvs_num_sosp').value.trim()||null;
+      dx.visite_periodiche = document.getElementById('gvs_visite').value.trim()||null;
       dx.opere_interrotte = document.getElementById('gvs_opere_interrotte').value.trim()||null;
       dx.stato_attrezzature = document.getElementById('gvs_stato_attrezz').value.trim()||null;
+      dx.stato_opere_danni = document.getElementById('gvs_danni').value.trim()||null;
+      dx.personale = consRaccogliPersonale('gvs_pers');
+      dx.mezzi = consRaccogliMezzi('gvs_mezzi');
+      dx.riserve_tipo = document.getElementById('gvs_riserve_tipo').value;
+      dx.riserve_testo = document.getElementById('gvs_riserve_testo').value.trim()||null;
+      // consistenza rilevata alla sospensione, per il raffronto nel corpo
+      dx.consistenza_sospensione = (s.dati_verbale && s.dati_verbale.sospensione) || null;
     }
+
+    // Salva i dati compilati: servono a precompilare il verbale di ripresa
+    // e a riaprire il documento senza reinserire tutto.
+    try{
+      const dvPrec = s.dati_verbale || {};
+      const dvNuovo = Object.assign({}, dvPrec);
+      dvNuovo[isRipresa ? 'ripresa' : 'sospensione'] = dx;
+      await sb.from('sospensioni').update({dati_verbale: dvNuovo}).eq('id', s.id);
+    }catch(eSave){ console.error('salvataggio dati verbale', eSave); }
     const presentiTxt = document.getElementById('gvs_presenti').value.trim();
     const presenti = parsePresentiList(presentiTxt);
 
