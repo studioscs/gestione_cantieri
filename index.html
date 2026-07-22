@@ -5147,7 +5147,7 @@ function apriDocumentoFirmabile(opts){
 }
 
 // ============================================================
-// Nomi file PDF — schema: {commessa}_{AAMMGG}_{CODICE}[_{num}]_firmato
+// Nomi file PDF — schema: {commessa}_{AAMMGG}_{CODICE}[_{num}]
 // La "commessa" è la parte del nome cantiere prima di " - "
 // (es. "2025_06 - Palestra" -> "2025_06"). Il titolo del documento
 // è ciò che il browser propone come nome file al salvataggio del PDF.
@@ -5270,7 +5270,7 @@ function aggiornaDeltaVariante(prefix){
 function nomeFileVerbale(c, data, codice, numero){
   let n = codiceCommessa(c) + '_' + dataYYMMDD(data) + '_' + codice;
   if(numero) n += '_' + sanitizzaNomeFile(numero);
-  return n + '_firmato';
+  return n;
 }
 
 // Helper condiviso per tutti i popup di stampa.
