@@ -189,7 +189,7 @@ textarea.form-control{resize:vertical;min-height:80px}
       <span>🏗️ GestioneCantiere</span><small>SCS</small>
     </div>
     <div class="topbar-right">
-      <div class="user-badge"><span id="topbarUser">—</span><span class="role-pill" id="topbarRole">—</span></div>
+      <div class="user-badge"><span id="topbarUser">—</span><span class="role-pill" id="topbarRole">—</span><span id="topbarVersione" title="Versione del file caricato — serve a verificare che il deploy sia aggiornato" style="font-size:10px;color:var(--muted);margin-left:8px;font-variant-numeric:tabular-nums"></span></div>
       <button class="btn btn-secondary btn-sm" onclick="doLogout()">Esci</button>
     </div>
   </div>
@@ -243,6 +243,11 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // CONFIG SUPABASE — progetto: SCS - gestionale cantiere DL
 // ============================================================
+// Versione del file. Serve a verificare che su GitHub sia stato
+// caricato l'aggiornamento e che il browser non stia usando la cache.
+const APP_VERSIONE = '2026.07.23';
+console.log('GestioneCantiere — versione ' + APP_VERSIONE);
+
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtkc2hydnNhZWNkYmNmcHNvZ2d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MDU0NDMsImV4cCI6MjA5NzE4MTQ0M30.HJaYNeKFSVPEXT28e0NAd3xHnZnQl5JaJKck5t6RGYo';
 
@@ -344,6 +349,8 @@ async function onLoggedIn(){
   document.getElementById('appScreen').classList.remove('hidden');
   const displayName = (currentUser.nome || currentUser.cognome) ? `${currentUser.nome} ${currentUser.cognome}`.trim() : currentUser.email;
   document.getElementById('topbarUser').textContent = displayName;
+  const elVer = document.getElementById('topbarVersione');
+  if(elVer) elVer.textContent = 'v' + APP_VERSIONE;
   await loadMyCantieri();
   if(myCantieri.length === 0){
     // Utente registrato ma non ancora aggiunto a nessun cantiere dal DL
@@ -5533,26 +5540,51 @@ function PDF_ENGINE_JS(firmatariIniziali){
     var sigCount = 0;
     function initSigPad(canvas){
       var ctx = canvas.getContext('2d');
-      function resize(){
-        var ratio = Math.max(window.devicePixelRatio||1,1);
-        var rect = canvas.getBoundingClientRect();
-        var prevData = null;
-        try{ prevData = canvas.toDataURL(); }catch(e){}
-        canvas.width = rect.width*ratio;
-        canvas.height = rect.height*ratio;
+      function applicaStile(ratio){
+        ctx.setTransform(1,0,0,1,0,0);
         ctx.scale(ratio,ratio);
         ctx.lineWidth = 2.2;
         ctx.lineCap='round';
         ctx.lineJoin='round';
         ctx.strokeStyle='#1a1a1a';
       }
+      function resize(){
+        var ratio = Math.max(window.devicePixelRatio||1,1);
+        var rect = canvas.getBoundingClientRect();
+        if(!rect.width) return;
+        var prevData = null;
+        var aveva = canvas.dataset.signed==='1';
+        if(aveva){ try{ prevData = canvas.toDataURL(); }catch(e){} }
+        canvas.width = rect.width*ratio;
+        canvas.height = rect.height*ratio;
+        applicaStile(ratio);
+        // ripristina il tratto gia' presente: senza questo, un
+        // ridimensionamento (es. rotazione dell'iPad) cancellerebbe la firma
+        if(prevData){
+          var img = new Image();
+          img.onload = function(){ ctx.drawImage(img, 0, 0, rect.width, rect.height); };
+          img.src = prevData;
+        }
+      }
       resize();
+      var ridimensionaTimer = null;
+      window.addEventListener('resize', function(){
+        clearTimeout(ridimensionaTimer);
+        ridimensionaTimer = setTimeout(resize, 200);
+      });
       var drawing=false, last=null;
       function pos(e){
         var rect = canvas.getBoundingClientRect();
         return {x:(e.clientX-rect.left), y:(e.clientY-rect.top)};
       }
-      function start(e){ e.preventDefault(); drawing=true; last=pos(e); canvas.setPointerCapture&&canvas.setPointerCapture(e.pointerId); }
+      function start(e){
+        e.preventDefault(); drawing=true; last=pos(e);
+        canvas.setPointerCapture&&canvas.setPointerCapture(e.pointerId);
+        // Anche un semplice tocco vale come firma tracciata: senza questo
+        // una sigla fatta di soli punti non verrebbe registrata.
+        ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(last.x+0.01,last.y); ctx.stroke();
+        canvas.dataset.signed='1';
+      }
       function move(e){
         if(!drawing) return;
         e.preventDefault();
