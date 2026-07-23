@@ -105,6 +105,8 @@ textarea.form-control{resize:vertical;min-height:80px}
 .ods-oggetto{font-size:14px;font-weight:600;color:var(--primary);margin-top:2px}
 .firma-row{display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap}
 .firma-chip{display:flex;align-items:center;gap:5px;font-size:11px;padding:4px 10px;border-radius:10px;border:1px solid var(--border)}
+.badge-firmato{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;padding:3px 10px;border-radius:10px;background:#E8F5E9;color:#1B5E20;border:1px solid #A5D6A7}
+.badge-firmato.pending{background:#FFF8E1;color:#8D6E00;border-color:#FFE082}
 .firma-chip.signed{background:var(--green-bg);border-color:#c3e6cb;color:var(--green)}
 .firma-chip.pending{background:var(--yellow-bg);border-color:#ffc107;color:var(--yellow)}
 .comm-item{display:flex;gap:12px;padding:14px;border-bottom:1px solid var(--border)}
@@ -1011,7 +1013,11 @@ async function renderSospensioni(){
       : (s.giorni_sospensione!=null?`<strong>${s.giorni_sospensione} gg</strong>`:'—');
     html += `<tr style="${isAperta?'background:#FFF8E7':''}">
       <td>${tipoBadge}</td>
-      <td><strong>${fmt(s.data)}</strong></td>
+      <td><strong>${fmt(s.data)}</strong>${(()=>{ const nf=(s.firmatari||[]).filter(f=>f.firmato).length;
+        if(!s.pdf_generato_at) return '';
+        return nf
+          ? `<div style="margin-top:3px"><span class="badge-firmato">&#10003; FIRMATO &mdash; ${nf} firm${nf===1?'a':'e'}</span></div>`
+          : `<div style="margin-top:3px"><span class="badge-firmato pending">Generato</span></div>`; })()}</td>
       <td style="font-size:11px;max-width:180px">${dettaglio}</td>
       <td>${dataRip}</td>
       <td style="text-align:center">${giorni}${s.tipo_sospensione==='parziale'&&s.giorni_calendario?'<div style="font-size:10px;color:var(--muted)">'+s.giorni_calendario+' gg cal.</div>':''}</td>
@@ -1993,6 +1999,10 @@ async function renderVerbali(){
           <button class="btn btn-danger btn-sm" onclick="eliminaVerbale('${v.id}')">🗑️</button>`:''}
         </div>
       </div>
+      ${(()=>{ const nf=(v.firmatari||[]).filter(f=>f.firmato).length;
+        if(!nf) return v.pdf_generato_at?`<div style="margin-bottom:8px"><span class="badge-firmato pending">Generato il ${fmt(String(v.pdf_generato_at).slice(0,10))} &mdash; nessuna firma registrata</span></div>`:'';
+        return `<div style="margin-bottom:8px"><span class="badge-firmato">&#10003; FIRMATO${v.pdf_generato_at?' il '+fmt(String(v.pdf_generato_at).slice(0,10)):''} &mdash; ${nf} firm${nf===1?'a':'e'}</span>
+          <span style="font-size:10px;color:var(--muted);margin-left:6px">PDF conservato agli atti</span></div>`; })()}
       ${v.firmatari&&v.firmatari.length?`<div style="margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap">${v.firmatari.map(f=>`<span class="firma-chip ${f.firmato?'signed':'pending'}">${f.firmato?'✅':'⏳'} ${esc(f.nome||f.ruolo||'—')}</span>`).join('')}</div>`:''}
       ${v.testo?`<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;background:var(--surface);padding:12px;border-radius:4px;border-left:3px solid var(--accent)">${esc(v.testo)}</div>`:''}
       ${v.presenti?`<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:4px">Presenti</div>
@@ -5229,7 +5239,7 @@ function apriDocumentoFirmabile(opts){
     html += (opts.recordTable ? '<button class="tb-secondary" onclick="salvaFirmeNelGestionale()">&#128190; Salva firme nel gestionale</button>' : '');
   }
   html += '<button class="tb-secondary" onclick="apriPannelloInvio()">&#9993;&#65039; Invia via email</button>';
-  html += '<button class="tb-primary" onclick="window.print()">&#128424;&#65039; '+(opts.solaLettura?'Stampa / Salva PDF':'Genera PDF (firma e stampa)')+'</button>';
+  html += '<button class="tb-primary" onclick="stampaEsegna()">&#128424;&#65039; '+(opts.solaLettura?'Stampa / Salva PDF':'Genera PDF (firma e stampa)')+'</button>';
   html += '</div>';
   if(opts.solaLettura){
     html += '<div class="no-print" style="background:#FFF3CD;color:#856404;padding:8px 16px;font-size:12px;text-align:center">'
@@ -5440,6 +5450,8 @@ body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12.5px;co
 canvas.sig-canvas{border:1px dashed #ADB5BD;border-radius:4px;width:100%;height:110px;touch-action:none;background:#fff;display:block;margin-top:6px}
 img.sig-img{display:block;width:100%;max-height:110px;object-fit:contain;object-position:left bottom;border-bottom:1px solid #999;margin-top:6px}
 .sig-vuota{border-bottom:1px solid #999;height:110px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;color:#ADB5BD;font-size:11px;font-style:italic;margin-top:6px}
+.sig-attestata{border-bottom:1px solid #999;height:110px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:6px;color:#1F3864;font-size:12px;font-weight:700;margin-top:6px}
+.sig-nota{display:block;font-weight:400;font-size:9.5px;color:#6C757D;font-style:italic;margin-top:2px}
 .sig-nome{font-weight:700;font-size:12px;color:#212529}
 .sig-ruolo{font-size:11px;color:#6C757D}
 .sig-name-inputs{display:flex;gap:8px;flex:1}
@@ -5460,6 +5472,7 @@ img.sig-img{display:block;width:100%;max-height:110px;object-fit:contain;object-
   canvas.sig-canvas{border:none;border-bottom:1px solid #999;height:90px}
   img.sig-img{max-height:90px}
   .sig-vuota{height:90px}
+  .sig-attestata{height:90px}
 }
 `;
 
@@ -5526,20 +5539,29 @@ function PDF_ENGINE_JS(firmatariIniziali){
       document.getElementById('firmeContainer').appendChild(wrap);
       initSigPad(wrap.querySelector('canvas'));
     }
-    // Sola lettura: nomi come testo e firma come immagine gia' acquisita
+    // Sola lettura: nomi come testo e attestazione della firma
     function addFirmatarioLettura(f){
       var wrap = document.createElement('div');
       wrap.className='firma-block';
       var nome = escHtml(f.nome||'');
       var ruolo = escHtml(f.ruolo||'');
-      var img = f.firma_png
-        ? '<img class="sig-img" src="'+f.firma_png+'" alt="firma">'
-        : '<div class="sig-vuota">Non firmato</div>';
+      var blocco;
+      if(f.firma_png){
+        // record precedenti alla dismissione dell'archiviazione immagini
+        blocco = '<img class="sig-img" src="'+f.firma_png+'" alt="firma">';
+      } else if(f.firmato){
+        var d = '';
+        if(f.data){ var p=String(f.data).slice(0,10).split('-'); if(p.length===3) d=p[2]+'/'+p[1]+'/'+p[0]; }
+        blocco = '<div class="sig-attestata">&#10003; Firmato'+(d?' il '+d:'')
+               + '<span class="sig-nota">originale firmato: PDF conservato agli atti</span></div>';
+      } else {
+        blocco = '<div class="sig-vuota">Non firmato</div>';
+      }
       wrap.innerHTML =
         '<div class="firma-label"><div class="sig-name-inputs">'
         +'<div class="sig-nome">'+(nome||'&mdash;')+'</div>'
         +'<div class="sig-ruolo">'+(ruolo||'')+'</div>'
-        +'</div></div>' + img;
+        +'</div></div>' + blocco;
       document.getElementById('firmeContainer').appendChild(wrap);
     }
     function clearAllSig(){
@@ -5547,15 +5569,19 @@ function PDF_ENGINE_JS(firmatariIniziali){
     }
     async function salvaFirmeNelGestionale(){
       var firmatari = [];
+      var nFirmati = 0;
       document.querySelectorAll('.firma-block').forEach(function(b){
         var inputs = b.querySelectorAll('.sig-name-inputs input');
         var canvas = b.querySelector('canvas');
         var signed = canvas.dataset.signed==='1';
+        if(signed) nFirmati++;
+        // NOTA: l'immagine della firma NON viene archiviata. Il documento
+        // firmato e' il PDF generato e conservato in locale; nel gestionale
+        // resta la registrazione di chi ha firmato e quando.
         firmatari.push({
           nome: inputs[0].value.trim(),
           ruolo: inputs[1].value.trim(),
           firmato: signed,
-          firma_png: signed ? canvas.toDataURL('image/png') : null,
           data: new Date().toISOString()
         });
       });
@@ -5563,14 +5589,22 @@ function PDF_ENGINE_JS(firmatariIniziali){
         alert('Impossibile salvare: apri questo documento dal gestionale (non funziona se la finestra madre e\\' stata chiusa).');
         return;
       }
+      if(nFirmati>0 && !window.__pdfGenerato){
+        if(!confirm('Le immagini delle firme non vengono archiviate: il documento firmato e\\' il PDF.\\n\\nHai gia\\' generato e salvato il PDF?\\n\\nOK = salva comunque   |   Annulla = genera prima il PDF')) return;
+      }
       var res = await window.opener.sb.from(window.RECORD_TABLE).update({
         firmatari: firmatari,
         pdf_generato_at: new Date().toISOString()
       }).eq('id', window.RECORD_ID);
       if(res.error){ alert('Errore salvataggio: '+res.error.message); return; }
       var el = document.getElementById('saveConfirm');
-      if(el) el.style.display='block';
+      if(el){
+        el.innerHTML = '&#10003; Registrate '+nFirmati+' firme su '+firmatari.length+' firmatari. '
+          + 'Le immagini non sono archiviate: conserva il PDF generato.';
+        el.style.display='block';
+      }
     }
+    function stampaEsegna(){ window.__pdfGenerato = true; window.print(); }
 
     // ---------- Invio via email ----------
     function isAppleTouch(){
@@ -6440,7 +6474,12 @@ async function renderPrelievi(){
     const cfg = PRELIEVO_TIPI[p.tipo_prelievo] || PRELIEVO_TIPI.generico;
     const dp = p.dati_prelievo || {};
     const nCamp = (dp.campioni ? dp.campioni.length : 0) || dp.n_prelievi || '—';
-    const firmato = p.pdf_generato_at ? ' <span style="color:var(--green);font-size:10px">● firmato</span>' : '';
+    const nFirme = (p.firmatari||[]).filter(f=>f.firmato).length;
+    const firmato = p.pdf_generato_at
+      ? (nFirme
+          ? ` <span class="badge-firmato">&#10003; FIRMATO il ${fmt(String(p.pdf_generato_at).slice(0,10))} &mdash; ${nFirme} firm${nFirme===1?'a':'e'}</span>`
+          : ` <span class="badge-firmato pending">Generato il ${fmt(String(p.pdf_generato_at).slice(0,10))}</span>`)
+      : '';
     html += `<tr>
       <td style="font-size:12px">${fmt(p.data)}</td>
       <td style="font-size:12px">${esc(p.numero||'—')}</td>
