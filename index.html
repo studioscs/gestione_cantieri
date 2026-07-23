@@ -740,9 +740,17 @@ async function renderGiornale(){
         <td style="vertical-align:top">${maeHtml}<div style="font-size:10px;color:var(--muted);margin-top:3px;font-weight:600">Tot: ${totOp}</div></td>
         <td style="font-size:11px;color:var(--muted)">${mezziStr||'—'}</td>
         <td style="font-size:12px;color:var(--text)">${lavStr||'—'}</td>
-        <td style="text-align:center">${hasOss?'<span title="Osservazioni / Anomalie presenti">⚠️</span>':'—'}</td>
-        <td>${giornaleAccess()===true?`<div style="display:flex;flex-wrap:wrap;gap:2px"><button class="btn btn-secondary btn-sm" onclick="openModalEditGiornaleData('${g.id}','${data}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="copiaGiornoGiornale('${g.id}','${data}')" title="Copia">📋</button><button class="btn btn-danger btn-sm" onclick="eliminaRegistrazione('${g.id}','${data}')">🗑️</button></div>`:''}</td>
+        <td style="text-align:center">${hasOss?'<span title="Osservazioni / Anomalie presenti">⚠️</span>':''}${g.note_cse?'<span title="Annotazione CSE presente">🦺</span>':''}${(!hasOss&&!g.note_cse)?'—':''}</td>
+        <td>${giornaleAccess()===true?`<div style="display:flex;flex-wrap:wrap;gap:2px"><button class="btn btn-secondary btn-sm" onclick="openModalEditGiornaleData('${g.id}','${data}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="copiaGiornoGiornale('${g.id}','${data}')" title="Copia">📋</button><button class="btn btn-danger btn-sm" onclick="eliminaRegistrazione('${g.id}','${data}')">🗑️</button></div>`:''}${currentRole==='cse'?`<button class="btn btn-secondary btn-sm" title="Annotazione CSE — Sicurezza" onclick="openModalAnnotazioneCSE('${g.id}','${data}')">🦺 Annota</button>`:''}</td>
       </tr>`;
+      if(g.note_cse){
+        html += `<tr style="background:#FFF3CD">
+          <td colspan="8" style="padding:8px 14px;border-left:4px solid #FFC107">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#856404;margin-bottom:3px">🦺 Annotazione CSE — Sicurezza</div>
+            <div style="font-size:12px;white-space:pre-wrap;color:#5c4700">${esc(g.note_cse)}</div>
+          </td>
+        </tr>`;
+      }
     } else {
       html += `<tr style="background:${isToday?'#EBF3FB':isFestivo?'#FAFAFA':'white'}" title="${data}">
         <td style="border-left:3px solid var(--border)">
@@ -751,7 +759,7 @@ async function renderGiornale(){
         </td>
         <td colspan="5" style="font-size:11px;color:#ADB5BD;font-style:italic">— nessuna lavorazione registrata —</td>
         <td></td>
-        <td>${giornaleAccess()===true?`<button class="btn btn-primary btn-sm" onclick="openModalNuovaRegistrazioneData('${data}')" title="Aggiungi registrazione">+</button>`:''}</td>
+        <td>${giornaleAccess()===true?`<button class="btn btn-primary btn-sm" onclick="openModalNuovaRegistrazioneData('${data}')" title="Aggiungi registrazione">+</button>`:''}${currentRole==='cse'?`<button class="btn btn-secondary btn-sm" title="Annotazione CSE — Sicurezza" onclick="openModalAnnotazioneCSE(null,'${data}')">🦺 Annota</button>`:''}</td>
       </tr>`;
     }
     i++;
@@ -4116,6 +4124,76 @@ async function salvaRegistrazione(){
   if(error){alert(error.message);return;}
   closeModal();showView('giornale');
 }
+// ============================================================
+// ANNOTAZIONI CSE SUL GIORNALE DEI LAVORI
+// Il Coordinatore per la Sicurezza in Esecuzione non modifica il
+// giornale (che resta del DL), ma vi appone la propria annotazione
+// di sicurezza sulla giornata. Se il giorno non ha registrazione,
+// ne viene creata una contenente la sola annotazione.
+// ============================================================
+async function openModalAnnotazioneCSE(giornoId, data){
+  if(currentRole!=='cse'){ alert('Sezione riservata al Coordinatore per la Sicurezza in Esecuzione.'); return; }
+  let g = null;
+  if(giornoId){
+    const {data:rec} = await sb.from('giornale_lavori').select('*').eq('id',giornoId).single();
+    g = rec;
+  }
+  const dataLabel = new Date(data+'T00:00:00').toLocaleDateString('it-IT',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  const riepilogo = g ? `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:12px;margin-bottom:12px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px">Registrazione del giorno (sola lettura)</div>
+      <div><strong>Meteo:</strong> ${esc(g.meteo||'—')} &nbsp;|&nbsp; <strong>Manodopera:</strong> ${(g.maestranze||[]).reduce((a,m)=>a+(m.num||0),0)} unità</div>
+      ${g.lavorazioni?`<div style="margin-top:4px"><strong>Lavorazioni:</strong> ${esc(g.lavorazioni)}</div>`:''}
+      ${g.anomalie?`<div style="margin-top:4px;color:#856404"><strong>Anomalie segnalate dal DL:</strong> ${esc(g.anomalie)}</div>`:''}
+    </div>` : `
+    <div class="alert alert-info" style="font-size:12px">Per questa giornata non risulta alcuna registrazione del DL. Salvando verrà creata una riga di giornale contenente la sola annotazione di sicurezza.</div>`;
+
+  openModal('Annotazione CSE — '+dataLabel, `
+    ${riepilogo}
+    <div class="form-group">
+      <label class="form-label" style="color:#856404">🦺 Annotazione del Coordinatore per la Sicurezza</label>
+      <div class="form-hint">Visite effettuate, verifiche su DPI e apprestamenti, prescrizioni impartite, anomalie rilevate, sospensioni per rischio grave e imminente.</div>
+      <textarea class="form-control" id="cse_nota" rows="6" placeholder="Es. Sopralluogo in cantiere alle ore 9:30. Verificata la presenza dei DPI per tutti gli operatori presenti. Riscontrata assenza di parapetto sul lato est del solaio di copertura: impartita prescrizione di ripristino immediato all'impresa esecutrice, lavorazione sospesa nella zona interessata fino a ripristino avvenuto.">${esc(g?.note_cse||'')}</textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      ${g&&g.note_cse?`<button class="btn btn-danger" onclick="eliminaAnnotazioneCSE('${giornoId}')">Elimina annotazione</button>`:''}
+      <button class="btn btn-primary" onclick="salvaAnnotazioneCSE(${giornoId?`'${giornoId}'`:'null'},'${data}')">Salva annotazione</button>
+    </div>`);
+}
+
+async function salvaAnnotazioneCSE(giornoId, data){
+  if(currentRole!=='cse'){ alert('Sezione riservata al CSE.'); return; }
+  const nota = document.getElementById('cse_nota').value.trim();
+  if(!nota){ alert('Inserisci il testo dell\'annotazione.'); return; }
+  const redattore = `${currentUser.nome||''} ${currentUser.cognome||''}`.trim() + ' (CSE)';
+  let error;
+  if(giornoId){
+    ({error} = await sb.from('giornale_lavori').update({note_cse:nota}).eq('id',giornoId));
+  } else {
+    // giornata senza registrazione: ne crea una con la sola annotazione
+    ({error} = await sb.from('giornale_lavori').insert({
+      cantiere_id: currentCantiere,
+      data: data,
+      redattore: redattore,
+      note_cse: nota,
+      created_by: currentUser.id
+    }));
+  }
+  if(error){ alert('Errore salvataggio: '+error.message); return; }
+  closeModal();
+  showView('giornale');
+}
+
+async function eliminaAnnotazioneCSE(giornoId){
+  if(currentRole!=='cse'){ alert('Sezione riservata al CSE.'); return; }
+  if(!confirm('Eliminare l\'annotazione di sicurezza di questa giornata?')) return;
+  const {error} = await sb.from('giornale_lavori').update({note_cse:null}).eq('id',giornoId);
+  if(error){ alert('Errore: '+error.message); return; }
+  closeModal();
+  showView('giornale');
+}
+
 async function eliminaRegistrazione(id, data){
   const d = new Date(data+'T00:00:00').toLocaleDateString('it-IT',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   if(!confirm('Eliminare la registrazione del '+d+'?\nQuesta operazione non è reversibile.')) return;
@@ -4139,6 +4217,11 @@ async function openModalEditGiornale(id){
     <div class="form-group" style="margin-top:12px"><label class="form-label">Lavorazioni</label><textarea class="form-control" id="eg_lav" rows="5">${esc(g.lavorazioni||'')}</textarea></div>
     <div class="form-group" style="margin-top:12px"><label class="form-label">Osservazioni</label><textarea class="form-control" id="eg_oss" rows="3">${esc(g.osservazioni||'')}</textarea></div>
     <div class="form-group" style="margin-top:12px"><label class="form-label">Anomalie</label><textarea class="form-control" id="eg_ano" rows="2">${esc(g.anomalie||'')}</textarea></div>
+    ${g.note_cse?`<div class="form-group" style="margin-top:12px;padding:10px 12px;background:#FFF3CD;border-left:4px solid #FFC107;border-radius:0 4px 4px 0">
+      <label class="form-label" style="color:#856404">🦺 Annotazione CSE — Sicurezza</label>
+      <div class="form-hint" style="color:#856404">Inserita dal Coordinatore per la Sicurezza: non modificabile da questa scheda.</div>
+      <textarea class="form-control" rows="3" readonly style="background:#fffdf5">${esc(g.note_cse)}</textarea>
+    </div>`:''}
     <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaEditGiornale('${id}')">Salva</button></div>`);
 }
 async function salvaEditGiornale(id){
@@ -5005,7 +5088,7 @@ async function generaReportGiornale(cantiereId){
       <td style="vertical-align:top;font-size:9px">${maeHtml}<div style="font-size:8px;color:#95A8B0;margin-top:2px"><strong>Tot: ${totOp}</strong></div></td>
       <td style="vertical-align:top;font-size:9px">${mezziStr}</td>
       <td style="vertical-align:top;font-size:9px">${esc(g.lavorazioni||'—')}</td>
-      <td style="vertical-align:top;font-size:9px">${esc(g.osservazioni||'')}</td>
+      <td style="vertical-align:top;font-size:9px">${esc(g.osservazioni||'')}${g.note_cse?`<div style="margin-top:3px;padding:3px 5px;background:#FFF8E1;border-left:2px solid #FFC107;font-size:8.5px"><strong>CSE:</strong> ${esc(g.note_cse)}</div>`:''}</td>
       <td style="vertical-align:top;font-size:9px;color:#9B2335">${esc(g.anomalie||'')}</td>
     </tr>`;
     i++;
