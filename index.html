@@ -1931,7 +1931,7 @@ async function renderTeam(){
       <td style="font-size:11px">${esc(t.telefono||'—')}</td>
       <td>
         <div class="btn-group">
-          <button class="btn btn-secondary btn-sm" onclick="openModalEditMembro('${t.id}','${t.utente_id}')">✏️</button>
+          ${(currentRole==='dl'||t.utente_id===currentUser.id)?`<button class="btn btn-secondary btn-sm" title="${currentRole==='dl'?'Modifica recapiti':'Modifica i tuoi recapiti'}" onclick="openModalEditMembro('${t.id}','${t.utente_id}')">✏️</button>`:''}
           ${currentRole==='dl'&&t.utente_id!==currentUser.id?`<button class="btn btn-danger btn-sm" onclick="eliminaMembro('${t.id}','${esc(nome)}')">Rimuovi</button>`:''}
         </div>
       </td></tr>`;
@@ -3614,9 +3614,23 @@ async function salvaCantiere(){
     created_by:currentUser.id
   }).select().single();
   if(error){alert('Errore: '+error.message);btn.disabled=false;btn.textContent='Salva cantiere';return;}
-  // auto-assegnazione come DL
+  // Auto-assegnazione come DL. Se fallisce, il cantiere resterebbe
+  // senza alcun membro: invisibile nell'app ma presente nel database.
+  // In quel caso lo si elimina subito, per non lasciare cantieri orfani.
   const {error:e2} = await sb.from('cantiere_utenti').insert({cantiere_id:cant.id,utente_id:currentUser.id,ruolo:'dl'});
-  if(e2){alert('Cantiere creato ma errore assegnazione DL: '+e2.message);}
+  if(e2){
+    let recuperato = false;
+    try{
+      const {error:e3} = await sb.from('cantieri').delete().eq('id',cant.id);
+      recuperato = !e3;
+    }catch(eDel){ /* niente */ }
+    alert('Impossibile assegnarti come Direttore dei Lavori: '+e2.message
+      + (recuperato
+          ? '\n\nIl cantiere non è stato creato. Riprova.'
+          : '\n\nATTENZIONE: il cantiere è stato creato ma risulta senza membri e non comparirà nell\'elenco. Segnalalo per la bonifica.'));
+    btn.disabled=false; btn.textContent='Salva cantiere';
+    if(recuperato) return;
+  }
   closeModal();
   await loadMyCantieri();
   showView('cantieri');
@@ -4185,10 +4199,26 @@ function openModalNuovoMembro(){
     </div>`);
 }
 
+// Ricerca di un utente registrato per email.
+// Usa la funzione server-side (che verifica il ruolo di chi chiama);
+// se non e' ancora stata installata, ripiega sulla query diretta.
+async function cercaProfiloPerEmail(email){
+  try{
+    const {data, error} = await sb.rpc('trova_profilo_per_email', {p_email: email});
+    if(!error && Array.isArray(data)) return data[0] || null;
+    if(error && !/does not exist|schema cache|not find/i.test(error.message||'')) {
+      console.warn('trova_profilo_per_email:', error.message);
+      return null;
+    }
+  }catch(e){ /* funzione assente: fallback */ }
+  const {data:prof} = await sb.from('profiles').select('id,nome,cognome,email').eq('email',email).single();
+  return prof || null;
+}
+
 async function cercaProfiloMembro(){
   const email = document.getElementById('tm_email').value.trim();
   if(!email){ alert('Inserisci prima l\'email'); return; }
-  const {data:prof} = await sb.from('profiles').select('id,nome,cognome,email').eq('email',email).single();
+  const prof = await cercaProfiloPerEmail(email);
   const feedbackEl = document.getElementById('tm_profilo_trovato');
   if(!prof){
     feedbackEl.style.display = 'block';
@@ -4210,26 +4240,47 @@ async function salvaMembro(){
   const nome  = document.getElementById('tm_nome').value.trim();
   const cognome = document.getElementById('tm_cognome').value.trim();
   if(!email){ alert('Email obbligatoria'); return; }
-  const {data:prof, error:e1} = await sb.from('profiles').select('id,nome,cognome').eq('email',email).single();
-  if(e1||!prof){ alert('Nessun utente registrato con questa email. Deve prima registrarsi.'); return; }
+  if(currentRole!=='dl'){ alert('Solo il Direttore dei Lavori puo aggiungere membri al team.'); return; }
 
-  // Aggiorna SEMPRE nome e cognome nel profilo — sovrascrive dati del signup
+  const payload = {
+    p_cantiere: currentCantiere,
+    p_email: email,
+    p_ruolo: document.getElementById('tm_ruolo').value,
+    p_nome: nome||null,
+    p_cognome: cognome||null,
+    p_telefono: document.getElementById('tm_tel').value.trim()||null,
+    p_email_prof: document.getElementById('tm_email_prof').value.trim()||null,
+    p_pec: document.getElementById('tm_pec').value.trim()||null
+  };
+
+  // Percorso sicuro: la funzione server-side verifica che chi chiama
+  // sia il DL di QUESTO cantiere prima di inserire.
+  let rpcMancante = false;
+  try{
+    const {error} = await sb.rpc('aggiungi_membro_cantiere', payload);
+    if(!error){ closeModal(); showView('team'); return; }
+    if(/does not exist|schema cache|not find/i.test(error.message||'')) rpcMancante = true;
+    else { alert(error.message); return; }
+  }catch(e){ rpcMancante = true; }
+
+  if(!rpcMancante) return;
+  // Ripiego per database su cui non e' ancora stata eseguita la
+  // migrazione di sicurezza.
+  const prof = await cercaProfiloPerEmail(email);
+  if(!prof){ alert('Nessun utente registrato con questa email. Deve prima registrarsi.'); return; }
   if(nome || cognome){
     await sb.from('profiles').update({
       nome: nome || prof.nome,
       cognome: cognome || prof.cognome
     }).eq('id', prof.id);
-  } else if(prof.nome || prof.cognome){
-    // Se non inseriti nel form, mantieni quelli esistenti senza toccarli
   }
-
   const {error} = await sb.from('cantiere_utenti').insert({
     cantiere_id: currentCantiere,
     utente_id: prof.id,
-    ruolo: document.getElementById('tm_ruolo').value,
-    telefono: document.getElementById('tm_tel').value.trim()||null,
-    email_prof: document.getElementById('tm_email_prof').value.trim()||null,
-    pec: document.getElementById('tm_pec').value.trim()||null
+    ruolo: payload.p_ruolo,
+    telefono: payload.p_telefono,
+    email_prof: payload.p_email_prof,
+    pec: payload.p_pec
   });
   if(error){ alert(error.message.includes('duplicate')?'Utente già nel team':error.message); return; }
   closeModal(); showView('team');
