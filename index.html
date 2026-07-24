@@ -245,7 +245,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.07.23';
+const APP_VERSIONE = '2026.07.24';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -4988,7 +4988,7 @@ async function stampaODS(id){
   <div class="firma-grid">${firme.map(f=>`<div class="firma-box"><div class="label">${ROLE_LABELS[f.ruolo]||f.ruolo}</div>
     <div style="margin-top:8px;font-size:12px">${esc(f.nome)}</div>
     <div style="font-size:11px;color:#6C757D;margin-top:4px">${f.stato==='firmato'?'✅ Firmato '+fmt(f.data):f.stato==='presa_visione'?'👁️ Presa visione '+fmt(f.data):'⏳ In attesa'}</div></div>`).join('')}</div>
-  <script>window.onload=()=>window.print()<\/script></body></html>`);
+  <script>window.onload=()=>{try{if(window.opener&&window.opener.avviaSorveglianzaStampa)window.opener.avviaSorveglianzaStampa(window);}catch(e){}window.print();}<\/script></body></html>`);
 }
 
 async function generaReportSA(cantiereId){
@@ -5220,7 +5220,7 @@ async function generaReportSA(cantiereId){
     DOCUMENTO INFORMATICO FIRMATO DIGITALMENTE AI SENSI DEL TESTO UNICO D.P.R. 28 DICEMBRE 2000 N. 445, DEL D.LGS. 7 MARZO 2005 N. 82 E NORME COLLEGATE, IL QUALE SOSTITUISCE IL TESTO CARTACEO E LA FIRMA AUTOGRAFA.
   </div>
 
-  <script>window.onload=()=>window.print()<\/script></body></html>`);
+  <script>window.onload=()=>{try{if(window.opener&&window.opener.avviaSorveglianzaStampa)window.opener.avviaSorveglianzaStampa(window);}catch(e){}window.print();}<\/script></body></html>`);
 }
 
 async function generaReportGiornale(cantiereId){
@@ -5452,7 +5452,7 @@ async function generaReportGiornale(cantiereId){
     DOCUMENTO INFORMATICO FIRMATO DIGITALMENTE AI SENSI DEL TESTO UNICO D.P.R. 28 DICEMBRE 2000 N. 445, DEL D.LGS. 7 MARZO 2005 N. 82 E NORME COLLEGATE, IL QUALE SOSTITUISCE IL TESTO CARTACEO E LA FIRMA AUTOGRAFA.
   </div>
 
-  <script>window.onload=()=>window.print()<\/script></body></html>`);
+  <script>window.onload=()=>{try{if(window.opener&&window.opener.avviaSorveglianzaStampa)window.opener.avviaSorveglianzaStampa(window);}catch(e){}window.print();}<\/script></body></html>`);
 }
 
 
@@ -5754,15 +5754,44 @@ function nomeFileVerbale(c, data, codice, numero){
 // Su Safari macOS un documento creato con document.write su about:blank viene
 // scartato dopo window.print() (pagina bianca). Dando al documento un URL reale
 // (blob:) il problema non si presenta. Fallback a document.write se Blob non disponibile.
+// Documenti aperti, per poterli ripristinare dopo la stampa.
+const POPUP_DOCUMENTI = new Map();
+
 function scriviPopupHtml(w, html){
-  try{
-    const blobDoc = new Blob([html], {type:'text/html;charset=utf-8'});
-    w.location.href = URL.createObjectURL(blobDoc);
-  }catch(eBlob){
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-  }
+  // Safari su macOS stampa una pagina bianca se il documento e' stato
+  // caricato da un URL blob:. Si usa quindi la scrittura diretta, che
+  // stampa correttamente, e si rimedia allo svuotamento della finestra
+  // dopo la stampa con la sorveglianza qui sotto.
+  POPUP_DOCUMENTI.forEach((v,k)=>{ try{ if(k.closed) POPUP_DOCUMENTI.delete(k); }catch(e){ POPUP_DOCUMENTI.delete(k); } });
+  POPUP_DOCUMENTI.set(w, html);
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
+// Chiamata dal documento subito prima di window.print(): sorveglia la
+// finestra e, se Safari ne scarta il contenuto, lo riscrive.
+function avviaSorveglianzaStampa(w){
+  const html = POPUP_DOCUMENTI.get(w);
+  if(!html) return;
+  let tentativi = 0;
+  const timer = setInterval(function(){
+    tentativi++;
+    let daRiscrivere = false;
+    try{
+      if(!w || w.closed){ clearInterval(timer); return; }
+      daRiscrivere = !w.document || !w.document.body || w.document.body.children.length === 0;
+    }catch(e){ daRiscrivere = false; }
+    if(daRiscrivere){
+      try{
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+      }catch(e2){ /* niente da fare */ }
+      clearInterval(timer);
+    }
+    if(tentativi > 30) clearInterval(timer);
+  }, 400);
 }
 
 const PDF_ENGINE_CSS = `
@@ -5987,7 +6016,11 @@ function PDF_ENGINE_JS(firmatariIniziali){
         el.style.display='block';
       }
     }
-    function stampaEsegna(){ window.__pdfGenerato = true; window.print(); }
+    function stampaEsegna(){
+      window.__pdfGenerato = true;
+      try{ if(window.opener && window.opener.avviaSorveglianzaStampa) window.opener.avviaSorveglianzaStampa(window); }catch(e){}
+      window.print();
+    }
 
     // ---------- Invio via email ----------
     function isAppleTouch(){
