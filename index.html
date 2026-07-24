@@ -245,7 +245,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.07.24';
+const APP_VERSIONE = '2026.07.24c';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -4194,22 +4194,93 @@ async function viewComunicazione(id){
     <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Chiudi</button></div>`);
 }
 
-async function openModalNuovaRegistrazione(){
-  const {data:ditteList} = await sb.from('ditte').select('id,nome,tipo').eq('cantiere_id',currentCantiere).order('nome');
-  const tipoLabel = {appaltatrice:'App.',subappaltatrice:'Sub.',subaffidataria:'Subaff.'};
-  const ditteOptsHtml = `<option value="">— ditta —</option>`+(ditteList||[]).map(d=>`<option value="${d.id}">[${tipoLabel[d.tipo]||''}] ${esc(d.nome)}</option>`).join('');
-  window._ditteOptsHtml = ditteOptsHtml;
-  window._maeRowCount = 1;
-  window._mezzoRowCount = 1;
+// ============================================================
+// GIORNALE DEI LAVORI — form condiviso fra "Nuova registrazione"
+// e "Modifica": cosi' i due non possono piu' divergere.
+// ============================================================
 
-  openModal('Nuova Registrazione — Giornale Lavori', `
+// Opzioni <select> per la ditta di ogni riga manodopera
+function glDitteOptions(ditteList, selectedId){
+  const tipoLabel = {appaltatrice:'App.',subappaltatrice:'Sub.',subaffidataria:'Subaff.'};
+  let h = `<option value="">— ditta —</option>`;
+  (ditteList||[]).forEach(d=>{
+    h += `<option value="${d.id}"${String(d.id)===String(selectedId||'')?' selected':''}>[${tipoLabel[d.tipo]||''}] ${esc(d.nome)}</option>`;
+  });
+  return h;
+}
+
+// Celle della riga manodopera (usate sia per la riga iniziale che per
+// le righe aggiunte dinamicamente, cosi' restano sempre identiche)
+function glMaeCelleHtml(n, ditteOptsHtml, m){
+  m = m || {};
+  return `
+    <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="mae_ditta_${n}">${ditteOptsHtml}</select></td>
+    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_qual_${n}" placeholder="es. Muratori" value="${esc(m.figura||'')}"></td>
+    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px;text-align:center" type="number" min="1" id="mae_num_${n}" value="${m.num!=null?m.num:1}"></td>
+    <td style="padding:3px;text-align:center"><label style="font-size:11px;display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer"><input type="checkbox" id="mae_dist_${n}" ${m.distacco?'checked':''}> Sì</label></td>
+    <td style="padding:3px;text-align:center"><button type="button" onclick="rimuoviRigaMae(${n})" class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:11px">✕</button></td>`;
+}
+function glMezzoInternoHtml(n, val){
+  return `<input class="form-control" style="font-size:12px" id="mezzo_${n}" placeholder="es. Gru a torre 40m — specifica tipo, portata, targa" value="${esc(val||'')}"><button type="button" onclick="rimuoviRigaMezzo(${n})" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button>`;
+}
+
+function aggiungiRigaMae(){
+  const n = window._maeRowCount||1;
+  const tbody = document.getElementById('gl_mae_body');
+  if(!tbody) return;
+  const tr = document.createElement('tr');
+  tr.id = 'mae_row_'+n;
+  tr.innerHTML = glMaeCelleHtml(n, window._ditteOptsHtml||'', {});
+  tbody.appendChild(tr);
+  window._maeRowCount = n+1;
+}
+function rimuoviRigaMae(n){ const r=document.getElementById('mae_row_'+n); if(r) r.remove(); }
+
+function aggiungiRigaMezzo(){
+  const n = window._mezzoRowCount||1;
+  const body = document.getElementById('gl_mezzi_body');
+  if(!body) return;
+  const div = document.createElement('div');
+  div.style.cssText='display:flex;gap:6px;margin-bottom:5px';
+  div.id='mezzo_row_'+n;
+  div.innerHTML = glMezzoInternoHtml(n, '');
+  body.appendChild(div);
+  window._mezzoRowCount = n+1;
+}
+function rimuoviRigaMezzo(n){ const r=document.getElementById('mezzo_row_'+n); if(r) r.remove(); }
+
+// Contesto comune ai due modali (elenco ditte del cantiere)
+async function glContesto(){
+  const {data:ditteList} = await sb.from('ditte').select('id,nome,tipo').eq('cantiere_id',currentCantiere).order('nome');
+  return {ditteList: ditteList||[]};
+}
+
+// g = registrazione esistente (null per una nuova registrazione)
+function giornaleFormHtml(g, ctx){
+  const ditteList = ctx.ditteList;
+  const maestranze = (g && g.maestranze) || [];
+  const mezzi = (g && g.mezzi) || [];
+  const righeMae = (maestranze.length?maestranze:[{}]);
+  const righeMezzi = (mezzi.length?mezzi:['']);
+
+  window._ditteOptsHtml = glDitteOptions(ditteList, null);
+  window._maeRowCount = righeMae.length;
+  window._mezzoRowCount = righeMezzi.length;
+
+  const maeRowsHtml = righeMae.map((m,i)=>`<tr id="mae_row_${i}">${glMaeCelleHtml(i, glDitteOptions(ditteList, m.ditta_id), m)}</tr>`).join('');
+  const mezziRowsHtml = righeMezzi.map((v,i)=>`<div style="display:flex;gap:6px;margin-bottom:5px" id="mezzo_row_${i}">${glMezzoInternoHtml(i,v)}</div>`).join('');
+
+  const meteoOptions = ['Soleggiato','Parzialmente nuvoloso','Nuvoloso','Pioggia','Vento forte','Neve'];
+  const meteoSel = g && g.meteo;
+
+  return `
     <div class="form-grid">
-      <div class="form-group"><label class="form-label">Data *</label><input class="form-control" type="date" id="gl_data" value="${today()}"></div>
+      <div class="form-group"><label class="form-label">Data *</label><input class="form-control" type="date" id="gl_data" value="${g?g.data:today()}"></div>
       <div class="form-group"><label class="form-label">Meteo</label>
-        <select class="form-control" id="gl_meteo"><option>Soleggiato</option><option>Parzialmente nuvoloso</option><option>Nuvoloso</option><option>Pioggia</option><option>Vento forte</option><option>Neve</option></select>
+        <select class="form-control" id="gl_meteo">${meteoOptions.map(o=>`<option${meteoSel===o?' selected':''}>${o}</option>`).join('')}</select>
       </div>
-      <div class="form-group"><label class="form-label">Temp. min (°C)</label><input class="form-control" type="number" id="gl_tmin" placeholder="15"></div>
-      <div class="form-group"><label class="form-label">Temp. max (°C)</label><input class="form-control" type="number" id="gl_tmax" placeholder="28"></div>
+      <div class="form-group"><label class="form-label">Temp. min (°C)</label><input class="form-control" type="number" id="gl_tmin" placeholder="15" value="${g&&g.temp_min!=null?g.temp_min:''}"></div>
+      <div class="form-group"><label class="form-label">Temp. max (°C)</label><input class="form-control" type="number" id="gl_tmax" placeholder="28" value="${g&&g.temp_max!=null?g.temp_max:''}"></div>
     </div>
 
     <div style="margin-top:16px">
@@ -4226,15 +4297,7 @@ async function openModalNuovaRegistrazione(){
           <th style="padding:6px 8px;text-align:center;width:18%">Distacco</th>
           <th style="padding:6px 8px;width:8%"></th>
         </tr></thead>
-        <tbody id="gl_mae_body">
-          <tr id="mae_row_0">
-            <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="mae_ditta_0">${ditteOptsHtml}</select></td>
-            <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_qual_0" placeholder="es. Muratori"></td>
-            <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px;text-align:center" type="number" min="1" id="mae_num_0" value="1"></td>
-            <td style="padding:3px;text-align:center"><label style="font-size:11px;display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer"><input type="checkbox" id="mae_dist_0"> Sì</label></td>
-            <td style="padding:3px;text-align:center"><button type="button" onclick="rimuoviRigaMae(0)" class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:11px">✕</button></td>
-          </tr>
-        </tbody>
+        <tbody id="gl_mae_body">${maeRowsHtml}</tbody>
       </table>
       ${!ditteList||!ditteList.length ? '<div style="font-size:11px;color:var(--yellow);margin-top:4px">⚠️ Nessuna ditta registrata. Aggiungile dalla sezione <strong>Ditte presenti</strong> prima di compilare il giornale.</div>' : ''}
     </div>
@@ -4244,83 +4307,46 @@ async function openModalNuovaRegistrazione(){
         <label class="form-label" style="margin:0">Mezzi e attrezzature</label>
         <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiRigaMezzo()">+ Aggiungi mezzo</button>
       </div>
-      <div id="gl_mezzi_body">
-        <div style="display:flex;gap:6px;margin-bottom:5px" id="mezzo_row_0">
-          <input class="form-control" style="font-size:12px" id="mezzo_0" placeholder="es. Gru a torre 40m — specifica tipo, portata, targa">
-          <button type="button" onclick="rimuoviRigaMezzo(0)" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button>
-        </div>
-      </div>
+      <div id="gl_mezzi_body">${mezziRowsHtml}</div>
     </div>
 
     <div class="form-group" style="margin-top:14px">
       <label class="form-label">Lavorazioni eseguite *</label>
       <div class="form-hint">Zona di intervento, tipo di lavoro, quantità eseguite.</div>
-      <textarea class="form-control" id="gl_lav" rows="4" placeholder="Es: Posa casserature travi copertura asse B-C. Completata armatura trave T1-B3..."></textarea>
+      <textarea class="form-control" id="gl_lav" rows="4" placeholder="Es: Posa casserature travi copertura asse B-C. Completata armatura trave T1-B3...">${esc(g?g.lavorazioni||'':'')}</textarea>
     </div>
     <div class="form-group" style="margin-top:10px">
       <label class="form-label">Osservazioni DL</label>
       <div class="form-hint">Verifica DPI, controlli qualità, ordini verbali impartiti.</div>
-      <textarea class="form-control" id="gl_oss" rows="2" placeholder="Es: Verificata presenza DPI. Impartito ordine verbale di..."></textarea>
+      <textarea class="form-control" id="gl_oss" rows="2" placeholder="Es: Verificata presenza DPI. Impartito ordine verbale di...">${esc(g?g.osservazioni||'':'')}</textarea>
     </div>
     <div class="form-group" style="margin-top:10px">
       <label class="form-label">Anomalie / Non conformità</label>
       <div class="form-hint">Difformità rispetto al progetto, incidenti, sospensioni.</div>
-      <textarea class="form-control" id="gl_ano" rows="2" placeholder="Es: Riscontrata posa armatura non conforme..."></textarea>
+      <textarea class="form-control" id="gl_ano" rows="2" placeholder="Es: Riscontrata posa armatura non conforme...">${esc(g?g.anomalie||'':'')}</textarea>
     </div>
-    <div class="form-actions">
-      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
-      <button class="btn btn-primary" onclick="salvaRegistrazione()">Salva registrazione</button>
-    </div>`);
+    ${g&&g.note_cse?`<div class="form-group" style="margin-top:12px;padding:10px 12px;background:#FFF3CD;border-left:4px solid #FFC107;border-radius:0 4px 4px 0">
+      <label class="form-label" style="color:#856404">🦺 Annotazione CSE — Sicurezza</label>
+      <div class="form-hint" style="color:#856404">Inserita dal Coordinatore per la Sicurezza: non modificabile da questa scheda.</div>
+      <textarea class="form-control" rows="3" readonly style="background:#fffdf5">${esc(g.note_cse)}</textarea>
+    </div>`:''}`;
 }
 
-function aggiungiRigaMae(){
-  const n = window._maeRowCount||1;
-  const tbody = document.getElementById('gl_mae_body');
-  if(!tbody) return;
-  const tr = document.createElement('tr');
-  tr.id = 'mae_row_'+n;
-  tr.innerHTML = `
-    <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="mae_ditta_${n}">${window._ditteOptsHtml||''}</select></td>
-    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_qual_${n}" placeholder="es. Carpentieri"></td>
-    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px;text-align:center" type="number" min="1" id="mae_num_${n}" value="1"></td>
-    <td style="padding:3px;text-align:center"><label style="font-size:11px;display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer"><input type="checkbox" id="mae_dist_${n}"> Sì</label></td>
-    <td style="padding:3px;text-align:center"><button type="button" onclick="rimuoviRigaMae(${n})" class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:11px">✕</button></td>`;
-  tbody.appendChild(tr);
-  window._maeRowCount = n+1;
-}
-
-function rimuoviRigaMae(n){ const r=document.getElementById('mae_row_'+n); if(r) r.remove(); }
-
-function aggiungiRigaMezzo(){
-  const n = window._mezzoRowCount||1;
-  const body = document.getElementById('gl_mezzi_body');
-  if(!body) return;
-  const div = document.createElement('div');
-  div.style.cssText='display:flex;gap:6px;margin-bottom:5px';
-  div.id='mezzo_row_'+n;
-  div.innerHTML=`<input class="form-control" style="font-size:12px" id="mezzo_${n}" placeholder="es. Autobetoniera targa XX000XX"><button type="button" onclick="rimuoviRigaMezzo(${n})" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button>`;
-  body.appendChild(div);
-  window._mezzoRowCount = n+1;
-}
-
-function rimuoviRigaMezzo(n){ const r=document.getElementById('mezzo_row_'+n); if(r) r.remove(); }
-
-async function salvaRegistrazione(){
-  const lavorazioni=document.getElementById('gl_lav').value.trim();
-  if(!lavorazioni){alert('Campo lavorazioni obbligatorio');return;}
-  // Raccoglie righe manodopera
-  const maestranze=[];
+// Raccoglie i dati compilati nel form condiviso (usata sia da salvaRegistrazione
+// che da salvaEditGiornale, cosi' non possono piu' divergere nei campi raccolti)
+function glRaccogliDati(){
+  const lavorazioni = document.getElementById('gl_lav').value.trim();
+  if(!lavorazioni){ alert('Campo lavorazioni obbligatorio'); return null; }
+  const maestranze = [];
   for(let i=0;i<(window._maeRowCount||1);i++){
     const qualEl=document.getElementById('mae_qual_'+i);
-    const numEl=document.getElementById('mae_num_'+i);
-    const dittaEl=document.getElementById('mae_ditta_'+i);
-    const distEl=document.getElementById('mae_dist_'+i);
     if(!qualEl) continue;
     const qual=qualEl.value.trim();
     if(!qual) continue;
-    // Trova nome ditta dal select
-    const dittaSelect=dittaEl;
-    const dittaNome=dittaSelect&&dittaSelect.selectedIndex>0?dittaSelect.options[dittaSelect.selectedIndex].text:'';
+    const numEl=document.getElementById('mae_num_'+i);
+    const dittaEl=document.getElementById('mae_ditta_'+i);
+    const distEl=document.getElementById('mae_dist_'+i);
+    const dittaNome=dittaEl&&dittaEl.selectedIndex>0?dittaEl.options[dittaEl.selectedIndex].text:'';
     maestranze.push({
       figura:qual,
       num:parseInt(numEl?.value)||0,
@@ -4329,36 +4355,64 @@ async function salvaRegistrazione(){
       distacco:distEl?.checked||false
     });
   }
-  if(!maestranze.length){alert('Inserire almeno una riga di manodopera');return;}
-  // Raccoglie mezzi
+  if(!maestranze.length){ alert('Inserire almeno una riga di manodopera'); return null; }
   const mezzi=[];
   for(let i=0;i<(window._mezzoRowCount||1);i++){
     const el=document.getElementById('mezzo_'+i);
     if(el&&el.value.trim()) mezzi.push(el.value.trim());
   }
-  const redattore=`${currentUser.nome||''} ${currentUser.cognome||''}`.trim()+` (${ROLE_LABELS[currentRole]})`;
-  const {error}=await sb.from('giornale_lavori').insert({
-    cantiere_id:currentCantiere,
-    data:document.getElementById('gl_data').value,
-    redattore,
-    meteo:document.getElementById('gl_meteo').value,
-    temp_min:parseInt(document.getElementById('gl_tmin').value)||null,
-    temp_max:parseInt(document.getElementById('gl_tmax').value)||null,
-    maestranze,mezzi,lavorazioni,
-    osservazioni:document.getElementById('gl_oss').value,
-    anomalie:document.getElementById('gl_ano').value,
-    created_by:currentUser.id
-  });
+  return {
+    data: document.getElementById('gl_data').value,
+    meteo: document.getElementById('gl_meteo').value,
+    temp_min: parseInt(document.getElementById('gl_tmin').value)||null,
+    temp_max: parseInt(document.getElementById('gl_tmax').value)||null,
+    maestranze, mezzi, lavorazioni,
+    osservazioni: document.getElementById('gl_oss').value,
+    anomalie: document.getElementById('gl_ano').value
+  };
+}
+
+async function openModalNuovaRegistrazione(){
+  const ctx = await glContesto();
+  openModal('Nuova Registrazione — Giornale Lavori',
+    giornaleFormHtml(null, ctx) +
+    `<div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaRegistrazione()">Salva registrazione</button>
+    </div>`);
+}
+
+async function salvaRegistrazione(){
+  const d = glRaccogliDati();
+  if(!d) return;
+  const redattore = `${currentUser.nome||''} ${currentUser.cognome||''}`.trim()+` (${ROLE_LABELS[currentRole]})`;
+  const {error}=await sb.from('giornale_lavori').insert(Object.assign({
+    cantiere_id:currentCantiere, redattore, created_by:currentUser.id
+  }, d));
   if(error){alert(error.message);return;}
   closeModal();showView('giornale');
 }
-// ============================================================
-// ANNOTAZIONI CSE SUL GIORNALE DEI LAVORI
-// Il Coordinatore per la Sicurezza in Esecuzione non modifica il
-// giornale (che resta del DL), ma vi appone la propria annotazione
-// di sicurezza sulla giornata. Se il giorno non ha registrazione,
-// ne viene creata una contenente la sola annotazione.
-// ============================================================
+
+async function openModalEditGiornale(id){
+  const {data:g} = await sb.from('giornale_lavori').select('*').eq('id',id).single();
+  if(!g) return;
+  const ctx = await glContesto();
+  openModal('Modifica Registrazione',
+    giornaleFormHtml(g, ctx) +
+    `<div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaEditGiornale('${id}')">Salva</button>
+    </div>`);
+}
+
+async function salvaEditGiornale(id){
+  const d = glRaccogliDati();
+  if(!d) return;
+  const {error}=await sb.from('giornale_lavori').update(d).eq('id',id);
+  if(error){alert(error.message);return;}
+  closeModal();showView('giornale');
+}
+
 async function openModalAnnotazioneCSE(giornoId, data){
   if(currentRole!=='cse'){ alert('Sezione riservata al Coordinatore per la Sicurezza in Esecuzione.'); return; }
   let g = null;
@@ -4428,41 +4482,6 @@ async function eliminaRegistrazione(id, data){
   const {error} = await sb.from('giornale_lavori').delete().eq('id',id);
   if(error){ alert('Errore: '+error.message); return; }
   showView('giornale');
-}
-
-async function openModalEditGiornale(id){
-  const {data:g}=await sb.from('giornale_lavori').select('*').eq('id',id).single();
-  if(!g)return;
-  const maeStr=(g.maestranze||[]).map(m=>`${m.figura}, ${m.num}`).join('\n');
-  const mezStr=(g.mezzi||[]).join('\n');
-  openModal('Modifica Registrazione',`<div class="form-grid">
-    <div class="form-group"><label class="form-label">Data</label><input class="form-control" type="date" id="eg_data" value="${g.data}"></div>
-    <div class="form-group"><label class="form-label">Meteo</label><input class="form-control" id="eg_meteo" value="${esc(g.meteo||'')}"></div>
-    <div class="form-group"><label class="form-label">Temp min</label><input class="form-control" type="number" id="eg_tmin" value="${g.temp_min??''}"></div>
-    <div class="form-group"><label class="form-label">Temp max</label><input class="form-control" type="number" id="eg_tmax" value="${g.temp_max??''}"></div></div>
-    <div class="form-group" style="margin-top:12px"><label class="form-label">Maestranze</label><textarea class="form-control" id="eg_mae" rows="4">${esc(maeStr)}</textarea></div>
-    <div class="form-group" style="margin-top:12px"><label class="form-label">Mezzi</label><textarea class="form-control" id="eg_mez" rows="3">${esc(mezStr)}</textarea></div>
-    <div class="form-group" style="margin-top:12px"><label class="form-label">Lavorazioni</label><textarea class="form-control" id="eg_lav" rows="5">${esc(g.lavorazioni||'')}</textarea></div>
-    <div class="form-group" style="margin-top:12px"><label class="form-label">Osservazioni</label><textarea class="form-control" id="eg_oss" rows="3">${esc(g.osservazioni||'')}</textarea></div>
-    <div class="form-group" style="margin-top:12px"><label class="form-label">Anomalie</label><textarea class="form-control" id="eg_ano" rows="2">${esc(g.anomalie||'')}</textarea></div>
-    ${g.note_cse?`<div class="form-group" style="margin-top:12px;padding:10px 12px;background:#FFF3CD;border-left:4px solid #FFC107;border-radius:0 4px 4px 0">
-      <label class="form-label" style="color:#856404">🦺 Annotazione CSE — Sicurezza</label>
-      <div class="form-hint" style="color:#856404">Inserita dal Coordinatore per la Sicurezza: non modificabile da questa scheda.</div>
-      <textarea class="form-control" rows="3" readonly style="background:#fffdf5">${esc(g.note_cse)}</textarea>
-    </div>`:''}
-    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaEditGiornale('${id}')">Salva</button></div>`);
-}
-async function salvaEditGiornale(id){
-  const maestranze=document.getElementById('eg_mae').value.split('\n').filter(r=>r.trim()).map(r=>{const p=r.split(',');return{figura:(p[0]||'').trim(),num:parseInt(p[1])||0};});
-  const mezzi=document.getElementById('eg_mez').value.split('\n').filter(r=>r.trim()).map(r=>r.trim());
-  const {error}=await sb.from('giornale_lavori').update({
-    data:document.getElementById('eg_data').value,meteo:document.getElementById('eg_meteo').value,
-    temp_min:parseInt(document.getElementById('eg_tmin').value)||null,temp_max:parseInt(document.getElementById('eg_tmax').value)||null,
-    maestranze,mezzi,lavorazioni:document.getElementById('eg_lav').value,
-    osservazioni:document.getElementById('eg_oss').value,anomalie:document.getElementById('eg_ano').value
-  }).eq('id',id);
-  if(error){alert(error.message);return;}
-  closeModal();showView('giornale');
 }
 
 function openModalNuovoMembro(){
@@ -5006,7 +5025,7 @@ async function stampaODS(id){
   <div class="firma-grid">${firme.map(f=>`<div class="firma-box"><div class="label">${ROLE_LABELS[f.ruolo]||f.ruolo}</div>
     <div style="margin-top:8px;font-size:12px">${esc(f.nome)}</div>
     <div style="font-size:11px;color:#6C757D;margin-top:4px">${f.stato==='firmato'?'✅ Firmato '+fmt(f.data):f.stato==='presa_visione'?'👁️ Presa visione '+fmt(f.data):'⏳ In attesa'}</div></div>`).join('')}</div>
-  <script>window.onload=()=>{try{if(window.opener&&window.opener.avviaSorveglianzaStampa)window.opener.avviaSorveglianzaStampa(window);}catch(e){}window.print();}<\/script></body></html>`);
+  <script>window.onload=()=>{var _r=function(){try{if(document.body&&document.body.children.length===0&&window.opener&&window.opener.ripristinaPopup)window.opener.ripristinaPopup(window);}catch(e){}};window.addEventListener('afterprint',_r);requestAnimationFrame(function(){requestAnimationFrame(function(){window.print();setTimeout(_r,800);});});}<\/script></body></html>`);
 }
 
 async function generaReportSA(cantiereId){
@@ -5238,7 +5257,7 @@ async function generaReportSA(cantiereId){
     DOCUMENTO INFORMATICO FIRMATO DIGITALMENTE AI SENSI DEL TESTO UNICO D.P.R. 28 DICEMBRE 2000 N. 445, DEL D.LGS. 7 MARZO 2005 N. 82 E NORME COLLEGATE, IL QUALE SOSTITUISCE IL TESTO CARTACEO E LA FIRMA AUTOGRAFA.
   </div>
 
-  <script>window.onload=()=>{try{if(window.opener&&window.opener.avviaSorveglianzaStampa)window.opener.avviaSorveglianzaStampa(window);}catch(e){}window.print();}<\/script></body></html>`);
+  <script>window.onload=()=>{var _r=function(){try{if(document.body&&document.body.children.length===0&&window.opener&&window.opener.ripristinaPopup)window.opener.ripristinaPopup(window);}catch(e){}};window.addEventListener('afterprint',_r);requestAnimationFrame(function(){requestAnimationFrame(function(){window.print();setTimeout(_r,800);});});}<\/script></body></html>`);
 }
 
 async function generaReportGiornale(cantiereId){
@@ -5470,7 +5489,7 @@ async function generaReportGiornale(cantiereId){
     DOCUMENTO INFORMATICO FIRMATO DIGITALMENTE AI SENSI DEL TESTO UNICO D.P.R. 28 DICEMBRE 2000 N. 445, DEL D.LGS. 7 MARZO 2005 N. 82 E NORME COLLEGATE, IL QUALE SOSTITUISCE IL TESTO CARTACEO E LA FIRMA AUTOGRAFA.
   </div>
 
-  <script>window.onload=()=>{try{if(window.opener&&window.opener.avviaSorveglianzaStampa)window.opener.avviaSorveglianzaStampa(window);}catch(e){}window.print();}<\/script></body></html>`);
+  <script>window.onload=()=>{var _r=function(){try{if(document.body&&document.body.children.length===0&&window.opener&&window.opener.ripristinaPopup)window.opener.ripristinaPopup(window);}catch(e){}};window.addEventListener('afterprint',_r);requestAnimationFrame(function(){requestAnimationFrame(function(){window.print();setTimeout(_r,800);});});}<\/script></body></html>`);
 }
 
 
@@ -5777,9 +5796,7 @@ const POPUP_DOCUMENTI = new Map();
 
 function scriviPopupHtml(w, html){
   // Safari su macOS stampa una pagina bianca se il documento e' stato
-  // caricato da un URL blob:. Si usa quindi la scrittura diretta, che
-  // stampa correttamente, e si rimedia allo svuotamento della finestra
-  // dopo la stampa con la sorveglianza qui sotto.
+  // caricato da un URL blob:. Si usa quindi la scrittura diretta.
   POPUP_DOCUMENTI.forEach((v,k)=>{ try{ if(k.closed) POPUP_DOCUMENTI.delete(k); }catch(e){ POPUP_DOCUMENTI.delete(k); } });
   POPUP_DOCUMENTI.set(w, html);
   w.document.open();
@@ -5787,29 +5804,20 @@ function scriviPopupHtml(w, html){
   w.document.close();
 }
 
-// Chiamata dal documento subito prima di window.print(): sorveglia la
-// finestra e, se Safari ne scarta il contenuto, lo riscrive.
-function avviaSorveglianzaStampa(w){
+// Chiamata dal documento DOPO la stampa (mai prima: toccare la finestra
+// madre prima di window.print() puo' interferire con la cattura del
+// documento da parte di Safari su macOS). Riscrive il contenuto se
+// Safari ha svuotato la finestra dopo la stampa.
+function ripristinaPopup(w){
   const html = POPUP_DOCUMENTI.get(w);
   if(!html) return;
-  let tentativi = 0;
-  const timer = setInterval(function(){
-    tentativi++;
-    let daRiscrivere = false;
-    try{
-      if(!w || w.closed){ clearInterval(timer); return; }
-      daRiscrivere = !w.document || !w.document.body || w.document.body.children.length === 0;
-    }catch(e){ daRiscrivere = false; }
-    if(daRiscrivere){
-      try{
-        w.document.open();
-        w.document.write(html);
-        w.document.close();
-      }catch(e2){ /* niente da fare */ }
-      clearInterval(timer);
-    }
-    if(tentativi > 30) clearInterval(timer);
-  }, 400);
+  try{
+    if(!w || w.closed) return;
+    if(w.document && w.document.body && w.document.body.children.length > 0) return;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  }catch(e){ /* niente da fare */ }
 }
 
 const PDF_ENGINE_CSS = `
@@ -6036,8 +6044,26 @@ function PDF_ENGINE_JS(firmatariIniziali){
     }
     function stampaEsegna(){
       window.__pdfGenerato = true;
-      try{ if(window.opener && window.opener.avviaSorveglianzaStampa) window.opener.avviaSorveglianzaStampa(window); }catch(e){}
-      window.print();
+      window.addEventListener('afterprint', richiediRipristinoSeVuoto);
+      window.addEventListener('focus', function(){ setTimeout(richiediRipristinoSeVuoto, 200); });
+      // Doppio requestAnimationFrame prima di stampare: garantisce che il
+      // browser abbia completato almeno un ciclo di paint del documento
+      // prima di invocare print(). Alcuni bug di pagina bianca in stampa
+      // sono causati dall'invocare print() prima che il layout sia stato
+      // dipinto, specie su documenti appena scritti via document.write.
+      requestAnimationFrame(function(){
+        requestAnimationFrame(function(){
+          window.print();
+          setTimeout(richiediRipristinoSeVuoto, 800);
+        });
+      });
+    }
+    function richiediRipristinoSeVuoto(){
+      try{
+        if(document.body && document.body.children.length === 0 && window.opener && window.opener.ripristinaPopup){
+          window.opener.ripristinaPopup(window);
+        }
+      }catch(e){}
     }
 
     // ---------- Invio via email ----------
