@@ -917,7 +917,8 @@ async function renderODS(){
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
         ${(currentRole==='dt_impresa'&&o.stato!=='accettata')?`<button class="btn btn-primary btn-sm" onclick="accettaODS('${o.id}')">✅ Accetta ODS</button>`:''}
         ${((currentRole==='rup'||currentRole==='committente'||currentRole==='cse')&&firme.find(f=>f.ruolo==='rup'&&f.stato==='in_attesa'))?`<button class="btn btn-primary btn-sm" onclick="firmaRupODS('${o.id}')">👁️ Presa visione</button>`:''}
-        <button class="btn btn-secondary btn-sm" onclick="stampaODS('${o.id}')">🖨️ Stampa / PDF</button>
+        <button class="btn btn-secondary btn-sm" onclick="${ODS_TIPI[o.tipo_ods]?.strutturato?`apriODSFirmabile('${o.id}')`:`stampaODS('${o.id}')`}">🖨️ Stampa / PDF</button>
+        ${ODS_TIPI[o.tipo_ods]?.strutturato?`<button class="btn btn-secondary btn-sm" title="Visualizza (sola lettura)" onclick="apriODSFirmabile('${o.id}', true)">👁️</button>`:''}
         ${can('ods')?`<button class="btn btn-primary btn-sm" onclick="inviaViaPEC('ods','${o.id}')">📧 Invia via PEC</button>`:''}
         ${can('ods')?`<button class="btn btn-secondary btn-sm" onclick="openModalEditODS('${o.id}')">✏️</button>`:''}
         ${can('ods')?`<button class="btn btn-danger btn-sm" onclick="eliminaODS('${o.id}','${esc(o.numero)}')">🗑️</button>`:''}
@@ -3854,18 +3855,146 @@ async function salvaStatoFase(id){
 async function openModalNuovoODS(){
   const {count}=await sb.from('ods').select('id',{count:'exact',head:true}).eq('cantiere_id',currentCantiere);
   const numStr='ODS-'+String((count||0)+1).padStart(2,'0')+'/'+new Date().getFullYear();
+  const c = getCantiereObj();
+  const team = await getTeamRoster(currentCantiere);
+  const dlNome = (team.dl && team.dl.nome) || (`${currentUser.nome||''} ${currentUser.cognome||''}`.trim());
+  const rupNome = (team.rup && team.rup.nome) || '';
   openModal('Nuovo Ordine di Servizio',`<div class="form-grid">
+    <div class="form-group span-2"><label class="form-label">Modello di ordine di servizio *</label>
+      <select class="form-control" id="ods_tipo" onchange="toggleOdsTipo()">
+        ${Object.keys(ODS_TIPI).map(k=>`<option value="${k}">${esc(ODS_TIPI[k].label)}</option>`).join('')}
+      </select>
+      <div class="form-hint">I due modelli strutturati generano il documento completo su carta intestata; il testo di legge è già impostato e si compilano solo le parti variabili.</div>
+    </div>
     <div class="form-group"><label class="form-label">Numero ODS</label><input class="form-control" id="ods_num" value="${numStr}"></div>
     <div class="form-group"><label class="form-label">Data</label><input class="form-control" type="date" id="ods_data" value="${today()}"></div>
-    <div class="form-group span-2"><label class="form-label">Oggetto *</label><input class="form-control" id="ods_ogg"></div>
-    <div class="form-group span-2"><label class="form-label">Testo dell'ordine *</label><textarea class="form-control" id="ods_corpo" rows="6" placeholder="Si ordina all'impresa di…"></textarea></div></div>
-    <div class="alert alert-info" style="margin-top:12px;font-size:12px">L'ODS sarà emesso con tua firma. Il RUP/Committente riceverà per presa visione, l'impresa per accettazione.</div>
-    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaODS()">Emetti ODS</button></div>`);
+    <div class="form-group span-2"><label class="form-label">Oggetto *</label><input class="form-control" id="ods_ogg" value="${esc(c?.descrizione||'')}"></div>
+  </div>
+
+  <div id="ods_box_generico">
+    <div class="form-group span-2" style="margin-top:10px"><label class="form-label">Testo dell'ordine *</label>
+      <textarea class="form-control" id="ods_corpo" rows="6" placeholder="Si ordina all'impresa di…"></textarea></div>
+  </div>
+
+  <div id="ods_box_strutturato" style="display:none">
+    <div style="font-weight:700;color:var(--primary);font-size:13px;border-top:2px solid var(--primary);padding-top:10px;margin-top:12px">Destinatario</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Impresa</label><input class="form-control" id="ods_imp_nome" value="${esc(c?.impresa||'')}"></div>
+      <div class="form-group"><label class="form-label">Città</label><input class="form-control" id="ods_imp_citta" placeholder="Es. AFRAGOLA (NA)"></div>
+      <div class="form-group"><label class="form-label">Indirizzo</label><input class="form-control" id="ods_imp_ind" placeholder="Es. Via Salvator Rosa 35"></div>
+      <div class="form-group"><label class="form-label">PEC</label><input class="form-control" id="ods_imp_pec" placeholder="impresa@pec.it"></div>
+      <div class="form-group"><label class="form-label">Direttore dei Lavori</label><input class="form-control" id="ods_dl" value="${esc(dlNome)}"></div>
+      <div class="form-group"><label class="form-label">R.U.P.</label><input class="form-control" id="ods_rup" value="${esc(rupNome)}"></div>
+      <div class="form-group"><label class="form-label">Luogo di emissione</label><input class="form-control" id="ods_luogo" value="RECANATI"></div>
+      <div class="form-group"><label class="form-label">Termine esecuzione (giorni)</label><input class="form-control" type="number" id="ods_gg" value="15"></div>
+    </div>
+
+    <!-- MODELLO A -->
+    <div id="ods_extra_senza_aumento" style="display:none">
+      <div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:14px">Riscontri</div>
+      <div class="form-hint">Elenco numerato di quanto rilevato in cantiere che motiva l'ordine.</div>
+      ${odsElencoEditorHtml('ods_riscontri','ods-riscontro',[''],'Es. Durante le operazioni di scavo sono stati rinvenuti due pozzetti non idonei…','Riscontro')}
+      <div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:14px">Disposizioni impartite</div>
+      <div class="form-hint">Cosa deve fare l'Impresa. Ogni riga diventa un punto dell'elenco.</div>
+      ${odsElencoEditorHtml('ods_disposizioni','ods-disp',[''],'Es. provveda a disporre una griglia di raccolta acque continua…','Disposizione')}
+    </div>
+
+    <!-- MODELLO B -->
+    <div id="ods_extra_rimando_variante" style="display:none">
+      <div class="form-grid" style="margin-top:14px">
+        <div class="form-group span-2"><label class="form-label">Area o parte dell'opera interessata</label>
+          <input class="form-control" id="ods_area" placeholder="Es. il solaio di copertura del corpo B"></div>
+        <div class="form-group"><label class="form-label">Voce di elenco da modificare</label>
+          <input class="form-control" id="ods_voce" placeholder="Es. 18.09.006"></div>
+        <div class="form-group"><label class="form-label">Causa</label>
+          <select class="form-control" id="ods_causa">${ODS_CAUSE.map(x=>`<option value="${x}">${x}</option>`).join('')}</select></div>
+        <div class="form-group span-2"><label class="form-label">Motivi della non eseguibilità</label>
+          <textarea class="form-control" id="ods_motivi" rows="3" placeholder="Es. lo stato di conservazione dell'orditura non consente…"></textarea></div>
+        <div class="form-group"><label class="form-label">Verbale nuovi prezzi — data</label>
+          <input class="form-control" type="date" id="ods_vcnp_data"></div>
+        <div class="form-group"><label class="form-label">Nuova tariffa NP n.</label>
+          <input class="form-control" id="ods_vcnp_num" placeholder="Es. 008"></div>
+        <div class="form-group span-2"><label class="form-label">Descrizione della nuova voce</label>
+          <input class="form-control" id="ods_vcnp_desc"></div>
+        <div class="form-group"><label class="form-label">Voce da non eseguire (n.)</label>
+          <input class="form-control" id="ods_vecchia_voce" placeholder="se diversa da quella sopra"></div>
+        <div class="form-group"><label class="form-label">Titolo nuova lavorazione</label>
+          <input class="form-control" id="ods_nuova_lav"></div>
+        <div class="form-group"><label class="form-label">Importo unitario (€)</label>
+          <input class="form-control" type="number" step="0.01" id="ods_imp_unit"></div>
+        <div class="form-group"><label class="form-label">Importo in lettere</label>
+          <input class="form-control" id="ods_imp_lettere" placeholder="lascia vuoto per generarlo"></div>
+      </div>
+    </div>
+
+    <div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:14px">Conseguenze economiche</div>
+    <div class="form-hint">Spunta <strong>NP</strong> sulle voci oggetto di verbale di concordamento nuovi prezzi: verranno contrassegnate con (*) nel documento.</div>
+    <div style="font-size:12px;font-weight:700;margin:8px 0 4px">Importi in aumento</div>
+    ${odsVociEditorHtml('ods_aum',[{}])}
+    <div style="font-size:12px;font-weight:700;margin:12px 0 4px">Importi in diminuzione</div>
+    ${odsVociEditorHtml('ods_dim',[{}])}
+    <div id="ods_saldo" style="font-size:12px;font-weight:700;margin-top:8px"></div>
+  </div>
+
+  <div class="alert alert-info" style="margin-top:12px;font-size:12px">L'ODS sarà emesso con tua firma. Il RUP/Committente riceverà per presa visione, l'impresa per accettazione.</div>
+  <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaODS()">Emetti ODS</button></div>`);
+  toggleOdsTipo();
+}
+
+function toggleOdsTipo(){
+  const tipo = document.getElementById('ods_tipo').value;
+  const cfg = ODS_TIPI[tipo] || ODS_TIPI.generico;
+  const gen = document.getElementById('ods_box_generico');
+  const str = document.getElementById('ods_box_strutturato');
+  if(gen) gen.style.display = cfg.strutturato ? 'none' : 'block';
+  if(str) str.style.display = cfg.strutturato ? 'block' : 'none';
+  ['senza_aumento','rimando_variante'].forEach(t=>{
+    const el = document.getElementById('ods_extra_'+t);
+    if(el) el.style.display = (tipo===t) ? 'block' : 'none';
+  });
+}
+
+function raccogliDatiODS(){
+  const tipo = document.getElementById('ods_tipo').value;
+  if(!ODS_TIPI[tipo]?.strutturato) return {tipo, dx:null};
+  const g = id => { const el=document.getElementById(id); return el ? el.value.trim() : ''; };
+  const dx = {
+    impresa_nome: g('ods_imp_nome')||null,
+    impresa_citta: g('ods_imp_citta')||null,
+    impresa_indirizzo: g('ods_imp_ind')||null,
+    impresa_pec: g('ods_imp_pec')||null,
+    redattore: g('ods_dl')||null,
+    rup_nome: g('ods_rup')||null,
+    luogo: g('ods_luogo')||null,
+    giorni_termine: g('ods_gg')||null,
+    voci_aumento: odsRaccogliVoci('ods_aum'),
+    voci_diminuzione: odsRaccogliVoci('ods_dim')
+  };
+  if(tipo==='senza_aumento'){
+    dx.riscontri = odsRaccogliElenco('ods_riscontri');
+    dx.disposizioni = odsRaccogliElenco('ods_disposizioni');
+  } else {
+    dx.area_opera = g('ods_area')||null;
+    dx.voce_elenco = g('ods_voce')||null;
+    dx.causa = g('ods_causa')||null;
+    dx.motivi = g('ods_motivi')||null;
+    dx.vcnp_data = g('ods_vcnp_data')||null;
+    dx.vcnp_numero = g('ods_vcnp_num')||null;
+    dx.vcnp_descrizione = g('ods_vcnp_desc')||null;
+    dx.vecchia_voce = g('ods_vecchia_voce')||null;
+    dx.nuova_lavorazione = g('ods_nuova_lav')||null;
+    dx.importo_unitario = g('ods_imp_unit')||null;
+    dx.importo_lettere = g('ods_imp_lettere')||null;
+  }
+  return {tipo, dx};
 }
 async function salvaODS(){
   const oggetto=document.getElementById('ods_ogg').value.trim();
-  const corpo=document.getElementById('ods_corpo').value.trim();
-  if(!oggetto||!corpo){alert('Oggetto e testo obbligatori');return;}
+  const tipoSel=document.getElementById('ods_tipo')?.value||'generico';
+  const strutturato=!!ODS_TIPI[tipoSel]?.strutturato;
+  const corpo=document.getElementById('ods_corpo')?.value.trim()||'';
+  if(!oggetto){alert('Oggetto obbligatorio');return;}
+  if(!strutturato && !corpo){alert('Testo dell\'ordine obbligatorio');return;}
   // costruisci firme dal team
   const {data:teamOds}=await sb.from('cantiere_utenti').select('ruolo,utente_id').eq('cantiere_id',currentCantiere);
   const idsOds=(teamOds||[]).map(t=>t.utente_id);
@@ -3878,9 +4007,11 @@ async function salvaODS(){
     {ruolo:'rup',nome:nameOf('rup'),data:null,stato:'in_attesa'},
     {ruolo:'dt_impresa',nome:nameOf('dt_impresa'),data:null,stato:'in_attesa'}
   ];
+  const {tipo:tipoOds, dx:datiOds} = raccogliDatiODS();
   const {error}=await sb.from('ods').insert({
     cantiere_id:currentCantiere,numero:document.getElementById('ods_num').value,
-    data:document.getElementById('ods_data').value,oggetto,corpo,stato:'emessa',firme,created_by:currentUser.id
+    data:document.getElementById('ods_data').value,oggetto,corpo,stato:'emessa',firme,
+    tipo_ods:tipoOds, dati_ods:datiOds, created_by:currentUser.id
   });
   if(error){alert(error.message);return;}
   // Annotazione automatica sul giornale
@@ -5578,6 +5709,9 @@ body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12.5px;co
 .corpo li{margin-bottom:5px;line-height:1.55}
 .corpo strong{color:#1F3864}
 .corpo .center{text-align:center}
+.ods-voci{width:100%;border-collapse:collapse;margin:2px 0 10px;font-size:10px}
+.ods-voci td{border-bottom:1px solid #E9ECEF;padding:3px 5px;vertical-align:top}
+.ods-voci tr.tot td{border-top:1px solid #1F3864;border-bottom:none;padding-top:5px}
 .campioni-table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:10px}
 .campioni-table th{border:1px solid #ADB5BD;background:#1F3864;color:#fff;padding:5px 6px;text-align:left;font-weight:700;vertical-align:middle;line-height:1.2}
 .campioni-table td{border:1px solid #ADB5BD;padding:6px;vertical-align:top;min-height:22px}
@@ -6371,6 +6505,294 @@ function prelievoIntro(dp, redattore){
   return s;
 }
 
+
+// ============================================================
+// ORDINI DI SERVIZIO STRUTTURATI
+// Due modelli previsti:
+//  A) senza aumento dell'importo contrattuale
+//  B) con rimando a successiva perizia di variante
+// ============================================================
+const ODS_TIPI = {
+  generico: {
+    label: 'Ordine di servizio generico (testo libero)',
+    titolo: 'ORDINE DI SERVIZIO',
+    strutturato: false
+  },
+  senza_aumento: {
+    label: 'Senza aumento dell\'importo contrattuale',
+    titolo: 'ORDINE DI SERVIZIO',
+    normativa: 'd.lgs. 36/2023, All. II.14 &mdash; art. 122, commi 3 e 4',
+    strutturato: true
+  },
+  rimando_variante: {
+    label: 'Con rimando a successiva perizia di variante',
+    titolo: 'ORDINE DI SERVIZIO',
+    normativa: 'd.lgs. 36/2023, artt. 1 e 120 &mdash; art. 122, commi 3 e 4',
+    strutturato: true
+  }
+};
+const ODS_CAUSE = [
+  'imprevisto tecnico',
+  'sopravvenuta impossibilit&agrave; oggettiva',
+  'miglioramento qualitativo non sostanziale'
+];
+
+// ---- righe elenco semplice (riscontri / disposizioni) ----
+function odsRigaTestoHtml(cls, val, ph){
+  return `<div class="${cls}" style="display:flex;gap:6px;margin-bottom:6px">
+    <textarea class="form-control ods-txt" rows="2" style="flex:1;font-size:12px" placeholder="${ph}">${esc(val||'')}</textarea>
+    <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="odsRimuoviRiga(this)">&#10005;</button>
+  </div>`;
+}
+function odsElencoEditorHtml(boxId, cls, righe, ph, etichettaBtn){
+  righe = (righe && righe.length) ? righe : [''];
+  return `<div id="${boxId}">${righe.map(r=>odsRigaTestoHtml(cls, r, ph)).join('')}</div>
+    <button type="button" class="btn btn-secondary btn-sm" style="margin-top:4px" onclick="odsAggiungiRiga('${boxId}','${cls}','${ph.replace(/'/g,"\\'")}')">+ ${etichettaBtn}</button>`;
+}
+function odsAggiungiRiga(boxId, cls, ph){
+  const box = document.getElementById(boxId); if(!box) return;
+  const d = document.createElement('div');
+  d.innerHTML = odsRigaTestoHtml(cls, '', ph);
+  box.appendChild(d.firstChild);
+}
+function odsRimuoviRiga(btn){
+  const r = btn.parentElement;
+  const box = r.parentElement;
+  if(box.children.length<=1){ r.querySelector('textarea').value=''; return; }
+  r.remove();
+}
+function odsRaccogliElenco(boxId){
+  const out = [];
+  document.querySelectorAll('#'+boxId+' .ods-txt').forEach(t=>{
+    const v = t.value.trim(); if(v) out.push(v);
+  });
+  return out;
+}
+
+// ---- voci economiche (aumento / diminuzione) ----
+function odsVoceRigaHtml(v){
+  v = v || {};
+  return `<div class="ods-voce" style="display:flex;gap:6px;margin-bottom:5px;align-items:center">
+    <input class="form-control ov-cod" style="width:140px;font-size:12px" placeholder="Codice" value="${esc(v.codice||'')}">
+    <input class="form-control ov-desc" style="flex:1;font-size:12px" placeholder="Descrizione della voce" value="${esc(v.descrizione||'')}">
+    <input class="form-control ov-imp" type="number" step="0.01" style="width:110px;font-size:12px" placeholder="€" value="${v.importo!=null?v.importo:''}" oninput="odsAggiornaTotali()">
+    <label style="font-size:10px;white-space:nowrap;display:flex;align-items:center;gap:3px" title="Voce oggetto di verbale di concordamento nuovi prezzi">
+      <input type="checkbox" class="ov-np" ${v.concordamento?'checked':''}> NP
+    </label>
+    <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="odsRimuoviVoce(this)">&#10005;</button>
+  </div>`;
+}
+function odsVociEditorHtml(boxId, righe){
+  righe = (righe && righe.length) ? righe : [{}];
+  return `<div id="${boxId}">${righe.map(odsVoceRigaHtml).join('')}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="odsAggiungiVoce('${boxId}')">+ Voce</button>
+      <span id="${boxId}_tot" style="font-size:12px;font-weight:700;color:var(--primary)"></span>
+    </div>`;
+}
+function odsAggiungiVoce(boxId){
+  const box = document.getElementById(boxId); if(!box) return;
+  const d = document.createElement('div'); d.innerHTML = odsVoceRigaHtml({});
+  box.appendChild(d.firstChild);
+  odsAggiornaTotali();
+}
+function odsRimuoviVoce(btn){
+  const r = btn.closest('.ods-voce'); const box = r.parentElement;
+  if(box.children.length<=1){ box.querySelectorAll('input').forEach(i=>{ i.value=''; i.checked=false; }); }
+  else r.remove();
+  odsAggiornaTotali();
+}
+function odsRaccogliVoci(boxId){
+  const out = [];
+  document.querySelectorAll('#'+boxId+' .ods-voce').forEach(r=>{
+    const codice = r.querySelector('.ov-cod').value.trim();
+    const descrizione = r.querySelector('.ov-desc').value.trim();
+    const impRaw = r.querySelector('.ov-imp').value;
+    const importo = impRaw!=='' ? parseFloat(impRaw) : null;
+    const concordamento = r.querySelector('.ov-np').checked;
+    if(codice||descrizione||importo!=null) out.push({codice, descrizione, importo, concordamento});
+  });
+  return out;
+}
+function odsSommaVoci(voci){ return (voci||[]).reduce((a,v)=>a+(parseFloat(v.importo)||0),0); }
+function odsAggiornaTotali(){
+  ['ods_aum','ods_dim'].forEach(id=>{
+    const box = document.getElementById(id); if(!box) return;
+    const tot = odsSommaVoci(odsRaccogliVoci(id));
+    const el = document.getElementById(id+'_tot');
+    if(el) el.textContent = tot ? 'Totale: '+fmtEur(tot) : '';
+  });
+  const saldo = document.getElementById('ods_saldo');
+  if(saldo){
+    const a = odsSommaVoci(odsRaccogliVoci('ods_aum'));
+    const d = odsSommaVoci(odsRaccogliVoci('ods_dim'));
+    if(!a && !d){ saldo.textContent=''; return; }
+    const diff = a - d;
+    saldo.textContent = diff<=0
+      ? 'Saldo: '+fmtEur(diff)+' — l\u2019importo contrattuale non aumenta'
+      : 'Saldo: +'+fmtEur(diff)+' — maggiore spesa da coprire';
+    saldo.style.color = diff<=0 ? 'var(--green)' : '#856404';
+  }
+}
+
+// ---- blocco destinatario, comune ai due modelli ----
+function odsDestinatarioHtml(dx){
+  const righe = [dx.impresa_nome, dx.impresa_citta, dx.impresa_indirizzo, dx.impresa_pec].filter(Boolean);
+  if(!righe.length) return '';
+  let h = '<div style="margin-bottom:14px;font-size:12px">';
+  h += '<div><strong>Spett.le Impresa '+esc(dx.impresa_nome||'')+'</strong></div>';
+  if(dx.impresa_citta) h += '<div>'+esc(dx.impresa_citta)+'</div>';
+  if(dx.impresa_indirizzo) h += '<div>'+esc(dx.impresa_indirizzo)+'</div>';
+  if(dx.impresa_pec) h += '<div>'+esc(dx.impresa_pec)+'</div>';
+  h += '</div>';
+  return h;
+}
+
+// ---- tabella delle voci economiche nel documento ----
+function odsTabellaVoci(titolo, voci){
+  if(!voci || !voci.length) return '';
+  let h = '<p style="margin:8px 0 4px"><strong>'+titolo+':</strong></p>';
+  h += '<table class="ods-voci"><tbody>';
+  voci.forEach(v=>{
+    h += '<tr><td style="width:120px">'+esc(v.codice||'')+'</td>'
+      +  '<td>'+esc(v.descrizione||'')+(v.concordamento?' <sup>(*)</sup>':'')+'</td>'
+      +  '<td style="width:110px;text-align:right">'+(v.importo!=null?fmtEur(v.importo):'')+'</td></tr>';
+  });
+  h += '<tr class="tot"><td></td><td style="text-align:right"><strong>Totale</strong></td>'
+    +  '<td style="text-align:right"><strong>'+fmtEur(odsSommaVoci(voci))+'</strong></td></tr>';
+  h += '</tbody></table>';
+  return h;
+}
+
+// ---- clausola di inadempienza, comune ----
+function odsClausolaInadempienza(){
+  return '<p>Si intende che, nel caso di inadempienza a quanto prescritto con il presente, ai sensi del capitolato speciale d\'appalto e del contratto si procederà alla risoluzione del contratto ai sensi dell\'articolo 122, commi 3 e 4, del d.lgs. 36/2023 per grave inadempimento alle obbligazioni contrattuali.</p>';
+}
+
+// ---- blocco firme in calce (documento firmato digitalmente) ----
+function odsFirmeDigitaliHtml(dx){
+  const disclaimer = '<div style="font-size:8.5px;line-height:1.35;color:#6C757D;margin-top:4px">DOCUMENTO INFORMATICO FIRMATO DIGITALMENTE AI SENSI DEL TESTO UNICO D.P.R. 28 DICEMBRE 2000 N. 445, DEL D.LGS. 7 MARZO 2005 N. 82 E NORME COLLEGATE, IL QUALE SOSTITUISCE IL TESTO CARTACEO E LA FIRMA AUTOGRAFA.</div>';
+  let h = '<table style="width:100%;border-collapse:collapse;margin-top:18px"><tbody><tr>';
+  h += '<td style="width:50%;vertical-align:top;padding-right:12px">'
+    +  '<div style="font-size:11px;font-weight:700">Il Direttore dei Lavori</div>'
+    +  '<div style="margin:16px 0 2px">______________________</div>'
+    +  '<div style="font-size:11px;text-transform:uppercase">'+esc(dx.redattore||'')+'</div>'
+    +  disclaimer + '</td>';
+  h += '<td style="width:50%;vertical-align:top;padding-left:12px">'
+    +  '<div style="font-size:11px;font-weight:700">Visto il RUP</div>'
+    +  '<div style="margin:16px 0 2px">______________________</div>'
+    +  '<div style="font-size:11px;text-transform:uppercase">'+esc(dx.rup_nome||'')+'</div>'
+    +  disclaimer + '</td>';
+  h += '</tr></tbody></table>';
+  return h;
+}
+
+// ============================================================
+// MODELLO A — senza aumento dell'importo contrattuale
+// ============================================================
+function bodyOdsSenzaAumento(c, o, dx){
+  let html = odsDestinatarioHtml(dx);
+  html += '<p>Il sottoscritto <strong>'+esc(dx.redattore||'')+'</strong> nella sua qualità di Direttore dei Lavori per le opere in premessa,</p>';
+
+  const riscontri = dx.riscontri||[];
+  html += '<p style="margin-bottom:2px">&ndash; tenuto conto dei seguenti riscontri:</p>';
+  if(riscontri.length){
+    html += '<ol style="margin:0 0 8px 18px;padding:0">';
+    riscontri.forEach(r=>{ html += '<li style="margin-bottom:4px">'+esc(r)+'</li>'; });
+    html += '</ol>';
+  }
+  html += '<p>&ndash; vista la vigente normativa in materia di appalti pubblici ed in particolare gli strumenti per l\'esercizio dell\'attività di direzione e controllo del Direttore dei Lavori stabiliti dalla legge (d.lgs. 36/2023, All. II.14);</p>';
+  html += '<p>&ndash; considerato che le modifiche proposte rientrano tra quelle di discrezionalità della direzione lavori per correggere aspetti funzionali e di dettaglio senza aumento dell\'importo contrattuale.</p>';
+
+  html += '<p class="center" style="font-weight:800;letter-spacing:.28em;margin:14px 0 8px">D I S P O N E</p>';
+  html += '<p>che l\'Impresa esecutrice dei lavori di che trattasi:</p>';
+  const disp = dx.disposizioni||[];
+  if(disp.length){
+    html += '<ul style="margin:0 0 8px 18px;padding:0">';
+    disp.forEach(d=>{ html += '<li style="margin-bottom:4px">'+esc(d)+'</li>'; });
+    html += '</ul>';
+  }
+  const gg = dx.giorni_termine!=null && dx.giorni_termine!=='' ? dx.giorni_termine : 15;
+  html += '<p>&ndash; provveda ad eseguire le modifiche meglio indicate negli elaborati grafici di cantiere allegati alla presente entro e non oltre giorni <strong>'+esc(gg)+'</strong> dal ricevimento del presente Ordine di Servizio.</p>';
+
+  html += odsClausolaInadempienza();
+
+  const aum = dx.voci_aumento||[], dim = dx.voci_diminuzione||[];
+  if(aum.length || dim.length){
+    html += '<p style="margin-top:10px">Le conseguenze economiche sono le seguenti:</p>';
+    html += odsTabellaVoci('Importi in aumento', aum);
+    html += odsTabellaVoci('Importi in diminuzione', dim);
+    const diff = odsSommaVoci(aum) - odsSommaVoci(dim);
+    html += diff<=0
+      ? '<p><strong>Pertanto l\'importo totale dell\'appalto non aumenta e non vi sono variazioni al contratto sottoscritto.</strong></p>'
+      : '<p><strong>Ne deriva una maggiore spesa di '+fmtEur(diff)+'.</strong></p>';
+    if(aum.some(v=>v.concordamento) || dim.some(v=>v.concordamento)){
+      html += '<p style="font-size:10px">(*) Voci oggetto di verbale di concordamento nuovi prezzi, allegato.</p>';
+    }
+  }
+  html += odsFirmeDigitaliHtml(dx);
+  return html;
+}
+
+// ============================================================
+// MODELLO B — con rimando a successiva perizia di variante
+// ============================================================
+function bodyOdsRimandoVariante(c, o, dx){
+  let html = odsDestinatarioHtml(dx);
+  html += '<p>Il sottoscritto <strong>'+esc(dx.redattore||'')+'</strong> nella sua qualità di Direttore dei Lavori per le opere in premessa,</p>';
+
+  html += '<p>&ndash; VISTO il contratto sopra citato;</p>';
+  html += '<p>&ndash; CONSIDERATO che, in fase di esecuzione delle lavorazioni relative a '+esc(dx.area_opera||'____________')
+       +  ', è emersa la necessità di modificare la lavorazione prevista alla voce di elenco n. '+esc(dx.voce_elenco||'____')
+       +  ' a causa di '+esc(dx.causa||'____________')+';</p>';
+  if(dx.motivi){
+    html += '<p>&ndash; PRESO ATTO che la lavorazione originaria non risulta più eseguibile secondo le previsioni progettuali per i seguenti motivi: '+esc(dx.motivi)+';</p>';
+  }
+  if(dx.vcnp_data || dx.vcnp_numero || dx.vcnp_descrizione){
+    html += '<p>&ndash; VISTO il Verbale di Concordamento Nuovi Prezzi sottoscritto in data '+(dx.vcnp_data?fmt(dx.vcnp_data):'________')
+         +  ' tra il Direttore dei Lavori e l\'Impresa, con il quale è stata definita la nuova tariffa NP '+esc(dx.vcnp_numero||'____')
+         +  (dx.vcnp_descrizione?' relativa alla lavorazione di '+esc(dx.vcnp_descrizione):'')+';</p>';
+  }
+  html += '<p>&ndash; ACCERTATO che la spesa derivante dall\'applicazione del nuovo prezzo trova capienza nelle "Somme a Disposizione" della Stazione Appaltante (voce Imprevisti/Accantonamenti) e che, pertanto, non comporta un aumento dell\'importo contrattuale complessivo;</p>';
+  html += '<p>&ndash; CONSIDERATO che tale modifica è indispensabile per la prosecuzione dei lavori, per garantire la perfetta regola d\'arte dell\'opera e che l\'esecuzione non può fermarsi in attesa della redazione di una perizia di variante, in conformità con il principio del risultato richiamato all\'articolo 1 del d.lgs. 36/2023;</p>';
+
+  html += '<p class="center" style="font-weight:800;letter-spacing:.14em;margin:14px 0 8px">ORDINA ALL\'IMPRESA</p>';
+  html += '<ul style="margin:0 0 8px 18px;padding:0">';
+  html += '<li style="margin-bottom:4px">di non dare ulteriore corso alla lavorazione di cui alla voce n. '+esc(dx.vecchia_voce||dx.voce_elenco||'____')+' del computo metrico estimativo;</li>';
+  html += '<li style="margin-bottom:4px">di procedere senza indugio all\'esecuzione della nuova lavorazione denominata &laquo;'+esc(dx.nuova_lavorazione||'____________')+'&raquo;, secondo le direttive fornite e i disegni tecnici allegati.</li>';
+  html += '</ul>';
+
+  html += '<p class="center" style="font-weight:800;letter-spacing:.28em;margin:14px 0 8px">D I S P O N E</p>';
+  html += '<ul style="margin:0 0 8px 18px;padding:0">';
+  if(dx.importo_unitario!=null && dx.importo_unitario!==''){
+    const lettere = dx.importo_lettere || (typeof numToWordsIT==='function' ? numToWordsIT(Math.floor(parseFloat(dx.importo_unitario))) : '');
+    html += '<li style="margin-bottom:4px">che la predetta lavorazione venga contabilizzata all\'importo unitario di '
+         +  fmtEur(parseFloat(dx.importo_unitario))+(lettere?' ('+esc(lettere)+'/00)':'')
+         +  ', come da Verbale di Concordamento allegato;</li>';
+  }
+  const gg = dx.giorni_termine!=null && dx.giorni_termine!=='' ? dx.giorni_termine : 15;
+  html += '<li style="margin-bottom:4px">che l\'Impresa esecutrice provveda ad eseguire le modifiche meglio indicate negli elaborati grafici di cantiere allegati alla presente entro e non oltre giorni <strong>'+esc(gg)+'</strong> dal ricevimento del presente Ordine di Servizio.</li>';
+  html += '</ul>';
+
+  html += '<p>Si dà atto che la presente modifica verrà formalizzata con la prima perizia di variante utile o in sede di assestamento finale, restando inteso che il presente ordine non costituisce variante sostanziale ai sensi dell\'art. 120 del d.lgs. 36/2023.</p>';
+  html += odsClausolaInadempienza();
+
+  const aum = dx.voci_aumento||[], dim = dx.voci_diminuzione||[];
+  if(aum.length || dim.length){
+    html += '<p style="margin-top:10px">Le conseguenze economiche derivanti dall\'osservanza del presente ordine di servizio sono le seguenti:</p>';
+    html += odsTabellaVoci('Importi in aumento', aum);
+    html += odsTabellaVoci('Importi in diminuzione', dim);
+    if(aum.some(v=>v.concordamento) || dim.some(v=>v.concordamento)){
+      html += '<p style="font-size:10px">(*) Voci oggetto di verbale di concordamento nuovi prezzi, allegato.</p>';
+    }
+  }
+  html += '<p>Le maggiori somme derivanti saranno immediatamente coperte finanziariamente dalle risorse a disposizione della Stazione Appaltante, come previsto nel quadro tecnico economico, salvo diversa disposizione del R.U.P.</p>';
+
+  html += odsFirmeDigitaliHtml(dx);
+  return html;
+}
+
+
 const PRELIEVO_TIPI = {
   bulloni: {
     label: 'Prelievo di bulloni',
@@ -6989,6 +7411,52 @@ async function eliminaPrelievo(id){
 }
 
 // ---- generazione PDF firmabile ----
+// ---- generazione documento per gli OdS strutturati ----
+async function apriODSFirmabile(id, solaLettura){
+  const w = window.open('about:blank','_blank');
+  if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup.'); return; }
+  try{
+    const {data:o, error} = await sb.from('ods').select('*').eq('id',id).single();
+    if(error||!o){ w.close(); alert('Ordine di servizio non trovato'); return; }
+    const cfg = ODS_TIPI[o.tipo_ods] || ODS_TIPI.generico;
+    if(!cfg.strutturato){ w.close(); stampaODS(id); return; }
+    const c = getCantiereObj(o.cantiere_id);
+    const dx = o.dati_ods || {};
+
+    const corpoHtml = (o.tipo_ods==='rimando_variante')
+      ? bodyOdsRimandoVariante(c, o, dx)
+      : bodyOdsSenzaAumento(c, o, dx);
+
+    const metaRows = [
+      ['OGGETTO', esc(o.oggetto||c?.descrizione||'')],
+      ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+      ['R.U.P.', esc(dx.rup_nome||'')],
+      rigaContratto(c)
+    ].concat(await caricaRigheVarianti(o.cantiere_id));
+
+    apriDocumentoFirmabile({
+      titolo: cfg.titolo + (o.numero ? ' n. '+o.numero : ''),
+      normativa: cfg.normativa||'',
+      comune: dx.luogo||'', provincia: '',
+      metaRows: metaRows,
+      corpoHtml: corpoHtml,
+      luogo: dx.luogo || c?.nome || '',
+      dataDoc: o.data,
+      fileName: nomeFileVerbale(c, o.data, 'ODS', o.numero),
+      firmatari: (solaLettura && o.firmatari && o.firmatari.length) ? o.firmatari : [],
+      solaLettura: !!solaLettura,
+      dataGenerazione: o.pdf_generato_at||null,
+      recordTable: 'ods',
+      recordId: o.id,
+      existingWindow: w
+    });
+  }catch(e){
+    console.error('apriODSFirmabile', e);
+    try{ w.close(); }catch(e2){}
+    alert('Errore nella generazione del documento: '+(e?.message||e));
+  }
+}
+
 async function apriPrelievoFirmabile(id, solaLettura){
   const w = window.open('about:blank','_blank'); // apri subito per evitare popup-block Safari
   try{
