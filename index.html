@@ -5530,7 +5530,9 @@ function titleBlockHtml(comune, provincia, titolo, normativa){
   if(comune) html += '<h1>COMUNE DI '+esc(comune).toUpperCase()+'</h1>';
   if(provincia) html += '<div style="font-size:11px;color:#6C757D;letter-spacing:.04em">PROVINCIA DI '+esc(provincia).toUpperCase()+'</div>';
   html += '<h2>'+esc(titolo).toUpperCase()+'</h2>';
-  if(normativa) html += '<div class="norma">'+esc(normativa)+'</div>';
+  // la normativa proviene dai modelli interni e contiene entita' HTML
+  // volute (es. &mdash;): non va riscappata, altrimenti si vedrebbero letterali
+  if(normativa) html += '<div class="norma">'+normativa+'</div>';
   html += '</div>';
   return html;
 }
@@ -5612,6 +5614,7 @@ function apriDocumentoFirmabile(opts){
   html += '<tbody><tr><td>';
   html += titleHtml + metaHtml + '<div class="corpo">'+opts.corpoHtml+'</div>' + luogoDataHtml;
   html += '<div id="firmeContainer" class="firme-wrap"></div>';
+  if(opts.notaFinale) html += '<div class="nota-finale">'+opts.notaFinale+'</div>';
   if(opts.allegatiHtml) html += opts.allegatiHtml;
   html += '</td></tr></tbody></table></div>';
   html += '<script>'+PDF_ENGINE_JS(firmatariIniziali)+'<\/script>';
@@ -5788,6 +5791,7 @@ body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12.5px;co
 .corpo li{margin-bottom:5px;line-height:1.55}
 .corpo strong{color:#1F3864}
 .corpo .center{text-align:center}
+.nota-finale{margin-top:10px;font-size:8.5px;line-height:1.35;color:#6C757D}
 .ods-voci{width:100%;border-collapse:collapse;margin:2px 0 10px;font-size:10px}
 .ods-voci td{border-bottom:1px solid #E9ECEF;padding:3px 5px;vertical-align:top}
 .ods-voci tr.tot td{border-top:1px solid #1F3864;border-bottom:none;padding-top:5px}
@@ -6748,8 +6752,13 @@ function odsClausolaInadempienza(){
   return '<p>Si intende che, nel caso di inadempienza a quanto prescritto con il presente, ai sensi del capitolato speciale d\'appalto e del contratto si procederà alla risoluzione del contratto ai sensi dell\'articolo 122, commi 3 e 4, del d.lgs. 36/2023 per grave inadempimento alle obbligazioni contrattuali.</p>';
 }
 
-// ---- blocco firme in calce (documento firmato digitalmente) ----
-function odsFirmeDigitaliHtml(dx){
+// ---- dicitura di firma digitale, stampata sotto i blocchi firma ----
+function odsDicituraFirmaDigitale(){
+  return 'DOCUMENTO INFORMATICO FIRMATO DIGITALMENTE AI SENSI DEL TESTO UNICO D.P.R. 28 DICEMBRE 2000 N. 445, '
+    + 'DEL D.LGS. 7 MARZO 2005 N. 82 E NORME COLLEGATE, IL QUALE SOSTITUISCE IL TESTO CARTACEO E LA FIRMA AUTOGRAFA.';
+}
+
+function odsFirmeDigitaliHtmlNonUsata(dx){
   const disclaimer = '<div style="font-size:8.5px;line-height:1.35;color:#6C757D;margin-top:4px">DOCUMENTO INFORMATICO FIRMATO DIGITALMENTE AI SENSI DEL TESTO UNICO D.P.R. 28 DICEMBRE 2000 N. 445, DEL D.LGS. 7 MARZO 2005 N. 82 E NORME COLLEGATE, IL QUALE SOSTITUISCE IL TESTO CARTACEO E LA FIRMA AUTOGRAFA.</div>';
   let h = '<table style="width:100%;border-collapse:collapse;margin-top:18px"><tbody><tr>';
   h += '<td style="width:50%;vertical-align:top;padding-right:12px">'
@@ -6809,7 +6818,6 @@ function bodyOdsSenzaAumento(c, o, dx){
       html += '<p style="font-size:10px">(*) Voci oggetto di verbale di concordamento nuovi prezzi, allegato.</p>';
     }
   }
-  html += odsFirmeDigitaliHtml(dx);
   return html;
 }
 
@@ -6867,7 +6875,6 @@ function bodyOdsRimandoVariante(c, o, dx){
   }
   html += '<p>Le maggiori somme derivanti saranno immediatamente coperte finanziariamente dalle risorse a disposizione della Stazione Appaltante, come previsto nel quadro tecnico economico, salvo diversa disposizione del R.U.P.</p>';
 
-  html += odsFirmeDigitaliHtml(dx);
   return html;
 }
 
@@ -7522,7 +7529,11 @@ async function apriODSFirmabile(id, solaLettura){
       luogo: dx.luogo || c?.nome || '',
       dataDoc: o.data,
       fileName: nomeFileVerbale(c, o.data, 'ODS', o.numero),
-      firmatari: (solaLettura && o.firmatari && o.firmatari.length) ? o.firmatari : [],
+      firmatari: (solaLettura && o.firmatari && o.firmatari.length) ? o.firmatari : [
+        {nome: dx.redattore||'', ruolo:'Il Direttore dei Lavori'},
+        {nome: dx.rup_nome||'',  ruolo:'Visto il RUP'}
+      ],
+      notaFinale: odsDicituraFirmaDigitale(),
       solaLettura: !!solaLettura,
       dataGenerazione: o.pdf_generato_at||null,
       recordTable: 'ods',
