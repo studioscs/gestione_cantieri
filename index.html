@@ -245,7 +245,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.07.24c';
+const APP_VERSIONE = '2026.07.24d';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -508,9 +508,13 @@ async function renderCantieri(){
 
   for(const r of myCantieri){
     const c = r.cantiere;
-    const {data:fasi} = await sb.from('fasi').select('stato').eq('cantiere_id',c.id).is('parent_id',null);
+    const [{data:fasi}, {data:varianti}] = await Promise.all([
+      sb.from('fasi').select('stato').eq('cantiere_id',c.id).is('parent_id',null),
+      sb.from('varianti').select('*').eq('cantiere_id',c.id).order('numero')
+    ]);
     const tot=(fasi||[]).length, ver=(fasi||[]).filter(f=>f.stato==='verificata_dl').length;
     const perc = tot ? Math.round(ver/tot*100) : 0;
+    const {lista:variantiLista, vigente:variantiVigente} = variantiRiepilogoDati(varianti);
     html += `<div class="card"><div class="card-header"><div><div class="card-title">${esc(c.nome)}</div>
       <div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(c.stazione_appaltante||'')} • ${esc(c.impresa||'')}</div></div>
       <div class="btn-group">
@@ -529,6 +533,22 @@ async function renderCantieri(){
         <div><div class="form-label">Mio ruolo</div>${roleBadge(r.ruolo)}</div>
         ${c.estremi_contratto?`<div class="form-group span-2" style="grid-column:span 3"><div class="form-label">Estremi contratto</div><div style="font-size:12px">${esc(c.estremi_contratto)}</div></div>`:''}
       </div>
+      ${variantiLista.length?`<div style="margin-bottom:16px">
+        <div class="form-label" style="margin-bottom:6px">Varianti e atti di sottomissione (${variantiLista.length})</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          ${variantiLista.map(v=>{
+            const tipoL = v.tipo_atto==='atto_aggiuntivo' ? 'Atto aggiuntivo' : 'Atto di sottomissione';
+            return `<div style="font-size:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:baseline">
+              <strong>V${esc(v.numero)}</strong>
+              <span style="color:var(--muted)">${fmt(v.data)}</span>
+              <span>${tipoL}</span>
+              ${v.giorni_concessi?`<span style="color:var(--muted)">+${esc(v.giorni_concessi)} gg</span>`:''}
+              ${v.importo_contratto_nuovo!=null?`<span style="font-weight:600">${fmtEur(v.importo_contratto_nuovo)}</span>`:''}
+            </div>`;
+          }).join('')}
+        </div>
+        ${variantiVigente?`<div style="font-size:12px;font-weight:700;color:var(--primary);margin-top:4px">Importo vigente: ${fmtEur(variantiVigente.importo_contratto_nuovo)}${variantiVigente.oneri_sicurezza_nuovo!=null?' (di cui '+fmtEur(variantiVigente.oneri_sicurezza_nuovo)+' oneri sicurezza)':''}</div>`:''}
+      </div>`:''}
       <div><div class="form-label" style="margin-bottom:6px">Avanzamento macrofasi (${ver}/${tot} verificate DL)</div>
       <div class="fase-progress"><div class="fase-progress-fill" style="width:${perc}%"></div></div>
       <div style="font-size:11px;color:var(--muted);margin-top:3px">${perc}% completato</div></div></div>`;
@@ -5051,6 +5071,7 @@ async function generaReportSA(cantiereId){
   const profMap={};(profili||[]).forEach(p=>{profMap[p.id]=p;});
   const team=(teamRaw||[]).map(t=>({...t,profilo:profMap[t.utente_id]||{}}));
   const tipoDittaLabel={appaltatrice:'Appaltatrice',subappaltatrice:'Subappaltatrice',subaffidataria:'Subaffidataria'};
+  const {lista:variantiLista, vigente:variantiVigente} = variantiRiepilogoDati(varianti);
   const roleLabel={dl:'Direttore dei Lavori',rup:'RUP / Committente',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato',cse:'CSE'};
   const totOpGiornale=(giornale||[]).reduce((a,g)=>{const mae=g.maestranze||[];return a+mae.reduce((b,m)=>b+(m.num||0),0);},0);
   const giorniRegistrati=(giornale||[]).length;
@@ -5210,6 +5231,33 @@ async function generaReportSA(cantiereId){
       <td>${fmt(s.data_ripresa)||'—'}</td>
       <td>${s.giorni_sospensione||s.giorni_proroga||'—'}</td>
     </tr>`).join('')}
+    </tbody></table>
+  </div>`:''}
+
+  ${variantiLista.length?`
+  <div class="sezione">
+    <div class="sez-hdr blu">Varianti e atti di sottomissione</div>
+    <table class="t"><thead><tr>
+      <th>N.</th><th>Data</th><th>Tipo atto</th><th>Giorni concessi</th><th>Nuovo importo</th><th>Oneri sicurezza</th><th>Approvazione</th>
+    </tr></thead><tbody>
+    ${variantiLista.map(v=>{
+      const tipoL = v.tipo_atto==='atto_aggiuntivo' ? 'Atto aggiuntivo' : 'Atto di sottomissione';
+      return `<tr>
+        <td><strong>V${esc(v.numero)}</strong></td>
+        <td>${fmt(v.data)}</td>
+        <td>${tipoL}</td>
+        <td>${v.giorni_concessi?esc(v.giorni_concessi)+' gg':'—'}</td>
+        <td>${v.importo_contratto_nuovo!=null?fmtEur(v.importo_contratto_nuovo):'—'}</td>
+        <td>${v.oneri_sicurezza_nuovo!=null?fmtEur(v.oneri_sicurezza_nuovo):'—'}</td>
+        <td>${esc(v.estremi_approvazione||'—')}</td>
+      </tr>${v.motivo?`<tr><td colspan="7" style="font-size:9px;font-weight:400;color:#6C757D;padding-top:0">${esc(v.motivo)}</td></tr>`:''}`;
+    }).join('')}
+    ${variantiVigente?`
+    <tr style="background:#EEF3FA"><td colspan="4"><strong>IMPORTO CONTRATTUALE VIGENTE</strong></td>
+      <td><strong>${fmtEur(variantiVigente.importo_contratto_nuovo)}</strong></td>
+      <td><strong>${variantiVigente.oneri_sicurezza_nuovo!=null?fmtEur(variantiVigente.oneri_sicurezza_nuovo):'—'}</strong></td>
+      <td></td>
+    </tr>`:''}
     </tbody></table>
   </div>`:''}
 
@@ -5719,6 +5767,18 @@ function rigaContratto(c){
 }
 
 // Righe aggiuntive per le varianti intervenute (una riga per variante + importo vigente)
+// Dati grezzi delle varianti di un cantiere, in ordine di numero.
+// "vigente" e' l'ultima variante che ha cambiato l'importo contrattuale
+// (le varianti che sono solo proroghe, senza importo, non la spostano).
+// Unica fonte di verita' su qual e' la variante vigente: usata sia nel
+// riepilogo cantieri sia nel report SA, cosi' i due non possono divergere.
+function variantiRiepilogoDati(varianti){
+  const lista = (varianti||[]).slice().sort((a,b)=>(a.numero||0)-(b.numero||0));
+  const conImporto = lista.filter(v=>v.importo_contratto_nuovo!=null);
+  const vigente = conImporto.length ? conImporto[conImporto.length-1] : null;
+  return { lista, vigente };
+}
+
 function righeVarianti(varianti){
   const conImporto = (varianti||[]).filter(v=>v.importo_contratto_nuovo!=null);
   if(!conImporto.length) return [];
