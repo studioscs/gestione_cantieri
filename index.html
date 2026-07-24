@@ -1812,7 +1812,7 @@ async function renderDitte(){
 
   ditte.forEach(d=>{
     html += `<tr>
-      <td><strong>${esc(d.nome)}</strong></td>
+      <td><strong>${esc(d.nome)}</strong>${(d.citta||d.indirizzo||d.pec)?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${[d.indirizzo,d.citta].filter(Boolean).map(esc).join(' — ')}${d.pec?`<br>${esc(d.pec)}`:''}</div>`:`<div style="font-size:10px;color:#ADB5BD;margin-top:2px">sede legale non indicata</div>`}</td>
       <td><code style="font-size:12px">${esc(d.piva||'—')}</code></td>
       <td><span class="badge ${tipoBadge[d.tipo]||'badge-grey'}">${tipoLabel[d.tipo]||d.tipo}</span></td>
       <td style="text-align:right">
@@ -1856,6 +1856,16 @@ function openModalNuovaDitta(){
         <option value="subaffidataria">Subaffidataria</option>
       </select>
     </div>
+    <div style="font-weight:700;color:var(--primary);font-size:13px;border-top:1px solid var(--border);padding-top:10px;margin-bottom:8px">Sede legale e recapiti</div>
+    <div class="form-hint" style="margin-bottom:8px">Questi dati vengono ripresi automaticamente come destinatario negli Ordini di Servizio.</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Città</label>
+        <input class="form-control" id="nd_citta" placeholder="Es. AFRAGOLA (NA)"></div>
+      <div class="form-group"><label class="form-label">Indirizzo sede legale</label>
+        <input class="form-control" id="nd_indirizzo" placeholder="Es. Via Salvator Rosa 35"></div>
+      <div class="form-group span-2"><label class="form-label">PEC</label>
+        <input class="form-control" id="nd_pec" placeholder="impresa@pec.it"></div>
+    </div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaDitta()">Salva</button>
@@ -1870,6 +1880,9 @@ async function salvaDitta(){
     nome,
     piva: document.getElementById('nd_piva').value.trim()||null,
     tipo: document.getElementById('nd_tipo').value,
+    citta: document.getElementById('nd_citta').value.trim()||null,
+    indirizzo: document.getElementById('nd_indirizzo').value.trim()||null,
+    pec: document.getElementById('nd_pec').value.trim()||null,
     created_by: currentUser.id
   });
   if(error){ alert(error.message); return; }
@@ -1897,6 +1910,16 @@ async function openModalEditDitta(id){
         <option value="subaffidataria"${d.tipo==='subaffidataria'?' selected':''}>Subaffidataria</option>
       </select>
     </div>
+    <div style="font-weight:700;color:var(--primary);font-size:13px;border-top:1px solid var(--border);padding-top:10px;margin-bottom:8px">Sede legale e recapiti</div>
+    <div class="form-hint" style="margin-bottom:8px">Questi dati vengono ripresi automaticamente come destinatario negli Ordini di Servizio.</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Città</label>
+        <input class="form-control" id="ed_citta" value="${esc(d.citta||'')}" placeholder="Es. AFRAGOLA (NA)"></div>
+      <div class="form-group"><label class="form-label">Indirizzo sede legale</label>
+        <input class="form-control" id="ed_indirizzo" value="${esc(d.indirizzo||'')}" placeholder="Es. Via Salvator Rosa 35"></div>
+      <div class="form-group span-2"><label class="form-label">PEC</label>
+        <input class="form-control" id="ed_pec" value="${esc(d.pec||'')}" placeholder="impresa@pec.it"></div>
+    </div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaEditDitta('${id}')">Salva</button>
@@ -1907,7 +1930,10 @@ async function salvaEditDitta(id){
   const {error} = await sb.from('ditte').update({
     nome: document.getElementById('ed_nome').value.trim(),
     piva: document.getElementById('ed_piva').value.trim()||null,
-    tipo: document.getElementById('ed_tipo').value
+    tipo: document.getElementById('ed_tipo').value,
+    citta: document.getElementById('ed_citta').value.trim()||null,
+    indirizzo: document.getElementById('ed_indirizzo').value.trim()||null,
+    pec: document.getElementById('ed_pec').value.trim()||null
   }).eq('id',id);
   if(error){ alert(error.message); return; }
   closeModal();
@@ -3859,6 +3885,11 @@ async function openModalNuovoODS(){
   const team = await getTeamRoster(currentCantiere);
   const dlNome = (team.dl && team.dl.nome) || (`${currentUser.nome||''} ${currentUser.cognome||''}`.trim());
   const rupNome = (team.rup && team.rup.nome) || '';
+  // ditte del cantiere: i recapiti compilati in sezione Ditte diventano
+  // il destinatario dell'ordine di servizio
+  const {data:ditteOds} = await sb.from('ditte').select('*').eq('cantiere_id',currentCantiere).order('tipo');
+  ODS_DITTE = ditteOds||[];
+  const dittaDefault = ODS_DITTE.find(d=>d.tipo==='appaltatrice') || ODS_DITTE[0] || null;
   openModal('Nuovo Ordine di Servizio',`<div class="form-grid">
     <div class="form-group span-2"><label class="form-label">Modello di ordine di servizio *</label>
       <select class="form-control" id="ods_tipo" onchange="toggleOdsTipo()">
@@ -3879,10 +3910,17 @@ async function openModalNuovoODS(){
   <div id="ods_box_strutturato" style="display:none">
     <div style="font-weight:700;color:var(--primary);font-size:13px;border-top:2px solid var(--primary);padding-top:10px;margin-top:12px">Destinatario</div>
     <div class="form-grid">
-      <div class="form-group"><label class="form-label">Impresa</label><input class="form-control" id="ods_imp_nome" value="${esc(c?.impresa||'')}"></div>
-      <div class="form-group"><label class="form-label">Città</label><input class="form-control" id="ods_imp_citta" placeholder="Es. AFRAGOLA (NA)"></div>
-      <div class="form-group"><label class="form-label">Indirizzo</label><input class="form-control" id="ods_imp_ind" placeholder="Es. Via Salvator Rosa 35"></div>
-      <div class="form-group"><label class="form-label">PEC</label><input class="form-control" id="ods_imp_pec" placeholder="impresa@pec.it"></div>
+      <div class="form-group span-2"><label class="form-label">Ditta destinataria</label>
+        <select class="form-control" id="ods_ditta" onchange="odsCompilaDaDitta()">
+          ${ODS_DITTE.length ? ODS_DITTE.map(d=>`<option value="${d.id}"${dittaDefault&&d.id===dittaDefault.id?' selected':''}>${esc(d.nome)} — ${esc(d.tipo||'')}</option>`).join('') : ''}
+          <option value="">— inserimento manuale —</option>
+        </select>
+        <div class="form-hint">${ODS_DITTE.length ? 'I recapiti sono ripresi dalla sezione Ditte: scegliendo la ditta i campi sotto si compilano da soli.' : 'Nessuna ditta registrata nel cantiere: compila i campi a mano, oppure inseriscila prima nella sezione Ditte.'}</div>
+      </div>
+      <div class="form-group"><label class="form-label">Impresa</label><input class="form-control" id="ods_imp_nome" value="${esc(dittaDefault?.nome||c?.impresa||'')}"></div>
+      <div class="form-group"><label class="form-label">Città</label><input class="form-control" id="ods_imp_citta" value="${esc(dittaDefault?.citta||'')}" placeholder="Es. AFRAGOLA (NA)"></div>
+      <div class="form-group"><label class="form-label">Indirizzo sede legale</label><input class="form-control" id="ods_imp_ind" value="${esc(dittaDefault?.indirizzo||'')}" placeholder="Es. Via Salvator Rosa 35"></div>
+      <div class="form-group"><label class="form-label">PEC</label><input class="form-control" id="ods_imp_pec" value="${esc(dittaDefault?.pec||'')}" placeholder="impresa@pec.it"></div>
       <div class="form-group"><label class="form-label">Direttore dei Lavori</label><input class="form-control" id="ods_dl" value="${esc(dlNome)}"></div>
       <div class="form-group"><label class="form-label">R.U.P.</label><input class="form-control" id="ods_rup" value="${esc(rupNome)}"></div>
       <div class="form-group"><label class="form-label">Luogo di emissione</label><input class="form-control" id="ods_luogo" value="RECANATI"></div>
@@ -3939,6 +3977,22 @@ async function openModalNuovoODS(){
   <div class="alert alert-info" style="margin-top:12px;font-size:12px">L'ODS sarà emesso con tua firma. Il RUP/Committente riceverà per presa visione, l'impresa per accettazione.</div>
   <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaODS()">Emetti ODS</button></div>`);
   toggleOdsTipo();
+}
+
+// Ditte del cantiere caricate all'apertura del modale OdS
+let ODS_DITTE = [];
+
+// Compila i campi del destinatario con i dati della ditta scelta
+function odsCompilaDaDitta(){
+  const sel = document.getElementById('ods_ditta');
+  if(!sel) return;
+  const d = ODS_DITTE.find(x=>x.id===sel.value);
+  if(!d) return;   // "inserimento manuale": lascia quanto digitato
+  const set = (id,val)=>{ const el=document.getElementById(id); if(el) el.value = val||''; };
+  set('ods_imp_nome', d.nome);
+  set('ods_imp_citta', d.citta);
+  set('ods_imp_ind', d.indirizzo);
+  set('ods_imp_pec', d.pec);
 }
 
 function toggleOdsTipo(){
