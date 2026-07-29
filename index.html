@@ -245,7 +245,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.07.24d';
+const APP_VERSIONE = '2026.07.25';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -2151,6 +2151,10 @@ async function openModalNuovoVerbale(){
     dt_impresa_nome: (team.dt_impresa && team.dt_impresa.nome) || '',
     legale_rappresentante: (team.dt_impresa && team.dt_impresa.nome) || ''
   };
+  // Ordini di servizio del cantiere: servono al verbale di verifica adempimento
+  // per far scegliere quale OdS citare e copiarne il testo.
+  const {data:odsListNuovo} = await sb.from('ods').select('*').eq('cantiere_id',currentCantiere).order('numero');
+  ODS_LIST_PER_VERBALE = odsListNuovo||[];
   openModal('Nuovo Verbale', `
     <div class="form-grid">
       <div class="form-group">
@@ -2198,7 +2202,7 @@ async function openModalNuovoVerbale(){
       </div>
     </div>
     ${extraFieldsSopralluogoHtml('nv2', teamDx)}
-    ${extraFieldsVerificaODSHtml('nv2')}
+    ${extraFieldsVerificaODSHtml('nv2', null, ODS_LIST_PER_VERBALE)}
     ${extraFieldsConsegnaLavoriHtml('nv2', teamDx)}
     ${extraFieldsConsegnaParzialeHtml('nv2', teamDx)}
     ${extraFieldsConstatazioneLuoghiHtml('nv2')}
@@ -2242,6 +2246,8 @@ async function openModalEditVerbale(id){
   if(!v) return;
   const dx = v.dati_extra || {};
   const team = await getTeamRoster(v.cantiere_id);
+  const {data:odsListEdit} = await sb.from('ods').select('*').eq('cantiere_id',v.cantiere_id).order('numero');
+  ODS_LIST_PER_VERBALE = odsListEdit||[];
   const dxWithTeam = Object.assign({}, dx, {
     rup_nome: dx.rup_nome || (team.rup && team.rup.nome) || '',
     dt_impresa_nome: dx.dt_impresa_nome || (team.dt_impresa && team.dt_impresa.nome) || '',
@@ -2295,7 +2301,7 @@ async function openModalEditVerbale(id){
       </div>
     </div>
     ${extraFieldsSopralluogoHtml('ev2', dxWithTeam)}
-    ${extraFieldsVerificaODSHtml('ev2', dx)}
+    ${extraFieldsVerificaODSHtml('ev2', dx, ODS_LIST_PER_VERBALE)}
     ${extraFieldsConsegnaLavoriHtml('ev2', dxWithTeam)}
     ${extraFieldsConsegnaParzialeHtml('ev2', dxWithTeam)}
     ${extraFieldsConstatazioneLuoghiHtml('ev2', dx)}
@@ -6213,8 +6219,12 @@ function bodySopralluogoPeriodico(c, v, dx){
     + (esitoConforme ? '. &Egrave; stata altres&igrave; rilevata la corrispondenza dei materiali utilizzati alle caratteristiche tecniche indicate nella documentazione tecnica allegata al contratto d\'appalto.' : '.')
     + '</p>';
   if(dx.accertamenti){
-    html += '<p><strong>Accertamenti effettuati / disposizioni impartite:</strong></p>';
+    html += '<p><strong>Ha eseguito i seguenti accertamenti e controlli:</strong></p>';
     html += paraP(dx.accertamenti);
+  }
+  if(dx.disposizioni_impartite){
+    html += '<p><strong>Ha fornito le seguenti istruzioni e/o impartito le seguenti disposizioni:</strong></p>';
+    html += paraP(dx.disposizioni_impartite);
   }
   if(dx.rilievi){
     html += '<p><strong>Rilievi e non conformit&agrave; riscontrate:</strong></p>';
@@ -6231,6 +6241,10 @@ function bodyVerificaODS(c, v, dx){
   if(v.oggetto) html += '<p><strong>Oggetto:</strong> '+esc(v.oggetto)+'</p>';
   html += '<p><strong>Presenti</strong></p>';
   html += listaPresentiHtml(presenti);
+
+  if(dx.ods_numero && dx.ods_testo_ordinato){
+    html += '<p><strong>Premesso che</strong> nell\'Ordine di Servizio n. '+esc(dx.ods_numero)+' si era ordinato e/o deciso di: '+esc(dx.ods_testo_ordinato)+'.</p>';
+  }
 
   if(dx.premesse){
     html += '<p><strong>Premesse</strong></p><ul>';
@@ -6266,6 +6280,17 @@ function bodyVerificaODS(c, v, dx){
   if(dx.stato_luoghi){
     html += '<p><strong>Constatazione dello stato dei luoghi</strong></p>';
     html += paraP(dx.stato_luoghi);
+  }
+
+  if(dx.csl_incluso){
+    html += corpoConstatazioneLuoghi({
+      premesse: dx.csl_premesse, maestranze: dx.csl_maestranze, attrezzature: dx.csl_attrezzature,
+      lavorazioni_corso: dx.csl_lavorazioni_corso, stato_avanzamento: dx.csl_stato_avanzamento,
+      condizioni_sicurezza: dx.csl_condizioni_sicurezza, doc_fotografica: dx.csl_doc_fotografica,
+      prescrizioni: dx.csl_prescrizioni, ods_numero: dx.ods_numero,
+      prossima_verifica_data: dx.csl_prossima_verifica_data, prossima_verifica_ora: dx.csl_prossima_verifica_ora,
+      prossima_verifica_scopo: dx.csl_prossima_verifica_scopo, rilievi_finali: dx.csl_rilievi_finali
+    });
   }
 
   if(dx.conseguenze){
@@ -6511,12 +6536,86 @@ function bodyConsegnaParziale(c, v, dx){
 }
 
 // ---- 8. VERBALE DI CONSTATAZIONE DELLO STATO DEI LUOGHI ----
-function bodyConstatazioneStatoLuoghi(c, v, dx){
-  const presenti = parsePresentiList(v.presenti);
-  let html = '';
-  html += '<p><strong>Presenti</strong></p>';
-  html += listaPresentiHtml(presenti);
+// ============================================================
+// CONSTATAZIONE STATO DEI LUOGHI — blocco condiviso.
+// Usato sia dal verbale dedicato sia, opzionalmente, incorporato
+// nel verbale di verifica adempimento OdS (cosi' i due punti non
+// possono divergere nel tempo).
+// ============================================================
+function csl_camposHtml(idPrefix, dx, opts){
+  opts = opts || {};
+  dx = dx || {};
+  let h = '';
+  h += `<div class="form-group"><label class="form-label">Premesso che (una riga per punto elenco)</label>
+    <textarea class="form-control" id="${idPrefix}_premesse" rows="2">${esc(dx.premesse||'')}</textarea></div>`;
+  h += `<div class="form-grid" style="margin-top:12px">
+    <div class="form-group"><label class="form-label">Presenza maestranze e personale impresa</label>
+      <textarea class="form-control" id="${idPrefix}_maestranze" rows="2">${esc(dx.maestranze||'')}</textarea></div>
+    <div class="form-group"><label class="form-label">Presenza attrezzature/macchinari/mezzi</label>
+      <textarea class="form-control" id="${idPrefix}_attrezzature" rows="2">${esc(dx.attrezzature||'')}</textarea></div>
+    <div class="form-group"><label class="form-label">Lavorazioni in corso di esecuzione</label>
+      <textarea class="form-control" id="${idPrefix}_lavorazioni" rows="2">${esc(dx.lavorazioni_corso||'')}</textarea></div>
+    <div class="form-group"><label class="form-label">Stato di avanzamento rilevato</label>
+      <textarea class="form-control" id="${idPrefix}_avanzamento" rows="2">${esc(dx.stato_avanzamento||'')}</textarea></div>
+    <div class="form-group span-2"><label class="form-label">Condizioni di sicurezza del cantiere</label>
+      <textarea class="form-control" id="${idPrefix}_sicurezza" rows="2">${esc(dx.condizioni_sicurezza||'')}</textarea></div>
+  </div>`;
+  h += `<div class="form-group" style="margin-top:12px">
+    <label class="form-label"><input type="checkbox" id="${idPrefix}_docfoto" ${dx.doc_fotografica!==false?'checked':''}> Include menzione documentazione fotografica allegata (art. 14 c.3 D.M. 49/2018)</label>
+  </div>`;
+  if(!opts.omitOdsField){
+    h += `<div class="form-grid" style="margin-top:12px">
+      <div class="form-group"><label class="form-label">N. Ordine di servizio (se presente)</label>
+        <input class="form-control" id="${idPrefix}_ods" value="${esc(dx.ods_numero||'')}"></div>
+    </div>`;
+  }
+  h += `<div class="form-group" style="margin-top:12px"><label class="form-label">Prescrizioni e richieste (una per riga, numerate automaticamente)</label>
+    <textarea class="form-control" id="${idPrefix}_prescrizioni" rows="3">${esc(dx.prescrizioni||'')}</textarea></div>`;
+  h += `<div class="form-grid" style="margin-top:12px">
+    <div class="form-group"><label class="form-label">Data prossima verifica</label>
+      <input class="form-control" type="date" id="${idPrefix}_prox_data" value="${dx.prossima_verifica_data||''}"></div>
+    <div class="form-group"><label class="form-label">Ora prossima verifica</label>
+      <input class="form-control" type="time" id="${idPrefix}_prox_ora" value="${dx.prossima_verifica_ora||''}"></div>
+    <div class="form-group span-2"><label class="form-label">Scopo prossima verifica</label>
+      <input class="form-control" id="${idPrefix}_prox_scopo" value="${esc(dx.prossima_verifica_scopo||"l'avvenuta ripresa delle lavorazioni senza soluzione di continuità")}"></div>
+  </div>`;
+  h += `<div class="form-group" style="margin-top:12px"><label class="form-label">Ulteriori rilievi e dichiarazioni dei presenti</label>
+    <textarea class="form-control" id="${idPrefix}_rilievi" rows="2">${esc(dx.rilievi_finali||'')}</textarea></div>`;
+  h += `<div class="form-group" style="margin-top:12px"><label class="form-label">Nota trasmissione</label>
+    <input class="form-control" id="${idPrefix}_trasmissione" value="${esc(dx.trasmissione||"Il presente verbale viene trasmesso a mezzo pec all'impresa, al RUP.")}"></div>`;
+  h += `<div class="form-group" style="margin-top:12px">
+    <label class="form-label"><input type="checkbox" id="${idPrefix}_restituzione" ${dx.restituzione_firmata!==false?'checked':''}> Include richiesta di restituzione verbale firmato (art. 3 c.3 D.M. 49/2018)</label>
+  </div>`;
+  return h;
+}
 
+function csl_raccogliCampi(idPrefix){
+  const d = {
+    premesse: document.getElementById(idPrefix+'_premesse')?.value.trim()||null,
+    maestranze: document.getElementById(idPrefix+'_maestranze')?.value.trim()||null,
+    attrezzature: document.getElementById(idPrefix+'_attrezzature')?.value.trim()||null,
+    lavorazioni_corso: document.getElementById(idPrefix+'_lavorazioni')?.value.trim()||null,
+    stato_avanzamento: document.getElementById(idPrefix+'_avanzamento')?.value.trim()||null,
+    condizioni_sicurezza: document.getElementById(idPrefix+'_sicurezza')?.value.trim()||null,
+    doc_fotografica: document.getElementById(idPrefix+'_docfoto')?.checked !== false,
+    prescrizioni: document.getElementById(idPrefix+'_prescrizioni')?.value.trim()||null,
+    prossima_verifica_data: document.getElementById(idPrefix+'_prox_data')?.value||null,
+    prossima_verifica_ora: document.getElementById(idPrefix+'_prox_ora')?.value||null,
+    prossima_verifica_scopo: document.getElementById(idPrefix+'_prox_scopo')?.value.trim()||null,
+    rilievi_finali: document.getElementById(idPrefix+'_rilievi')?.value.trim()||null,
+    trasmissione: document.getElementById(idPrefix+'_trasmissione')?.value.trim()||null,
+    restituzione_firmata: document.getElementById(idPrefix+'_restituzione')?.checked !== false
+  };
+  const odsEl = document.getElementById(idPrefix+'_ods');
+  if(odsEl) d.ods_numero = odsEl.value.trim()||null;
+  return d;
+}
+
+// Testo dell'accertamento sullo stato dei luoghi (senza presenti/apertura/chiusura,
+// che dipendono dal verbale che lo ospita).
+function corpoConstatazioneLuoghi(dx){
+  dx = dx || {};
+  let html = '';
   if(dx.premesse){
     html += '<p><strong>Premesso che</strong></p><ul>';
     dx.premesse.split('\n').map(function(s){return s.trim();}).filter(Boolean).forEach(function(riga){
@@ -6524,10 +6623,8 @@ function bodyConstatazioneStatoLuoghi(c, v, dx){
     });
     html += '</ul>';
   }
-
   html += '<p><strong>Accertamenti &mdash; stato dei luoghi</strong></p>';
   html += '<p>All\'esito del sopralluogo effettuato in data odierna, il Direttore dei Lavori ha rilevato quanto segue:</p>';
-
   const campi = [
     ['maestranze','Presenza maestranze e personale impresa'],
     ['attrezzature','Presenza di attrezzature, macchinari e mezzi operativi'],
@@ -6540,11 +6637,9 @@ function bodyConstatazioneStatoLuoghi(c, v, dx){
       html += '<p><u>'+f[1]+':</u></p>'+paraP(dx[f[0]]);
     }
   });
-
   if(dx.doc_fotografica!==false){
     html += '<p>&Egrave; stata effettuata documentazione fotografica, allegata al presente verbale e depositata agli atti del cantiere ai sensi dell\'art. 14, comma 3, del D.M. 49/2018.</p>';
   }
-
   if(dx.prescrizioni){
     html += '<p><strong>Prescrizioni e richieste'+(dx.ods_numero?' &mdash; Ordine di servizio n. '+esc(dx.ods_numero):'')+'</strong></p><ol>';
     dx.prescrizioni.split('\n').map(function(s){return s.trim();}).filter(Boolean).forEach(function(riga){
@@ -6552,19 +6647,25 @@ function bodyConstatazioneStatoLuoghi(c, v, dx){
     });
     html += '</ol>';
   }
-
   if(dx.prossima_verifica_data){
     html += '<p><strong>Fissazione della successiva verifica</strong></p>';
     html += '<p>Il Direttore dei Lavori fissa un\'ulteriore verifica dello stato dei luoghi per il giorno '+fmt(dx.prossima_verifica_data)
       + (dx.prossima_verifica_ora?', con inizio alle ore '+esc(dx.prossima_verifica_ora):'')
       + ', al fine di accertare '+(esc(dx.prossima_verifica_scopo)||'l\'avvenuta ripresa delle lavorazioni senza soluzione di continuit&agrave;')+'.</p>';
   }
-
   if(dx.rilievi_finali){
     html += '<p><strong>Ulteriori rilievi e dichiarazioni dei presenti</strong></p>';
     html += paraP(dx.rilievi_finali);
   }
+  return html;
+}
 
+function bodyConstatazioneStatoLuoghi(c, v, dx){
+  const presenti = parsePresentiList(v.presenti);
+  let html = '';
+  html += '<p><strong>Presenti</strong></p>';
+  html += listaPresentiHtml(presenti);
+  html += corpoConstatazioneLuoghi(dx);
   html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dagli intervenuti.</p>';
   if(dx.trasmissione) html += '<p style="font-size:11px;color:#6C757D">'+esc(dx.trasmissione)+'</p>';
   if(dx.restituzione_firmata!==false){
@@ -7885,6 +7986,13 @@ function toggleVerbaleExtra(prefix){
   // per i tipi strutturati va nascosto (il documento e' generato dai campi dedicati).
   const testoWrap = document.getElementById(prefix+'_testo_wrap');
   if(testoWrap) testoWrap.style.display = TIPI_STRUTTURATI.includes(tipo) ? 'none' : 'block';
+  // La constatazione dello stato dei luoghi ha un oggetto fisso: non c'e'
+  // bisogno di scriverlo, si autocompila (solo se il campo e' vuoto, per
+  // non sovrascrivere un testo che l'utente avesse gia' digitato).
+  if(tipo==='constatazione_stato_luoghi'){
+    const ogg = document.getElementById(prefix+'_ogg');
+    if(ogg && !ogg.value.trim()) ogg.value = 'Verbale di constatazione dello stato dei luoghi alla data odierna';
+  }
 }
 
 function extraFieldsSopralluogoHtml(prefix, dx){
@@ -7902,18 +8010,85 @@ function extraFieldsSopralluogoHtml(prefix, dx){
           <option value="non_conforme"${dx.esito==='non_conforme'?' selected':''}>Non conforme</option>
         </select></div>
     </div>
-    <div class="form-group" style="margin-top:12px"><label class="form-label">Accertamenti / disposizioni impartite</label>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Accertamenti e controlli eseguiti</label>
+      <div class="form-hint">Comparirà nel verbale come: "Ha eseguito i seguenti accertamenti e controlli:"</div>
       <textarea class="form-control" id="${prefix}_accertamenti" rows="3">${esc(dx.accertamenti||'')}</textarea></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Istruzioni e/o disposizioni impartite</label>
+      <div class="form-hint">Comparirà nel verbale come: "Ha fornito le seguenti istruzioni e/o impartito le seguenti disposizioni:"</div>
+      <textarea class="form-control" id="${prefix}_disposizioni_sopralluogo" rows="3">${esc(dx.disposizioni_impartite||'')}</textarea></div>
     <div class="form-group" id="${prefix}_rilievi_wrap" style="margin-top:12px;display:${dx.esito==='non_conforme'?'block':'none'}">
       <label class="form-label">Rilievi / non conformit&agrave; riscontrate</label>
       <textarea class="form-control" id="${prefix}_rilievi" rows="3">${esc(dx.rilievi||'')}</textarea></div>
   </div>`;
 }
 
-function extraFieldsVerificaODSHtml(prefix, dx){
+// ============================================================
+// VERIFICA ADEMPIMENTO OdS — selezione dell'OdS da verificare,
+// con copia automatica del testo di quanto ordinato.
+// ============================================================
+
+// Elenco OdS del cantiere, caricato all'apertura del modale verbale
+// (cache in una variabile globale, letta dall'handler di selezione).
+let ODS_LIST_PER_VERBALE = [];
+
+function odsSelectOptionsHtml(odsList, selectedId){
+  let h = '<option value="">— seleziona un ordine di servizio —</option>';
+  (odsList||[]).forEach(o=>{
+    h += `<option value="${o.id}"${String(o.id)===String(selectedId||'')?' selected':''}>N. ${esc(o.numero||'')} del ${fmt(o.data)} — ${esc(o.oggetto||'')}</option>`;
+  });
+  return h;
+}
+
+// Testo di quanto ordinato/deciso in un OdS, per la citazione nel verbale
+// di verifica. Per gli OdS strutturati ricostruisce la sostanza della
+// disposizione dai campi compilati; per quelli a testo libero usa il corpo.
+function testoOrdinatoDaODS(o){
+  if(!o) return '';
+  const cfg = (typeof ODS_TIPI!=='undefined' && ODS_TIPI[o.tipo_ods]) || {strutturato:false};
+  if(!cfg.strutturato) return (o.corpo||'').trim();
+  const dx = o.dati_ods || {};
+  if(o.tipo_ods==='senza_aumento'){
+    return (dx.disposizioni||[]).filter(Boolean).join('; ');
+  }
+  if(o.tipo_ods==='rimando_variante'){
+    const parti = [];
+    const voce = dx.vecchia_voce || dx.voce_elenco;
+    if(voce) parti.push('di non dare ulteriore corso alla lavorazione di cui alla voce n. '+voce);
+    if(dx.nuova_lavorazione){
+      let s = 'di procedere alla nuova lavorazione denominata «'+dx.nuova_lavorazione+'»';
+      if(dx.importo_unitario!=null && dx.importo_unitario!=='') s += ', da contabilizzarsi all\'importo unitario di '+fmtEur(parseFloat(dx.importo_unitario));
+      parti.push(s);
+    }
+    return parti.join('; ');
+  }
+  return '';
+}
+
+// Al cambio della select: copia numero e testo dell'OdS scelto nei campi
+// sottostanti, che restano comunque modificabili prima di generare il verbale.
+function vodsCompilaDaOds(prefix){
+  const sel = document.getElementById(prefix+'_ods_select');
+  if(!sel || !sel.value) return;
+  const o = ODS_LIST_PER_VERBALE.find(x=>String(x.id)===String(sel.value));
+  if(!o) return;
+  const numEl = document.getElementById(prefix+'_ods_num');
+  const testoEl = document.getElementById(prefix+'_ods_testo');
+  if(numEl) numEl.value = o.numero||'';
+  if(testoEl) testoEl.value = testoOrdinatoDaODS(o);
+}
+
+
+function extraFieldsVerificaODSHtml(prefix, dx, odsList){
   dx = dx || {};
   return `<div id="${prefix}_extra_verifica_ods" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
     <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli verifica adempimento OdS / stato luoghi</div>
+    <div class="form-group span-2">
+      <label class="form-label">Ordine di Servizio da verificare</label>
+      <select class="form-control" id="${prefix}_ods_select" onchange="vodsCompilaDaOds('${prefix}')">
+        ${odsSelectOptionsHtml(odsList, dx.ods_riferimento_id)}
+      </select>
+      <div class="form-hint">Selezionandolo, il testo di quanto ordinato viene copiato qui sotto e potrà essere rifinito prima di generare il verbale.</div>
+    </div>
     <div class="form-grid">
       <div class="form-group"><label class="form-label">N. Ordine di Servizio</label>
         <input class="form-control" id="${prefix}_ods_num" value="${esc(dx.ods_numero||'')}" placeholder="Es. 12"></div>
@@ -7924,14 +8099,16 @@ function extraFieldsVerificaODSHtml(prefix, dx){
           <option value="inadempiente"${dx.esito_generale==='inadempiente'?' selected':''}>Inadempiente</option>
         </select></div>
     </div>
-    <div class="form-group" style="margin-top:12px"><label class="form-label">Premesse (richiami a OdS/verbali precedenti)</label>
-      <div class="form-hint">Una riga per ogni punto elenco</div>
-      <textarea class="form-control" id="${prefix}_premesse" rows="3">${esc(dx.premesse||'')}</textarea></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Testo di quanto ordinato/deciso nell'OdS (copiato, modificabile)</label>
+      <div class="form-hint">Comparirà nel verbale come: "Premesso che nell'Ordine di Servizio n. XX si era ordinato e/o deciso di: ..."</div>
+      <textarea class="form-control" id="${prefix}_ods_testo" rows="3">${esc(dx.ods_testo_ordinato||'')}</textarea></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Premesse aggiuntive (una riga per punto elenco)</label>
+      <div class="form-hint">Altri richiami a OdS o verbali precedenti, oltre a quello selezionato sopra</div>
+      <textarea class="form-control" id="${prefix}_premesse" rows="2">${esc(dx.premesse||'')}</textarea></div>
     <div class="form-group" style="margin-top:12px"><label class="form-label">Dettaglio prescrizioni verificate</label>
       <div class="form-hint">Una riga per prescrizione, formato: <code>Descrizione | completa|parziale|non_eseguita</code></div>
       <textarea class="form-control" id="${prefix}_prescrizioni" rows="4" placeholder="Completamento copertura | non_eseguita&#10;Opere fognarie | parziale">${esc(dx.prescrizioni||'')}</textarea></div>
-    <div class="form-group" style="margin-top:12px"><label class="form-label">Constatazione stato dei luoghi</label>
-      <textarea class="form-control" id="${prefix}_stato_luoghi" rows="3">${esc(dx.stato_luoghi||'')}</textarea></div>
+    <input type="hidden" id="${prefix}_stato_luoghi_legacy" value="${esc(dx.stato_luoghi||'')}">
     <div class="form-group" style="margin-top:12px"><label class="form-label">Conseguenze dell'inadempimento (se non adempiente)</label>
       <textarea class="form-control" id="${prefix}_conseguenze" rows="3">${esc(dx.conseguenze||'')}</textarea></div>
     <div class="form-grid" style="margin-top:12px">
@@ -7940,8 +8117,24 @@ function extraFieldsVerificaODSHtml(prefix, dx){
       <div class="form-group"><label class="form-label">Nota trasmissione</label>
         <input class="form-control" id="${prefix}_trasmissione" value="${esc(dx.trasmissione||"Il presente verbale viene trasmesso a mezzo pec all'impresa, al RUP.")}"></div>
     </div>
+    <div style="margin-top:16px;border-top:1px dashed var(--border);padding-top:12px">
+      <label class="form-label"><input type="checkbox" id="${prefix}_csl_incluso" onchange="document.getElementById('${prefix}_csl_box').style.display=this.checked?'block':'none'" ${dx.csl_incluso?'checked':''}> Includi anche la constatazione dello stato dei luoghi in questo verbale</label>
+      <div class="form-hint">Se selezionato, il verbale riporterà anche i campi tipici del verbale di constatazione dello stato dei luoghi (maestranze, attrezzature, lavorazioni in corso, condizioni di sicurezza, prescrizioni, eventuale nuova data di sopralluogo). Se non selezionato, questa parte non comparirà nel documento.</div>
+      <div id="${prefix}_csl_box" style="display:${dx.csl_incluso?'block':'none'};margin-top:10px">
+        ${csl_camposHtml(prefix+'_vods_csl', {
+          premesse: dx.csl_premesse, maestranze: dx.csl_maestranze, attrezzature: dx.csl_attrezzature,
+          lavorazioni_corso: dx.csl_lavorazioni_corso, stato_avanzamento: dx.csl_stato_avanzamento,
+          condizioni_sicurezza: dx.csl_condizioni_sicurezza, doc_fotografica: dx.csl_doc_fotografica,
+          prescrizioni: dx.csl_prescrizioni, prossima_verifica_data: dx.csl_prossima_verifica_data,
+          prossima_verifica_ora: dx.csl_prossima_verifica_ora, prossima_verifica_scopo: dx.csl_prossima_verifica_scopo,
+          rilievi_finali: dx.csl_rilievi_finali, trasmissione: dx.csl_trasmissione,
+          restituzione_firmata: dx.csl_restituzione_firmata
+        }, {omitOdsField:true})}
+      </div>
+    </div>
   </div>`;
 }
+
 
 function extraFieldsConsegnaLavoriHtml(prefix, dx){
   dx = dx || {};
@@ -7997,44 +8190,7 @@ function extraFieldsConstatazioneLuoghiHtml(prefix, dx){
   dx = dx || {};
   return `<div id="${prefix}_extra_constatazione_stato_luoghi" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
     <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli constatazione stato dei luoghi</div>
-    <div class="form-group"><label class="form-label">Premesso che (una riga per punto elenco)</label>
-      <textarea class="form-control" id="${prefix}_csl_premesse" rows="2">${esc(dx.premesse||'')}</textarea></div>
-    <div class="form-grid" style="margin-top:12px">
-      <div class="form-group"><label class="form-label">Presenza maestranze e personale impresa</label>
-        <textarea class="form-control" id="${prefix}_csl_maestranze" rows="2">${esc(dx.maestranze||'')}</textarea></div>
-      <div class="form-group"><label class="form-label">Presenza attrezzature/macchinari/mezzi</label>
-        <textarea class="form-control" id="${prefix}_csl_attrezzature" rows="2">${esc(dx.attrezzature||'')}</textarea></div>
-      <div class="form-group"><label class="form-label">Lavorazioni in corso di esecuzione</label>
-        <textarea class="form-control" id="${prefix}_csl_lavorazioni" rows="2">${esc(dx.lavorazioni_corso||'')}</textarea></div>
-      <div class="form-group"><label class="form-label">Stato di avanzamento rilevato</label>
-        <textarea class="form-control" id="${prefix}_csl_avanzamento" rows="2">${esc(dx.stato_avanzamento||'')}</textarea></div>
-      <div class="form-group span-2"><label class="form-label">Condizioni di sicurezza del cantiere</label>
-        <textarea class="form-control" id="${prefix}_csl_sicurezza" rows="2">${esc(dx.condizioni_sicurezza||'')}</textarea></div>
-    </div>
-    <div class="form-group" style="margin-top:12px">
-      <label class="form-label"><input type="checkbox" id="${prefix}_csl_docfoto" ${dx.doc_fotografica!==false?'checked':''}> Include menzione documentazione fotografica allegata (art. 14 c.3 D.M. 49/2018)</label>
-    </div>
-    <div class="form-grid" style="margin-top:12px">
-      <div class="form-group"><label class="form-label">N. Ordine di servizio (se presente)</label>
-        <input class="form-control" id="${prefix}_csl_ods" value="${esc(dx.ods_numero||'')}"></div>
-    </div>
-    <div class="form-group" style="margin-top:12px"><label class="form-label">Prescrizioni e richieste (una per riga, numerate automaticamente)</label>
-      <textarea class="form-control" id="${prefix}_csl_prescrizioni" rows="3">${esc(dx.prescrizioni||'')}</textarea></div>
-    <div class="form-grid" style="margin-top:12px">
-      <div class="form-group"><label class="form-label">Data prossima verifica</label>
-        <input class="form-control" type="date" id="${prefix}_csl_prox_data" value="${dx.prossima_verifica_data||''}"></div>
-      <div class="form-group"><label class="form-label">Ora prossima verifica</label>
-        <input class="form-control" type="time" id="${prefix}_csl_prox_ora" value="${dx.prossima_verifica_ora||''}"></div>
-      <div class="form-group span-2"><label class="form-label">Scopo prossima verifica</label>
-        <input class="form-control" id="${prefix}_csl_prox_scopo" value="${esc(dx.prossima_verifica_scopo||"l'avvenuta ripresa delle lavorazioni senza soluzione di continuità")}"></div>
-    </div>
-    <div class="form-group" style="margin-top:12px"><label class="form-label">Ulteriori rilievi e dichiarazioni dei presenti</label>
-      <textarea class="form-control" id="${prefix}_csl_rilievi" rows="2">${esc(dx.rilievi_finali||'')}</textarea></div>
-    <div class="form-group" style="margin-top:12px"><label class="form-label">Nota trasmissione</label>
-      <input class="form-control" id="${prefix}_csl_trasmissione" value="${esc(dx.trasmissione||"Il presente verbale viene trasmesso a mezzo pec all'impresa, al RUP.")}"></div>
-    <div class="form-group" style="margin-top:12px">
-      <label class="form-label"><input type="checkbox" id="${prefix}_csl_restituzione" ${dx.restituzione_firmata!==false?'checked':''}> Include richiesta di restituzione verbale firmato (art. 3 c.3 D.M. 49/2018)</label>
-    </div>
+    ${csl_camposHtml(prefix+'_csl', dx, {})}
   </div>`;
 }
 
@@ -8138,20 +8294,44 @@ function raccogliDatiExtraVerbale(prefix, tipo){
       rup_nome: document.getElementById(prefix+'_rup')?.value.trim()||null,
       esito: document.getElementById(prefix+'_esito')?.value||'conforme',
       accertamenti: document.getElementById(prefix+'_accertamenti')?.value.trim()||null,
+      disposizioni_impartite: document.getElementById(prefix+'_disposizioni_sopralluogo')?.value.trim()||null,
       rilievi: document.getElementById(prefix+'_rilievi')?.value.trim()||null
     };
   }
   if(tipo==='verifica_ods'){
-    return {
+    const out = {
+      ods_riferimento_id: document.getElementById(prefix+'_ods_select')?.value||null,
       ods_numero: document.getElementById(prefix+'_ods_num')?.value.trim()||null,
+      ods_testo_ordinato: document.getElementById(prefix+'_ods_testo')?.value.trim()||null,
       esito_generale: document.getElementById(prefix+'_esito_gen')?.value||null,
       premesse: document.getElementById(prefix+'_premesse')?.value.trim()||null,
       prescrizioni: document.getElementById(prefix+'_prescrizioni')?.value.trim()||null,
-      stato_luoghi: document.getElementById(prefix+'_stato_luoghi')?.value.trim()||null,
+      // campo dismesso dal form (sostituito dal blocco "stato dei luoghi" opzionale
+      // qui sotto): preservato solo se un verbale precedente lo aveva gia' valorizzato.
+      stato_luoghi: document.getElementById(prefix+'_stato_luoghi_legacy')?.value.trim()||null,
       conseguenze: document.getElementById(prefix+'_conseguenze')?.value.trim()||null,
       prossima_riunione: document.getElementById(prefix+'_prossima_riunione')?.value||null,
-      trasmissione: document.getElementById(prefix+'_trasmissione')?.value.trim()||null
+      trasmissione: document.getElementById(prefix+'_trasmissione')?.value.trim()||null,
+      csl_incluso: document.getElementById(prefix+'_csl_incluso')?.checked||false
     };
+    if(out.csl_incluso){
+      const emb = csl_raccogliCampi(prefix+'_vods_csl');
+      out.csl_premesse = emb.premesse;
+      out.csl_maestranze = emb.maestranze;
+      out.csl_attrezzature = emb.attrezzature;
+      out.csl_lavorazioni_corso = emb.lavorazioni_corso;
+      out.csl_stato_avanzamento = emb.stato_avanzamento;
+      out.csl_condizioni_sicurezza = emb.condizioni_sicurezza;
+      out.csl_doc_fotografica = emb.doc_fotografica;
+      out.csl_prescrizioni = emb.prescrizioni;
+      out.csl_prossima_verifica_data = emb.prossima_verifica_data;
+      out.csl_prossima_verifica_ora = emb.prossima_verifica_ora;
+      out.csl_prossima_verifica_scopo = emb.prossima_verifica_scopo;
+      out.csl_rilievi_finali = emb.rilievi_finali;
+      out.csl_trasmissione = emb.trasmissione;
+      out.csl_restituzione_firmata = emb.restituzione_firmata;
+    }
+    return out;
   }
   if(tipo==='consegna_lavori'){
     return {
@@ -8178,23 +8358,7 @@ function raccogliDatiExtraVerbale(prefix, tipo){
     };
   }
   if(tipo==='constatazione_stato_luoghi'){
-    return {
-      premesse: document.getElementById(prefix+'_csl_premesse')?.value.trim()||null,
-      maestranze: document.getElementById(prefix+'_csl_maestranze')?.value.trim()||null,
-      attrezzature: document.getElementById(prefix+'_csl_attrezzature')?.value.trim()||null,
-      lavorazioni_corso: document.getElementById(prefix+'_csl_lavorazioni')?.value.trim()||null,
-      stato_avanzamento: document.getElementById(prefix+'_csl_avanzamento')?.value.trim()||null,
-      condizioni_sicurezza: document.getElementById(prefix+'_csl_sicurezza')?.value.trim()||null,
-      doc_fotografica: document.getElementById(prefix+'_csl_docfoto')?.checked !== false,
-      ods_numero: document.getElementById(prefix+'_csl_ods')?.value.trim()||null,
-      prescrizioni: document.getElementById(prefix+'_csl_prescrizioni')?.value.trim()||null,
-      prossima_verifica_data: document.getElementById(prefix+'_csl_prox_data')?.value||null,
-      prossima_verifica_ora: document.getElementById(prefix+'_csl_prox_ora')?.value||null,
-      prossima_verifica_scopo: document.getElementById(prefix+'_csl_prox_scopo')?.value.trim()||null,
-      rilievi_finali: document.getElementById(prefix+'_csl_rilievi')?.value.trim()||null,
-      trasmissione: document.getElementById(prefix+'_csl_trasmissione')?.value.trim()||null,
-      restituzione_firmata: document.getElementById(prefix+'_csl_restituzione')?.checked !== false
-    };
+    return csl_raccogliCampi(prefix+'_csl');
   }
   if(tipo==='certificato_ultimazione'){
     return {
