@@ -245,7 +245,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.07.25';
+const APP_VERSIONE = '2026.07.25b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -6302,6 +6302,14 @@ function bodyVerificaODS(c, v, dx){
     html += '<p>Viene fissata ulteriore riunione per la verifica dello stato del cantiere alla data del '+fmt(dx.prossima_riunione)+'.</p>';
   }
 
+  if(dx.disposizioni_aggiuntive_incluse && dx.disposizioni_aggiuntive){
+    html += '<p><strong>Ulteriori disposizioni</strong></p>';
+    html += paraP(dx.disposizioni_aggiuntive);
+    if(dx.prossimo_sopralluogo_data){
+      html += '<p>Si fissa un nuovo sopralluogo per il giorno '+fmt(dx.prossimo_sopralluogo_data)+' al fine di verificare l\'adempimento delle presenti disposizioni.</p>';
+    }
+  }
+
   html += '<p>Letto, confermato e sottoscritto.</p>';
   if(dx.trasmissione){
     html += '<p style="font-size:11px;color:#6C757D">'+esc(dx.trasmissione)+'</p>';
@@ -8111,11 +8119,22 @@ function extraFieldsVerificaODSHtml(prefix, dx, odsList){
     <input type="hidden" id="${prefix}_stato_luoghi_legacy" value="${esc(dx.stato_luoghi||'')}">
     <div class="form-group" style="margin-top:12px"><label class="form-label">Conseguenze dell'inadempimento (se non adempiente)</label>
       <textarea class="form-control" id="${prefix}_conseguenze" rows="3">${esc(dx.conseguenze||'')}</textarea></div>
+    <input type="hidden" id="${prefix}_prossima_riunione_legacy" value="${esc(dx.prossima_riunione||'')}">
     <div class="form-grid" style="margin-top:12px">
-      <div class="form-group"><label class="form-label">Data prossima riunione</label>
-        <input class="form-control" type="date" id="${prefix}_prossima_riunione" value="${dx.prossima_riunione||''}"></div>
       <div class="form-group"><label class="form-label">Nota trasmissione</label>
         <input class="form-control" id="${prefix}_trasmissione" value="${esc(dx.trasmissione||"Il presente verbale viene trasmesso a mezzo pec all'impresa, al RUP.")}"></div>
+    </div>
+    <div style="margin-top:16px;border-top:1px dashed var(--border);padding-top:12px">
+      <label class="form-label"><input type="checkbox" id="${prefix}_disp_agg_incluso" onchange="document.getElementById('${prefix}_disp_agg_box').style.display=this.checked?'block':'none'" ${dx.disposizioni_aggiuntive_incluse?'checked':''}> Impartisci disposizioni aggiuntive e fissa un nuovo sopralluogo di verifica</label>
+      <div class="form-hint">Da usare in caso di non adempimento, quando si vogliono dare ulteriori disposizioni e fissare una data per verificarle. Se non selezionato, il verbale non ne fa menzione.</div>
+      <div id="${prefix}_disp_agg_box" style="display:${dx.disposizioni_aggiuntive_incluse?'block':'none'};margin-top:10px">
+        <div class="form-group"><label class="form-label">Ulteriori disposizioni impartite</label>
+          <textarea class="form-control" id="${prefix}_disp_aggiuntive" rows="3">${esc(dx.disposizioni_aggiuntive||'')}</textarea></div>
+        <div class="form-grid" style="margin-top:10px">
+          <div class="form-group"><label class="form-label">Data nuovo sopralluogo di verifica</label>
+            <input class="form-control" type="date" id="${prefix}_prox_sopralluogo_data" value="${dx.prossimo_sopralluogo_data||''}"></div>
+        </div>
+      </div>
     </div>
     <div style="margin-top:16px;border-top:1px dashed var(--border);padding-top:12px">
       <label class="form-label"><input type="checkbox" id="${prefix}_csl_incluso" onchange="document.getElementById('${prefix}_csl_box').style.display=this.checked?'block':'none'" ${dx.csl_incluso?'checked':''}> Includi anche la constatazione dello stato dei luoghi in questo verbale</label>
@@ -8310,10 +8329,18 @@ function raccogliDatiExtraVerbale(prefix, tipo){
       // qui sotto): preservato solo se un verbale precedente lo aveva gia' valorizzato.
       stato_luoghi: document.getElementById(prefix+'_stato_luoghi_legacy')?.value.trim()||null,
       conseguenze: document.getElementById(prefix+'_conseguenze')?.value.trim()||null,
-      prossima_riunione: document.getElementById(prefix+'_prossima_riunione')?.value||null,
+      // campo dismesso dal form (sostituito dal blocco "disposizioni aggiuntive"
+      // opzionale qui sotto): preservato solo se un verbale precedente lo aveva
+      // gia' valorizzato.
+      prossima_riunione: document.getElementById(prefix+'_prossima_riunione_legacy')?.value.trim()||null,
       trasmissione: document.getElementById(prefix+'_trasmissione')?.value.trim()||null,
+      disposizioni_aggiuntive_incluse: document.getElementById(prefix+'_disp_agg_incluso')?.checked||false,
       csl_incluso: document.getElementById(prefix+'_csl_incluso')?.checked||false
     };
+    if(out.disposizioni_aggiuntive_incluse){
+      out.disposizioni_aggiuntive = document.getElementById(prefix+'_disp_aggiuntive')?.value.trim()||null;
+      out.prossimo_sopralluogo_data = document.getElementById(prefix+'_prox_sopralluogo_data')?.value||null;
+    }
     if(out.csl_incluso){
       const emb = csl_raccogliCampi(prefix+'_vods_csl');
       out.csl_premesse = emb.premesse;
