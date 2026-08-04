@@ -178,6 +178,51 @@ textarea.form-control{resize:vertical;min-height:80px}
     <div class="form-group" style="margin-bottom:12px"><label class="form-label">Email</label><input class="form-control" type="email" id="auth_email" placeholder="email@studio.it"></div>
     <div class="form-group" style="margin-bottom:20px"><label class="form-label">Password</label><input class="form-control" type="password" id="auth_pass" placeholder="••••••••"></div>
     <button class="btn btn-primary w-full" id="authBtn" onclick="doAuth()" style="justify-content:center;padding:10px">Accedi</button>
+    <div id="forgotLink" style="text-align:center;margin-top:14px">
+      <a href="#" onclick="mostraRecuperoPassword();return false;" style="font-size:12px;color:var(--primary);text-decoration:none">Password dimenticata?</a>
+    </div>
+  </div>
+</div>
+
+<!-- RECUPERO PASSWORD: richiesta email -->
+<div class="login-wrap hidden" id="recuperoScreen">
+  <div class="login-box">
+    <div class="login-logo">
+      <h1>🔑 Recupero password</h1>
+      <p>Ti invieremo un link per impostare una nuova password</p>
+    </div>
+    <div id="recuperoMsg"></div>
+    <div class="form-group" style="margin-bottom:20px">
+      <label class="form-label">Email del tuo account</label>
+      <input class="form-control" type="email" id="rec_email" placeholder="email@studio.it">
+    </div>
+    <button class="btn btn-primary w-full" id="recBtn" onclick="inviaLinkRecupero()" style="justify-content:center;padding:10px">Invia link di recupero</button>
+    <div style="text-align:center;margin-top:14px">
+      <a href="#" onclick="tornaAlLogin();return false;" style="font-size:12px;color:var(--primary);text-decoration:none">&larr; Torna all'accesso</a>
+    </div>
+  </div>
+</div>
+
+<!-- NUOVA PASSWORD: schermata mostrata al ritorno dal link email -->
+<div class="login-wrap hidden" id="nuovaPasswordScreen">
+  <div class="login-box">
+    <div class="login-logo">
+      <h1>🔒 Imposta nuova password</h1>
+      <p id="npUtente">Scegli la password con cui accederai d'ora in poi</p>
+    </div>
+    <div id="npMsg"></div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Nuova password</label>
+      <input class="form-control" type="password" id="np_pass1" placeholder="almeno 6 caratteri">
+    </div>
+    <div class="form-group" style="margin-bottom:20px">
+      <label class="form-label">Ripeti la nuova password</label>
+      <input class="form-control" type="password" id="np_pass2" placeholder="••••••••">
+    </div>
+    <button class="btn btn-primary w-full" id="npBtn" onclick="salvaNuovaPassword()" style="justify-content:center;padding:10px">Salva password e accedi</button>
+    <div class="alert alert-info" style="margin-top:14px;font-size:11px">
+      Finché non salvi la nuova password non potrai accedere al gestionale: il link di recupero è valido una sola volta.
+    </div>
   </div>
 </div>
 
@@ -245,7 +290,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.07.25b';
+const APP_VERSIONE = '2026.07.25c';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -336,6 +381,94 @@ function traduciErrore(msg){
   return msg;
 }
 
+// ============================================================
+// RECUPERO PASSWORD
+// Il link inviato per email riporta l'utente qui con una sessione
+// temporanea di tipo "recovery". Senza intercettarla, l'utente
+// entrerebbe direttamente nel gestionale senza mai impostare la
+// nuova password — e alla scadenza della sessione si ritroverebbe
+// di nuovo fuori, con la vecchia password ancora sconosciuta.
+// ============================================================
+let inRecuperoPassword = false;
+
+function mostraSchermata(id){
+  ['loginScreen','recuperoScreen','nuovaPasswordScreen','appScreen'].forEach(s=>{
+    const el = document.getElementById(s);
+    if(el) el.classList.toggle('hidden', s!==id);
+  });
+}
+
+function mostraRecuperoPassword(){
+  const emailLogin = document.getElementById('auth_email').value.trim();
+  const campo = document.getElementById('rec_email');
+  if(campo && emailLogin) campo.value = emailLogin;
+  document.getElementById('recuperoMsg').innerHTML = '';
+  mostraSchermata('recuperoScreen');
+}
+
+function tornaAlLogin(){
+  document.getElementById('authMsg').innerHTML = '';
+  mostraSchermata('loginScreen');
+}
+
+async function inviaLinkRecupero(){
+  const email = document.getElementById('rec_email').value.trim();
+  const btn = document.getElementById('recBtn');
+  const msg = document.getElementById('recuperoMsg');
+  if(!email){ msg.innerHTML = '<div class="alert alert-error">Inserisci la tua email</div>'; return; }
+  btn.disabled = true; btn.textContent = 'Invio in corso…';
+  try{
+    // redirectTo riporta l'utente su questa stessa pagina: l'intercettazione
+    // all'avvio riconosce il tipo "recovery" e mostra la schermata password.
+    const {error} = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.href.split('#')[0]
+    });
+    if(error) throw error;
+    msg.innerHTML = '<div class="alert alert-success">Se l\'indirizzo è registrato riceverai un\'email con il link per impostare la nuova password. Controlla anche la posta indesiderata.</div>';
+  }catch(e){
+    msg.innerHTML = '<div class="alert alert-error">'+esc(traduciErrore(e.message))+'</div>';
+  }finally{
+    btn.disabled = false; btn.textContent = 'Invia link di recupero';
+  }
+}
+
+async function salvaNuovaPassword(){
+  const p1 = document.getElementById('np_pass1').value;
+  const p2 = document.getElementById('np_pass2').value;
+  const btn = document.getElementById('npBtn');
+  const msg = document.getElementById('npMsg');
+  msg.innerHTML = '';
+  if(!p1 || !p2){ msg.innerHTML = '<div class="alert alert-error">Compila entrambi i campi</div>'; return; }
+  if(p1.length < 6){ msg.innerHTML = '<div class="alert alert-error">La password deve avere almeno 6 caratteri</div>'; return; }
+  if(p1 !== p2){ msg.innerHTML = '<div class="alert alert-error">Le due password non coincidono</div>'; return; }
+  btn.disabled = true; btn.textContent = 'Salvataggio…';
+  try{
+    const {error} = await sb.auth.updateUser({password: p1});
+    if(error) throw error;
+    inRecuperoPassword = false;
+    // pulisce il frammento del link dall'indirizzo, per evitare che un
+    // ricaricamento della pagina riproponga la schermata di recupero
+    try{ history.replaceState(null, '', window.location.pathname + window.location.search); }catch(e){}
+    msg.innerHTML = '<div class="alert alert-success">Password aggiornata. Accesso in corso…</div>';
+    await onLoggedIn();
+  }catch(e){
+    msg.innerHTML = '<div class="alert alert-error">'+esc(traduciErrore(e.message))+'</div>';
+    btn.disabled = false; btn.textContent = 'Salva password e accedi';
+  }
+}
+
+// true se l'indirizzo contiene un ritorno da link di recupero password
+function eRitornoDaRecupero(){
+  const h = window.location.hash || '';
+  const q = window.location.search || '';
+  return /type=recovery/.test(h) || /type=recovery/.test(q);
+}
+
+function avviaImpostazioneNuovaPassword(){
+  inRecuperoPassword = true;
+  mostraSchermata('nuovaPasswordScreen');
+}
+
 async function onLoggedIn(){
   const {data:{user}} = await sb.auth.getUser();
   if(!user){ return; }
@@ -345,8 +478,7 @@ async function onLoggedIn(){
     id:user.id, email:user.email,
     nome: profile?.nome || '', cognome: profile?.cognome || ''
   };
-  document.getElementById('loginScreen').classList.add('hidden');
-  document.getElementById('appScreen').classList.remove('hidden');
+  mostraSchermata('appScreen');
   const displayName = (currentUser.nome || currentUser.cognome) ? `${currentUser.nome} ${currentUser.cognome}`.trim() : currentUser.email;
   document.getElementById('topbarUser').textContent = displayName;
   const elVer = document.getElementById('topbarVersione');
@@ -354,8 +486,7 @@ async function onLoggedIn(){
   await loadMyCantieri();
   if(myCantieri.length === 0){
     // Utente registrato ma non ancora aggiunto a nessun cantiere dal DL
-    document.getElementById('loginScreen').classList.remove('hidden');
-    document.getElementById('appScreen').classList.add('hidden');
+    mostraSchermata('loginScreen');
     document.getElementById('authMsg').innerHTML =
       '<div style="background:#FFF3CD;border:1px solid #FFC107;border-radius:6px;padding:14px;margin-top:12px;font-size:13px">' +
       '<strong>Accesso in attesa di autorizzazione</strong><br><br>' +
@@ -388,8 +519,8 @@ async function loadMyCantieri(){
 async function doLogout(){
   await sb.auth.signOut();
   currentUser=null; currentCantiere=null; currentRole=null; myCantieri=[];
-  document.getElementById('loginScreen').classList.remove('hidden');
-  document.getElementById('appScreen').classList.add('hidden');
+  inRecuperoPassword = false;
+  mostraSchermata('loginScreen');
 }
 
 // ============================================================
@@ -8818,9 +8949,24 @@ async function generaVerbaleSospensionePDF(sospId, tipoVerbale){
 // ============================================================
 // INIT — ripristina sessione se presente
 // ============================================================
+// L'evento PASSWORD_RECOVERY viene emesso quando la libreria riconosce
+// il token del link di recupero: e' il punto piu' affidabile per
+// dirottare l'utente sulla schermata di impostazione password.
+sb.auth.onAuthStateChange((event)=>{
+  if(event === 'PASSWORD_RECOVERY'){
+    avviaImpostazioneNuovaPassword();
+  }
+});
+
 (async ()=>{
+  // Se l'indirizzo porta i segni di un ritorno da link di recupero,
+  // NON si entra nel gestionale: si chiede prima la nuova password.
+  if(eRitornoDaRecupero()){
+    avviaImpostazioneNuovaPassword();
+    return;
+  }
   const {data:{session}} = await sb.auth.getSession();
-  if(session){ await onLoggedIn(); }
+  if(session && !inRecuperoPassword){ await onLoggedIn(); }
 })();
 </script>
 </body>
