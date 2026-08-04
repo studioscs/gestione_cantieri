@@ -290,7 +290,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.07.25c';
+const APP_VERSIONE = '2026.07.25d';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -485,18 +485,25 @@ async function onLoggedIn(){
   if(elVer) elVer.textContent = 'v' + APP_VERSIONE;
   await loadMyCantieri();
   if(myCantieri.length === 0){
-    // Utente registrato ma non ancora aggiunto a nessun cantiere dal DL
+    // L'utente e' autenticato ma non risulta assegnato ad alcun cantiere.
+    // Puo' essere una registrazione nuova in attesa, oppure — caso insidioso —
+    // un secondo account creato per errore (es. da un magic link su un'email
+    // scritta diversamente): in quel caso i cantieri sono legati all'altro id.
     mostraSchermata('loginScreen');
     document.getElementById('authMsg').innerHTML =
       '<div style="background:#FFF3CD;border:1px solid #FFC107;border-radius:6px;padding:14px;margin-top:12px;font-size:13px">' +
-      '<strong>Accesso in attesa di autorizzazione</strong><br><br>' +
-      'La tua registrazione è avvenuta con successo.<br>' +
-      'Sei loggato come: <strong>' + currentUser.email + '</strong><br><br>' +
-      'Per accedere ai cantieri devi essere aggiunto al team dal Direttore dei Lavori.<br>' +
-      'Contatta il DL e comunicagli l\'email con cui ti sei registrato.' +
+      '<strong>Nessun cantiere associato a questo account</strong><br><br>' +
+      'Accesso effettuato come: <strong>' + esc(currentUser.email) + '</strong><br>' +
+      '<span style="font-size:11px;color:#6C757D">ID account: ' + esc(currentUser.id) + '</span><br><br>' +
+      'Per accedere ai cantieri devi essere inserito nel team dal Direttore dei Lavori: ' +
+      'contattalo e comunicagli l\'email qui sopra.<br><br>' +
+      '<span style="font-size:12px">Se <strong>sei tu il DL</strong> e i cantieri dovresti già averli, ' +
+      'è probabile che questo sia un secondo account creato per errore (email digitata diversamente, ' +
+      'oppure link di accesso che ha generato un nuovo utente). In tal caso i cantieri restano legati ' +
+      'all\'account precedente e vanno riassegnati a questo id.</span>' +
       '<br><br><button onclick="sb.auth.signOut().then(()=>location.reload())" ' +
       'style="background:#856404;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">' +
-      'Esci e attendi autorizzazione</button>' +
+      'Esci</button>' +
       '</div>';
     return;
   }
