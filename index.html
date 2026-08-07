@@ -290,7 +290,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.07.25d';
+const APP_VERSIONE = '2026.08.07a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -639,9 +639,21 @@ function jumpToCantiere(id){
   showView('fasi');
 }
 
+// Ruoli "professionali" che possono aprire un nuovo cantiere diventandone DL.
+// RUP, DT Impresa, CSE e Committente sono ruoli subordinati/terzi: non possono
+// avviare autonomamente un cantiere.
+const RUOLI_PUO_CREARE = new Set(['dl', 'do']);
+
+function canCreateCantiere(){
+  // Nuovo utente (nessun cantiere): può creare il suo primo cantiere.
+  // Utente con almeno un ruolo DL o DO: può aprire altri cantieri.
+  return myCantieri.length === 0 || myCantieri.some(r => RUOLI_PUO_CREARE.has(r.ruolo));
+}
+
 async function renderCantieri(){
+  const puoCreare = canCreateCantiere();
   let html = `<div class="section-header"><div><div class="page-title">Gestione Cantieri</div><div class="page-subtitle">Archivio appalti</div></div>
-    <button class="btn btn-primary" onclick="openModalNuovoCantiere()">+ Nuovo cantiere</button></div>`;
+    ${puoCreare ? `<button class="btn btn-primary" onclick="openModalNuovoCantiere()">+ Nuovo cantiere</button>` : ''}</div>`;
   if(!myCantieri.length) return html + `<div class="empty"><div class="empty-icon">🏗️</div><h3>Nessun cantiere</h3><p>Crea il primo cantiere: diventerai automaticamente il Direttore dei Lavori.</p></div>`;
 
   for(const r of myCantieri){
@@ -3769,6 +3781,7 @@ async function eliminaCantiere(id){
 }
 
 function openModalNuovoCantiere(){
+  if(!canCreateCantiere()){ alert('Solo il Direttore dei Lavori può creare un nuovo cantiere.'); return; }
   openModal('Nuovo Cantiere',`<div class="alert alert-info">Creando il cantiere verrai registrato automaticamente come <strong>Direttore dei Lavori</strong>.</div>
     <div class="form-grid">
       <div class="form-group"><label class="form-label">Denominazione cantiere *</label>
@@ -3820,6 +3833,8 @@ function openModalNuovoCantiere(){
 }
 
 async function salvaCantiere(){
+  // Guardia lato client (la vera sicurezza è nella funzione server-side)
+  if(!canCreateCantiere()){ alert('Solo il Direttore dei Lavori può creare un nuovo cantiere.'); return; }
   const nome=document.getElementById('f_nome').value.trim();
   const codice=document.getElementById('f_codice').value.trim()||null;
   const descr=document.getElementById('f_descr').value.trim()||null;
@@ -3828,40 +3843,82 @@ async function salvaCantiere(){
   const importo=parseFloat(document.getElementById('f_importo').value)||0;
   if(!nome){alert('Denominazione cantiere obbligatoria');return;}
   const btn=document.getElementById('saveCantBtn');btn.disabled=true;btn.textContent='Salvataggio…';
-  const {data:cant,error} = await sb.from('cantieri').insert({
-    nome,codice_commessa:codice,descrizione:descr,cig,cup:document.getElementById('f_cup').value.trim(),stazione_appaltante:sa,
-    impresa:document.getElementById('f_impresa').value.trim(),importo,
-    stato:document.getElementById('f_stato').value,
-    estremi_contratto:document.getElementById('f_estremi').value.trim()||null,
-    numero_repertorio:document.getElementById('f_rep').value.trim()||null,
-    data_contratto:document.getElementById('f_datacontr').value||null,
-    oneri_sicurezza:parseFloat(document.getElementById('f_oneri').value)||null,
-    ribasso_percentuale:parseFloat(document.getElementById('f_ribasso').value)||null,
-    link_box:document.getElementById('f_link_box').value.trim()||null,
-    data_consegna:document.getElementById('f_dc').value||null,
-    data_fine_contratto:document.getElementById('f_df').value||null,
-    data_fine_aggiornata:document.getElementById('f_df').value||null,
-    data_fine:document.getElementById('f_df').value||null,
-    created_by:currentUser.id
-  }).select().single();
-  if(error){alert('Errore: '+error.message);btn.disabled=false;btn.textContent='Salva cantiere';return;}
-  // Auto-assegnazione come DL. Se fallisce, il cantiere resterebbe
-  // senza alcun membro: invisibile nell'app ma presente nel database.
-  // In quel caso lo si elimina subito, per non lasciare cantieri orfani.
-  const {error:e2} = await sb.from('cantiere_utenti').insert({cantiere_id:cant.id,utente_id:currentUser.id,ruolo:'dl'});
-  if(e2){
-    let recuperato = false;
-    try{
-      const {error:e3} = await sb.from('cantieri').delete().eq('id',cant.id);
-      recuperato = !e3;
-    }catch(eDel){ /* niente */ }
-    alert('Impossibile assegnarti come Direttore dei Lavori: '+e2.message
-      + (recuperato
-          ? '\n\nIl cantiere non è stato creato. Riprova.'
-          : '\n\nATTENZIONE: il cantiere è stato creato ma risulta senza membri e non comparirà nell\'elenco. Segnalalo per la bonifica.'));
-    btn.disabled=false; btn.textContent='Salva cantiere';
-    if(recuperato) return;
+
+  const payload = {
+    p_nome: nome,
+    p_codice_commessa: codice,
+    p_descrizione: descr,
+    p_cig: cig,
+    p_cup: document.getElementById('f_cup').value.trim()||null,
+    p_stazione_appaltante: sa||null,
+    p_impresa: document.getElementById('f_impresa').value.trim()||null,
+    p_importo: importo,
+    p_stato: document.getElementById('f_stato').value,
+    p_estremi_contratto: document.getElementById('f_estremi').value.trim()||null,
+    p_numero_repertorio: document.getElementById('f_rep').value.trim()||null,
+    p_data_contratto: document.getElementById('f_datacontr').value||null,
+    p_oneri_sicurezza: parseFloat(document.getElementById('f_oneri').value)||null,
+    p_ribasso_percentuale: parseFloat(document.getElementById('f_ribasso').value)||null,
+    p_link_box: document.getElementById('f_link_box').value.trim()||null,
+    p_data_consegna: document.getElementById('f_dc').value||null,
+    p_data_fine_contratto: document.getElementById('f_df').value||null
+  };
+
+  // Percorso sicuro: la funzione server-side (SECURITY DEFINER) aggira il
+  // problema RLS eseguendo INSERT su cantieri e cantiere_utenti in un'unica
+  // transazione, verificando che chi chiama sia autenticato.
+  let rpcMancante = false;
+  try {
+    const {data:rpcData, error:rpcErr} = await sb.rpc('crea_cantiere', payload);
+    if(!rpcErr){
+      closeModal();
+      await loadMyCantieri();
+      showView('cantieri');
+      return;
+    }
+    if(/does not exist|schema cache|not find/i.test(rpcErr.message||'')) rpcMancante = true;
+    else { alert('Errore: '+rpcErr.message); btn.disabled=false; btn.textContent='Salva cantiere'; return; }
+  } catch(e){ rpcMancante = true; }
+
+  if(rpcMancante){
+    // Fallback per database senza la migrazione crea_cantiere.
+    // Richiede una policy RLS di INSERT su cantieri che ammetta auth.uid()=created_by.
+    const {data:cant,error} = await sb.from('cantieri').insert({
+      nome, codice_commessa:codice, descrizione:descr, cig,
+      cup:payload.p_cup, stazione_appaltante:sa,
+      impresa:payload.p_impresa, importo,
+      stato:payload.p_stato,
+      estremi_contratto:payload.p_estremi_contratto,
+      numero_repertorio:payload.p_numero_repertorio,
+      data_contratto:payload.p_data_contratto,
+      oneri_sicurezza:payload.p_oneri_sicurezza,
+      ribasso_percentuale:payload.p_ribasso_percentuale,
+      link_box:payload.p_link_box,
+      data_consegna:payload.p_data_consegna,
+      data_fine_contratto:payload.p_data_fine_contratto,
+      data_fine_aggiornata:payload.p_data_fine_contratto,
+      data_fine:payload.p_data_fine_contratto,
+      created_by:currentUser.id
+    }).select().single();
+    if(error){ alert('Errore: '+error.message); btn.disabled=false; btn.textContent='Salva cantiere'; return; }
+    // Auto-assegnazione come DL. Se fallisce il cantiere viene eliminato subito
+    // per non lasciare cantieri orfani (visibili nel DB ma non nell'app).
+    const {error:e2} = await sb.from('cantiere_utenti').insert({cantiere_id:cant.id,utente_id:currentUser.id,ruolo:'dl'});
+    if(e2){
+      let recuperato = false;
+      try{
+        const {error:e3} = await sb.from('cantieri').delete().eq('id',cant.id);
+        recuperato = !e3;
+      }catch(eDel){ /* niente */ }
+      alert('Impossibile assegnarti come Direttore dei Lavori: '+e2.message
+        + (recuperato
+            ? '\n\nIl cantiere non è stato creato. Riprova.'
+            : '\n\nATTENZIONE: il cantiere è stato creato ma risulta senza membri e non comparirà nell\'elenco. Segnalalo per la bonifica.'));
+      btn.disabled=false; btn.textContent='Salva cantiere';
+      if(recuperato) return;
+    }
   }
+
   closeModal();
   await loadMyCantieri();
   showView('cantieri');
