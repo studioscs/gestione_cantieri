@@ -290,7 +290,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.08.05a';
+const APP_VERSIONE = '2026.08.07a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -639,11 +639,15 @@ function jumpToCantiere(id){
   showView('fasi');
 }
 
-// Un utente può creare un cantiere solo se non ha cantieri (nuovo utente)
-// oppure se è DL in almeno uno dei suoi cantieri.
-// Chi è stato aggiunto solo come DT o RUP non può creare cantieri.
+// Ruoli "professionali" che possono aprire un nuovo cantiere diventandone DL.
+// RUP, DT Impresa, CSE e Committente sono ruoli subordinati/terzi: non possono
+// avviare autonomamente un cantiere.
+const RUOLI_PUO_CREARE = new Set(['dl', 'do']);
+
 function canCreateCantiere(){
-  return myCantieri.length === 0 || myCantieri.some(r => r.ruolo === 'dl');
+  // Nuovo utente (nessun cantiere): può creare il suo primo cantiere.
+  // Utente con almeno un ruolo DL o DO: può aprire altri cantieri.
+  return myCantieri.length === 0 || myCantieri.some(r => RUOLI_PUO_CREARE.has(r.ruolo));
 }
 
 async function renderCantieri(){
