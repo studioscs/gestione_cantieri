@@ -290,7 +290,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.04a';
+const APP_VERSIONE = '2026.09.04b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -2207,12 +2207,12 @@ async function renderVerbali(){
 
   const tipoIcon = {
     consegna_lavori:'🏗️', consegna_parziale:'🏗️', sopralluogo:'👁️', sopralluogo_periodico:'🔎', verifica_ods:'📐', constatazione:'📝', constatazione_stato_luoghi:'🔍',
-    riunione:'👥', fine_lavori:'✅', certificato_ultimazione:'✅', certificato_ultimazione_con_opere:'✅', riconsegna_anticipata:'🔑', altro:'📋'
+    riunione:'👥', fine_lavori:'✅', certificato_ultimazione:'✅', certificato_ultimazione_con_opere:'✅', riconsegna_anticipata:'🔑', collaudo_statico:'🏛️', altro:'📋'
   };
   const tipoLabel = {
     consegna_lavori:'Consegna lavori', consegna_parziale:'Consegna parziale lavori', sopralluogo:'Sopralluogo', sopralluogo_periodico:'Sopralluogo periodico', verifica_ods:'Verifica adempimento OdS',
     constatazione:'Constatazione', constatazione_stato_luoghi:'Constatazione stato dei luoghi', riunione:'Riunione di cantiere',
-    fine_lavori:'Fine lavori (dismesso)', certificato_ultimazione:'Certificato di ultimazione lavori', certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare', riconsegna_anticipata:'Presa in consegna anticipata delle opere', altro:'Altro verbale'
+    fine_lavori:'Fine lavori (dismesso)', certificato_ultimazione:'Certificato di ultimazione lavori', certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare', riconsegna_anticipata:'Presa in consegna anticipata delle opere', collaudo_statico:'Verbale di visita di collaudo statico', altro:'Altro verbale'
   };
 
   verbali.forEach(v=>{
@@ -2321,6 +2321,7 @@ async function openModalNuovoVerbale(){
           <option value="certificato_ultimazione">✅ Certificato di ultimazione lavori</option>
           <option value="certificato_ultimazione_con_opere">✅ Certificato di ultimazione con opere da completare</option>
           <option value="riconsegna_anticipata">🔑 Presa in consegna anticipata (riconsegna anticipata) delle opere</option>
+          <option value="collaudo_statico">🏛️ Verbale di visita di collaudo statico</option>
           <option value="altro">📋 Altro verbale</option>
         </select>
       </div>
@@ -2359,6 +2360,7 @@ async function openModalNuovoVerbale(){
     ${extraFieldsCertUltimazioneHtml('nv2')}
     ${extraFieldsCertUltimazioneConOpereHtml('nv2')}
     ${extraFieldsRiconsegnaAnticipataHtml('nv2', teamDx)}
+    ${extraFieldsCollaudoStaticoHtml('nv2', null, teamDx, getCantiereObj())}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaVerbale()">Salva verbale</button>
@@ -2384,7 +2386,7 @@ async function salvaVerbale(){
   });
   if(error){ alert(error.message); return; }
   // Annotazione automatica sul giornale
-  const tipoL = {consegna_lavori:'Consegna lavori',consegna_parziale:'Consegna parziale lavori',sopralluogo:'Sopralluogo',sopralluogo_periodico:'Sopralluogo periodico',verifica_ods:'Verifica adempimento OdS',constatazione:'Constatazione',constatazione_stato_luoghi:'Constatazione stato dei luoghi',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',certificato_ultimazione:'Certificato di ultimazione lavori',certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare',riconsegna_anticipata:'Presa in consegna anticipata delle opere',altro:'Verbale'};
+  const tipoL = {consegna_lavori:'Consegna lavori',consegna_parziale:'Consegna parziale lavori',sopralluogo:'Sopralluogo',sopralluogo_periodico:'Sopralluogo periodico',verifica_ods:'Verifica adempimento OdS',constatazione:'Constatazione',constatazione_stato_luoghi:'Constatazione stato dei luoghi',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',certificato_ultimazione:'Certificato di ultimazione lavori',certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare',riconsegna_anticipata:'Presa in consegna anticipata delle opere',collaudo_statico:'Verbale di visita di collaudo statico',altro:'Verbale'};
   const ogg = document.getElementById('nv2_ogg').value.trim();
   await annotaGiornale(data, `[VERBALE ${(tipoL[tipo]||tipo).toUpperCase()}]${ogg?' — '+ogg:''}`);
   closeModal();
@@ -2420,6 +2422,7 @@ async function openModalEditVerbale(id){
           <option value="certificato_ultimazione"${v.tipo==='certificato_ultimazione'?' selected':''}>✅ Certificato di ultimazione lavori</option>
           <option value="certificato_ultimazione_con_opere"${v.tipo==='certificato_ultimazione_con_opere'?' selected':''}>✅ Certificato di ultimazione con opere da completare</option>
           <option value="riconsegna_anticipata"${v.tipo==='riconsegna_anticipata'?' selected':''}>🔑 Presa in consegna anticipata (riconsegna anticipata) delle opere</option>
+          <option value="collaudo_statico"${v.tipo==='collaudo_statico'?' selected':''}>🏛️ Verbale di visita di collaudo statico</option>
           ${v.tipo==='fine_lavori'?'<option value="fine_lavori" selected>✅ Fine lavori (tipo dismesso — cambia in uno dei nuovi tipi sopra)</option>':''}
           <option value="altro"${v.tipo==='altro'?' selected':''}>📋 Altro verbale</option>
         </select>
@@ -2458,6 +2461,7 @@ async function openModalEditVerbale(id){
     ${extraFieldsCertUltimazioneHtml('ev2', dx)}
     ${extraFieldsCertUltimazioneConOpereHtml('ev2', dx)}
     ${extraFieldsRiconsegnaAnticipataHtml('ev2', dxWithTeam)}
+    ${extraFieldsCollaudoStaticoHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaEditVerbale('${id}')">Salva</button>
@@ -5934,7 +5938,7 @@ const VERBALE_FILE_CODE = {
   constatazione:'VER_CON', constatazione_stato_luoghi:'VER_STALUO',
   certificato_ultimazione:'VER_UL', certificato_ultimazione_con_opere:'VER_ULCO',
   riconsegna_anticipata:'VER_PCA', riunione:'VER_RIU',
-  verifica_ods:'VER_ODS', fine_lavori:'VER_GEN', altro:'VER_GEN'
+  verifica_ods:'VER_ODS', collaudo_statico:'VER_COL', fine_lavori:'VER_GEN', altro:'VER_GEN'
 };
 const PRELIEVO_FILE_CODE = {
   acciaio_carpenteria:'ACC', barre_ca:'AC-CA', reti_tralicci:'RT-CA',
@@ -6429,7 +6433,51 @@ function bodySopralluogoPeriodico(c, v, dx){
   return html;
 }
 
-// ---- 2. VERBALE DI VERIFICA ADEMPIMENTO ORDINE DI SERVIZIO + STATO LUOGHI ----
+// ---- 2. VERBALE DI VISITA DI COLLAUDO STATICO ----
+function bodyCollaudoStatico(c, v, dx){
+  const dl = dataInLettere(v.data);
+  const conforme = (dx.esito||'conformi') !== 'non_conformi';
+  let html = '';
+  html += '<p>L\'anno <strong>'+dl.anno+'</strong>, il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>'
+    + (dx.ora_inizio ? ', alle ore <strong>'+esc(dx.ora_inizio)+'</strong>' : '')
+    + ', alla presenza continua degli intervenuti, sono convenuti sui luoghi'
+    + (dx.luogo ? ' siti in <strong>'+esc(dx.luogo)+'</strong>' : ' in oggetto') + ':</p>';
+  html += '<ul>';
+  if(dx.collaudatore_nome) html += '<li>'+esc(dx.collaudatore_nome)+' &mdash; <em>Collaudatore Statico</em></li>';
+  if(dx.dt_impresa_nome) html += '<li>'+esc(dx.dt_impresa_nome)+' &mdash; <em>DT Impresa / Legale Rappresentante dell\'Impresa</em></li>';
+  if(dx.dl_nome||v.redattore) html += '<li>'+esc(dx.dl_nome||v.redattore||'')+' &mdash; <em>Direttore dei Lavori</em></li>';
+  if(dx.committente_nome) html += '<li>'+esc(dx.committente_nome)+' &mdash; <em>Committente / Stazione Appaltante</em></li>';
+  html += '</ul>';
+  html += '<p>per la visita di collaudo statico delle opere strutturali realizzate nell\'ambito dei lavori in oggetto.</p>';
+  html += '<h3>DESCRIZIONE DEI LAVORI E OSSERVAZIONI</h3>';
+  if(dx.descrizione_lavori){
+    html += paraP(dx.descrizione_lavori);
+  } else {
+    html += '<p><em>(descrizione non inserita)</em></p>';
+  }
+  if(dx.rilievi){
+    html += '<h3>RILIEVI EFFETTUATI</h3>';
+    html += paraP(dx.rilievi);
+  }
+  html += '<h3>ESITO DELLA VISITA DI COLLAUDO</h3>';
+  if(conforme){
+    html += '<p>Il Collaudatore Statico, all\'esito della visita odierna, accerta che le opere strutturali realizzate <strong>sono state eseguite in conformit&agrave; al progetto</strong>, al capitolato speciale d\'appalto e alle norme tecniche per le costruzioni (NTC), in conformit&agrave; alle disposizioni impartite dalla Direzione Lavori e nel rispetto delle regole della tecnica.</p>';
+    if(dx.indicazioni_dl){
+      html += '<p>La Direzione Lavori impartisce le seguenti indicazioni/prescrizioni:</p>';
+      html += paraP(dx.indicazioni_dl);
+    }
+  } else {
+    html += '<p>Il Collaudatore Statico, all\'esito della visita odierna, accerta che le opere strutturali realizzate <strong>NON sono state eseguite in conformit&agrave; al progetto</strong>, al capitolato speciale d\'appalto e alle norme tecniche per le costruzioni (NTC), per i seguenti motivi:</p>';
+    if(dx.motivi_difformita){
+      html += paraP(dx.motivi_difformita);
+    }
+  }
+  html += '<p>La visita di collaudo si &egrave; conclusa alle ore '+(dx.ora_fine||'______')+'.</p>';
+  html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dagli intervenuti.</p>';
+  return html;
+}
+
+// ---- 3. VERBALE DI VERIFICA ADEMPIMENTO ORDINE DI SERVIZIO + STATO LUOGHI ----
 function bodyVerificaODS(c, v, dx){
   const presenti = parsePresentiList(v.presenti);
   let html = '';
@@ -8136,6 +8184,16 @@ async function apriVerbaleFirmabile(id, solaLettura){
         ['IMPRESA', esc(c?.impresa||'')],
         rigaContratto(c)
       ];
+    } else if(v.tipo==='collaudo_statico'){
+      titolo = 'Verbale di visita di collaudo statico';
+      comune = dx.luogo || c?.stazione_appaltante || '';
+      corpoHtml = bodyCollaudoStatico(c, v, dx);
+      metaRows = [
+        ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+        ['COMMITTENTE', esc(dx.committente_nome||c?.stazione_appaltante||'')],
+        ['IMPRESA', esc(c?.impresa||'')],
+        rigaContratto(c)
+      ];
     } else {
       const tipoLabelMap = {sopralluogo:'Verbale di sopralluogo',constatazione:'Verbale di constatazione',riunione:'Verbale di riunione di cantiere',fine_lavori:'Verbale di fine lavori',altro:'Verbale'};
       titolo = tipoLabelMap[v.tipo] || 'Verbale';
@@ -8154,7 +8212,8 @@ async function apriVerbaleFirmabile(id, solaLettura){
       certificato_ultimazione: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:'',ruolo:"L'Impresa"}],
       certificato_ultimazione_con_opere: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:'',ruolo:"L'Impresa"}],
       consegna_lavori: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:dx.legale_rappresentante||'',ruolo:"L'Impresa"}],
-      consegna_parziale: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:dx.dt_impresa_nome||'',ruolo:"L'Impresa"}]
+      consegna_parziale: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:dx.dt_impresa_nome||'',ruolo:"L'Impresa"}],
+      collaudo_statico: [{nome:dx.collaudatore_nome||'',ruolo:'Il Collaudatore Statico'},{nome:dx.dt_impresa_nome||'',ruolo:"L'Impresa"},{nome:dx.dl_nome||redattoreDefault,ruolo:'Il Direttore dei Lavori'}]
     };
     const firmatariDefault = firmatariDefaultMap[v.tipo] || [{nome:'',ruolo:'Il Direttore dei Lavori'},{nome:'',ruolo:"L'Impresa"}];
 
@@ -8184,7 +8243,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
 
 function toggleVerbaleExtra(prefix){
   const tipo = document.getElementById(prefix+'_tipo').value;
-  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata'];
+  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata','collaudo_statico'];
   TIPI_STRUTTURATI.forEach(function(t){
     const el = document.getElementById(prefix+'_extra_'+t);
     if(el) el.style.display = (tipo===t) ? 'block' : 'none';
@@ -8505,6 +8564,63 @@ function extraFieldsRiconsegnaAnticipataHtml(prefix, dx){
   </div>`;
 }
 
+function extraFieldsCollaudoStaticoHtml(prefix, dx, team, cantiere){
+  dx = dx || {}; team = team || {}; cantiere = cantiere || {};
+  const dlNome = dx.dl_nome || team.dl_nome || '';
+  const dtNome = dx.dt_impresa_nome || team.dt_impresa_nome || '';
+  const committente = dx.committente_nome || cantiere.stazione_appaltante || '';
+  const luogo = dx.luogo || '';
+  const descr = dx.descrizione_lavori || cantiere.descrizione || cantiere.nome || '';
+  return `<div id="${prefix}_extra_collaudo_statico" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli verbale di visita di collaudo statico</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Collaudatore *</label>
+        <input class="form-control" id="${prefix}_col_collaudatore" value="${esc(dx.collaudatore_nome||'')}" placeholder="Ing. Nome Cognome"></div>
+      <div class="form-group"><label class="form-label">Direttore dei Lavori</label>
+        <input class="form-control" id="${prefix}_col_dl" value="${esc(dlNome)}" placeholder="Ing. Nome Cognome"></div>
+      <div class="form-group"><label class="form-label">DT Impresa / Legale Rappresentante</label>
+        <input class="form-control" id="${prefix}_col_dt" value="${esc(dtNome)}"></div>
+      <div class="form-group"><label class="form-label">Committente</label>
+        <input class="form-control" id="${prefix}_col_committente" value="${esc(committente)}"></div>
+      <div class="form-group"><label class="form-label">Luogo del cantiere</label>
+        <input class="form-control" id="${prefix}_col_luogo" value="${esc(luogo)}" placeholder="Es. Via Roma 12, Treia (MC)"></div>
+      <div class="form-group"><label class="form-label">Ora inizio visita</label>
+        <input class="form-control" type="time" id="${prefix}_col_ora_inizio" value="${esc(dx.ora_inizio||'')}"></div>
+      <div class="form-group"><label class="form-label">Ora conclusione visita</label>
+        <input class="form-control" type="time" id="${prefix}_col_ora_fine" value="${esc(dx.ora_fine||'')}"></div>
+      <div class="form-group"><label class="form-label">Esito della visita *</label>
+        <select class="form-control" id="${prefix}_col_esito" onchange="toggleCollaudoEsito('${prefix}')">
+          <option value="conformi"${(dx.esito||'conformi')==='conformi'?' selected':''}>Conformi al progetto</option>
+          <option value="non_conformi"${dx.esito==='non_conformi'?' selected':''}>Non conformi al progetto</option>
+        </select></div>
+    </div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Descrizione dei lavori e osservazioni</label>
+      <div class="form-hint">Testo pre-compilato che descrive le lavorazioni strutturali eseguite. Verr&agrave; inserito nella sezione "Descrizione dei lavori e osservazioni" del verbale.</div>
+      <textarea class="form-control" id="${prefix}_col_descrizione" rows="4">${esc(descr)}</textarea></div>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Rilievi effettuati</label>
+      <div class="form-hint">Eventuali rilievi, misure, prove e verifiche eseguite durante la visita di collaudo.</div>
+      <textarea class="form-control" id="${prefix}_col_rilievi" rows="3">${esc(dx.rilievi||'')}</textarea></div>
+    <div id="${prefix}_col_indicazioni_wrap" style="margin-top:12px;display:${(dx.esito||'conformi')==='conformi'?'block':'none'}">
+      <div class="form-group"><label class="form-label">Indicazioni del DL / prescrizioni accessorie</label>
+        <div class="form-hint">Indicazioni impartite dalla Direzione Lavori da osservare per il completamento delle opere (campo facoltativo).</div>
+        <textarea class="form-control" id="${prefix}_col_indicazioni" rows="3">${esc(dx.indicazioni_dl||'')}</textarea></div>
+    </div>
+    <div id="${prefix}_col_motivi_wrap" style="margin-top:12px;display:${dx.esito==='non_conformi'?'block':'none'}">
+      <div class="form-group"><label class="form-label">Motivi della difformit&agrave;</label>
+        <div class="form-hint">Descrivere le difformit&agrave; riscontrate rispetto al progetto e al capitolato.</div>
+        <textarea class="form-control" id="${prefix}_col_motivi" rows="3">${esc(dx.motivi_difformita||'')}</textarea></div>
+    </div>
+  </div>`;
+}
+
+function toggleCollaudoEsito(prefix){
+  const val = document.getElementById(prefix+'_col_esito')?.value;
+  const inWrap = document.getElementById(prefix+'_col_indicazioni_wrap');
+  const moWrap = document.getElementById(prefix+'_col_motivi_wrap');
+  if(inWrap) inWrap.style.display = val==='non_conformi' ? 'none' : 'block';
+  if(moWrap) moWrap.style.display = val==='non_conformi' ? 'block' : 'none';
+}
+
 function raccogliDatiExtraVerbale(prefix, tipo){
   if(tipo==='sopralluogo_periodico'){
     return {
@@ -8624,6 +8740,22 @@ function raccogliDatiExtraVerbale(prefix, tipo){
       nota_impresa_data: document.getElementById(prefix+'_ra_notaimp_data')?.value||null,
       oggetto_consegna: document.getElementById(prefix+'_ra_oggetto')?.value.trim()||null,
       descrizione_opere: document.getElementById(prefix+'_ra_descrizione')?.value.trim()||null
+    };
+  }
+  if(tipo==='collaudo_statico'){
+    return {
+      collaudatore_nome: document.getElementById(prefix+'_col_collaudatore')?.value.trim()||null,
+      dl_nome: document.getElementById(prefix+'_col_dl')?.value.trim()||null,
+      dt_impresa_nome: document.getElementById(prefix+'_col_dt')?.value.trim()||null,
+      committente_nome: document.getElementById(prefix+'_col_committente')?.value.trim()||null,
+      luogo: document.getElementById(prefix+'_col_luogo')?.value.trim()||null,
+      ora_inizio: document.getElementById(prefix+'_col_ora_inizio')?.value||null,
+      ora_fine: document.getElementById(prefix+'_col_ora_fine')?.value||null,
+      esito: document.getElementById(prefix+'_col_esito')?.value||'conformi',
+      descrizione_lavori: document.getElementById(prefix+'_col_descrizione')?.value.trim()||null,
+      rilievi: document.getElementById(prefix+'_col_rilievi')?.value.trim()||null,
+      indicazioni_dl: document.getElementById(prefix+'_col_indicazioni')?.value.trim()||null,
+      motivi_difformita: document.getElementById(prefix+'_col_motivi')?.value.trim()||null
     };
   }
   return null;
