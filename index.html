@@ -290,7 +290,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.04b';
+const APP_VERSIONE = '2026.09.04c';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -1383,12 +1383,7 @@ async function salvaProroga(){
 
 // ---- RICALCOLO DATA FINE AGGIORNATA ----
 async function ricalcolaFineLavori(cantiereId){
-  // Legge sempre data_fine_contratto come base immutabile
-  const {data:cDB} = await sb.from('cantieri').select('data_fine_contratto,data_fine').eq('id',cantiereId).single();
-  const baseDate = cDB?.data_fine_contratto || cDB?.data_fine;
-  if(!baseDate) return;
-
-  // Σ giorni sospensioni accertate + proroghe
+  // Prima calcola totale giorni da tutti gli eventi (sospensioni+proroghe+varianti)
   const {data:eventi} = await sb.from('sospensioni')
     .select('tipo_evento,giorni_sospensione,giorni_proroga')
     .eq('cantiere_id',cantiereId);
@@ -1398,15 +1393,38 @@ async function ricalcolaFineLavori(cantiereId){
     if(tipoEv==='sospensione' && ev.giorni_sospensione) giorniSospProroga += ev.giorni_sospensione;
     if(tipoEv==='proroga' && ev.giorni_proroga) giorniSospProroga += ev.giorni_proroga;
   });
-
-  // Σ giorni varianti
   const {data:varList} = await sb.from('varianti')
     .select('giorni_concessi')
     .eq('cantiere_id',cantiereId);
   let giorniVarianti = 0;
   (varList||[]).forEach(v=>{ if(v.giorni_concessi) giorniVarianti += v.giorni_concessi; });
-
   const totGiorni = giorniSospProroga + giorniVarianti;
+
+  // Leggi cantiere — usa data_fine_contratto come base immutabile
+  const {data:cDB} = await sb.from('cantieri')
+    .select('data_fine_contratto,data_fine,data_fine_aggiornata')
+    .eq('id',cantiereId).single();
+  let baseDate = cDB?.data_fine_contratto;
+
+  // Auto-heal: se data_fine_contratto è assente, ricostruiscila sottraendo i giorni già aggiunti
+  if(!baseDate){
+    const ref = cDB?.data_fine_aggiornata || cDB?.data_fine;
+    if(ref && totGiorni > 0){
+      const d = new Date(ref+'T00:00:00');
+      d.setDate(d.getDate() - totGiorni);
+      baseDate = d.toISOString().split('T')[0];
+    } else {
+      baseDate = ref;
+    }
+    if(baseDate){
+      await sb.from('cantieri').update({data_fine_contratto: baseDate}).eq('id',cantiereId);
+      const mc2 = myCantieri.find(r=>r.cantiere.id===cantiereId);
+      if(mc2) mc2.cantiere.data_fine_contratto = baseDate;
+    }
+  }
+
+  if(!baseDate) return;
+
   const base = new Date(baseDate+'T00:00:00');
   base.setDate(base.getDate() + totGiorni);
   const nuovaFine = base.toISOString().split('T')[0];
@@ -1416,7 +1434,6 @@ async function ricalcolaFineLavori(cantiereId){
     data_fine: nuovaFine
   }).eq('id', cantiereId);
 
-  // Aggiorna cache locale
   const mc = myCantieri.find(r=>r.cantiere.id===cantiereId);
   if(mc){ mc.cantiere.data_fine_aggiornata = nuovaFine; mc.cantiere.data_fine = nuovaFine; }
 
@@ -1462,10 +1479,6 @@ async function openModalRipresaLavori(sospId){
   if(!s) return;
   const isParziale = s.tipo_sospensione === 'parziale';
   const rapporto = isParziale && s.importo_totale_residuo ? s.importo_sospeso / s.importo_totale_residuo : 1;
-
-  // Calcola giorni calendario ad oggi (stima)
-  const diffMs = new Date() - new Date(s.data+'T00:00:00');
-  const diffGgStima = Math.ceil(diffMs/(1000*60*60*24));
 
   const sezioneParziale = isParziale ? `
     <div style="border:2px solid var(--accent);border-radius:6px;padding:14px;margin-top:12px;background:#EBF3FB">
@@ -1530,14 +1543,6 @@ async function openModalRipresaLavori(sospId){
       <button class="btn btn-primary" onclick="salvaRipresa('${sospId}','${s.data}',${rapporto},${isParziale})">▶️ Registra ripresa</button>
     </div>`);
 
-  // Suggerisci nuova fine
-  const c = getCantiereObj();
-  if(c?.data_fine){
-    const fineOrig = new Date(c.data_fine+'T00:00:00');
-    const giorniEff = isParziale ? Math.round(diffGgStima * rapporto) : diffGgStima;
-    fineOrig.setDate(fineOrig.getDate() + giorniEff);
-    document.getElementById('rl_fine_lavori').value = fineOrig.toISOString().split('T')[0];
-  }
   aggiornaNuovaFine(s.data);
   aggiornaNuovaFineRipresa(s.data, rapporto);
 }
@@ -1551,13 +1556,20 @@ function aggiornaNuovaFineRipresa(dataSosp, rapporto){
   const calEl = document.getElementById('rl_gg_cal');
   const effEl = document.getElementById('rl_gg_eff');
   const hint  = document.getElementById('rl_giorni_hint');
+  const finEl = document.getElementById('rl_fine_lavori');
   if(calEl) calEl.textContent = ggCal + ' gg';
   if(effEl) effEl.textContent = ggEff + ' gg';
   if(hint)  hint.textContent  = `Giorni calendario: ${ggCal} × ${(rapporto*100).toFixed(2)}% = ${ggEff} giorni effettivi`;
+  if(ggEff > 0 && finEl){
+    const c = getCantiereObj();
+    const base = c?.data_fine_aggiornata || c?.data_fine_contratto || c?.data_fine;
+    if(base){ const d=new Date(base+'T00:00:00'); d.setDate(d.getDate()+ggEff); finEl.value=d.toISOString().split('T')[0]; }
+  }
 }
 
 function aggiornaNuovaFine(dataSosp){
   const rl = document.getElementById('rl_data');
+  const finEl = document.getElementById('rl_fine_lavori');
   const hint = document.getElementById('rl_giorni_hint');
   if(!rl||!hint||!dataSosp) return;
   const ripresa = rl.value;
@@ -1565,6 +1577,11 @@ function aggiornaNuovaFine(dataSosp){
   const ms = new Date(ripresa+'T00:00:00') - new Date(dataSosp+'T00:00:00');
   const gg = Math.ceil(ms/(1000*60*60*24));
   hint.textContent = gg > 0 ? `Giorni di sospensione accertati: ${gg}` : 'Data ripresa non valida';
+  if(gg > 0 && finEl){
+    const c = getCantiereObj();
+    const base = c?.data_fine_aggiornata || c?.data_fine_contratto || c?.data_fine;
+    if(base){ const d=new Date(base+'T00:00:00'); d.setDate(d.getDate()+gg); finEl.value=d.toISOString().split('T')[0]; }
+  }
 }
 
 async function salvaRipresa(sospId, dataSosp, rapporto=1, isParziale=false){
@@ -1616,16 +1633,9 @@ async function salvaRipresa(sospId, dataSosp, rapporto=1, isParziale=false){
     }
   }
 
-  // Aggiorna il cantiere con la nuova data di fine
-  await sb.from('cantieri').update({data_fine: nuovaFine}).eq('id',currentCantiere);
-  // Aggiorna anche il cantiere in myCantieri locale
-  const mc = myCantieri.find(r=>r.cantiere.id===currentCantiere);
-  if(mc) mc.cantiere.data_fine = nuovaFine;
-
-  // Registra la ripresa
+  // Registra la ripresa (giorni_sospensione aggiornato → ricalcolaFineLavori li legge dal DB)
   const {error} = await sb.from('sospensioni').update({
     data_ripresa: dataRipresa,
-    nuova_fine_lavori: nuovaFine,
     giorni_sospensione: giorniSosp,         // giorni effettivi (per parziale = cal × rapporto)
     giorni_calendario: giorniCal,            // giorni calendario reali
     rapporto_parziale: isParziale ? rapporto : null,
@@ -1634,18 +1644,24 @@ async function salvaRipresa(sospId, dataSosp, rapporto=1, isParziale=false){
 
   if(error){ alert(error.message); return; }
 
-  // Ricalcola data_fine_aggiornata sul cantiere
-  await ricalcolaFineLavori(currentCantiere);
+  // Ricalcola data_fine_aggiornata sul cantiere partendo sempre da data_fine_contratto
+  const finaleCalcolata = await ricalcolaFineLavori(currentCantiere);
+
+  // Salva il valore corretto su nuova_fine_lavori della sospensione
+  if(finaleCalcolata){
+    await sb.from('sospensioni').update({nuova_fine_lavori: finaleCalcolata}).eq('id',sospId);
+  }
 
   // Annotazione automatica sul giornale alla data di ripresa
+  const finDisplay = finaleCalcolata || nuovaFine;
   const annotText = isParziale
-    ? `[RIPRESA LAVORI PARZIALE] Ripresa dopo ${giorniCal} giorni calendario. Rapporto: ${(rapporto*100).toFixed(2)}%. Giorni effettivi: ${giorniSosp}. Nuova data fine lavori: ${fmt(nuovaFine)}. Fasi spostate: ${fasiSpostate}.`
-    : `[RIPRESA LAVORI] Ripresa dopo ${giorniSosp} giorni di sospensione. Nuova data fine lavori: ${fmt(nuovaFine)}. Fasi spostate: ${fasiSpostate}.`;
+    ? `[RIPRESA LAVORI PARZIALE] Ripresa dopo ${giorniCal} giorni calendario. Rapporto: ${(rapporto*100).toFixed(2)}%. Giorni effettivi: ${giorniSosp}. Nuova data fine lavori: ${fmt(finDisplay)}. Fasi spostate: ${fasiSpostate}.`
+    : `[RIPRESA LAVORI] Ripresa dopo ${giorniSosp} giorni di sospensione. Nuova data fine lavori: ${fmt(finDisplay)}. Fasi spostate: ${fasiSpostate}.`;
   await annotaGiornale(dataRipresa, annotText);
 
   closeModal();
   const dettaglioParziale = isParziale ? `\nGiorni calendario: ${giorniCal}\nRapporto: ${(rapporto*100).toFixed(2)}%\nGiorni effettivi: ${giorniSosp}` : '';
-  alert(`✅ Ripresa registrata.${dettaglioParziale}\n\nGiorni conteggiati: ${giorniSosp}\nFasi spostate: ${fasiSpostate}\nNuova fine lavori: ${fmt(nuovaFine)}`);
+  alert(`✅ Ripresa registrata.${dettaglioParziale}\n\nGiorni conteggiati: ${giorniSosp}\nFasi spostate: ${fasiSpostate}\nNuova fine lavori: ${fmt(finDisplay)}`);
   showView('sospensioni');
 }
 
