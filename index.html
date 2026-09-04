@@ -290,7 +290,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.08.07a';
+const APP_VERSIONE = '2026.09.04a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -7498,6 +7498,10 @@ function bodyPrelievoStrutture(c, v, dp){
   const tipo = v.tipo_prelievo || 'generico';
   const cfg = PRELIEVO_TIPI[tipo] || PRELIEVO_TIPI.generico;
   const redattore = v.redattore || dp.dl_nome || '';
+  // dp.data è nel JSON dati_prelievo ma storicamente può non essere sincronizzato
+  // con il campo colonna v.data (la sorgente attendibile). Si usa v.data come fallback
+  // per evitare che "Addì —" e "in data —" compaiano nel verbale stampato.
+  if(!dp.data && v.data) dp = { ...dp, data: v.data };
   let html = '';
 
   html += prelievoIntestazioneLavori(c, dp);
