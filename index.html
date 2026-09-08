@@ -258,7 +258,7 @@ textarea.form-control{resize:vertical;min-height:80px}
         <div class="nav-item" onclick="showView('ods')" data-view="ods"><span class="nav-icon">📄</span> Ordini di servizio</div>
         <div class="nav-item" onclick="showView('comunicazioni')" data-view="comunicazioni"><span class="nav-icon">💬</span> Comunicazioni</div>
         <div class="nav-item" onclick="showView('liste')" data-view="liste"><span class="nav-icon">📅</span> Liste settimanali</div>
-        <div class="nav-item" onclick="showView('verbali')" data-view="verbali"><span class="nav-icon">📋</span> Verbali</div>
+        <div class="nav-item" onclick="showView('verbali')" data-view="verbali"><span class="nav-icon">📋</span> Verbali / RSU / Collaudo</div>
         <div class="nav-item" onclick="showView('prelievi')" data-view="prelievi"><span class="nav-icon">🧪</span> Verbali prelievo strutture</div>
         <div class="nav-item" onclick="showView('sal')" data-view="sal"><span class="nav-icon">💶</span> SAL</div>
         <div class="nav-item" onclick="showView('sospensioni')" data-view="sospensioni"><span class="nav-icon">⏸️</span> Sosp. e Proroghe</div>
@@ -291,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.08d';
+const APP_VERSIONE = '2026.09.08e';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -2559,8 +2559,8 @@ async function renderVerbali(){
 
   let html = `<div class="section-header">
     <div>
-      <div class="page-title">Verbali</div>
-      <div class="page-subtitle">${esc(c?.nome||'')} — registro verbali emessi</div>
+      <div class="page-title">Verbali / RSU / Collaudo statico</div>
+      <div class="page-subtitle">${esc(c?.nome||'')} — verbali, relazione a struttura ultimata e collaudo statico</div>
     </div>
     ${can('write')?`<button class="btn btn-primary" onclick="openModalNuovoVerbale()">+ Nuovo verbale</button>`:''}
   </div>
@@ -2578,12 +2578,12 @@ async function renderVerbali(){
 
   const tipoIcon = {
     consegna_lavori:'🏗️', consegna_parziale:'🏗️', sopralluogo:'👁️', sopralluogo_periodico:'🔎', verifica_ods:'📐', constatazione:'📝', constatazione_stato_luoghi:'🔍',
-    riunione:'👥', fine_lavori:'✅', certificato_ultimazione:'✅', certificato_ultimazione_con_opere:'✅', riconsegna_anticipata:'🔑', collaudo_statico:'🏛️', relazione_struttura_ultimata:'📑', altro:'📋'
+    riunione:'👥', fine_lavori:'✅', certificato_ultimazione:'✅', certificato_ultimazione_con_opere:'✅', riconsegna_anticipata:'🔑', collaudo_statico:'🏛️', certificato_collaudo_statico:'🏅', relazione_struttura_ultimata:'📑', altro:'📋'
   };
   const tipoLabel = {
     consegna_lavori:'Consegna lavori', consegna_parziale:'Consegna parziale lavori', sopralluogo:'Sopralluogo', sopralluogo_periodico:'Sopralluogo periodico', verifica_ods:'Verifica adempimento OdS',
     constatazione:'Constatazione', constatazione_stato_luoghi:'Constatazione stato dei luoghi', riunione:'Riunione di cantiere',
-    fine_lavori:'Fine lavori (dismesso)', certificato_ultimazione:'Certificato di ultimazione lavori', certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare', riconsegna_anticipata:'Presa in consegna anticipata delle opere', collaudo_statico:'Verbale di visita di collaudo statico', relazione_struttura_ultimata:'Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)', altro:'Altro verbale'
+    fine_lavori:'Fine lavori (dismesso)', certificato_ultimazione:'Certificato di ultimazione lavori', certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare', riconsegna_anticipata:'Presa in consegna anticipata delle opere', collaudo_statico:'Verbale di visita di collaudo statico', certificato_collaudo_statico:'Certificato di collaudo statico (art. 67 D.P.R. 380/2001)', relazione_struttura_ultimata:'Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)', altro:'Altro verbale'
   };
 
   verbali.forEach(v=>{
@@ -2693,6 +2693,7 @@ async function openModalNuovoVerbale(){
           <option value="certificato_ultimazione_con_opere">✅ Certificato di ultimazione con opere da completare</option>
           <option value="riconsegna_anticipata">🔑 Presa in consegna anticipata (riconsegna anticipata) delle opere</option>
           <option value="collaudo_statico">🏛️ Verbale di visita di collaudo statico</option>
+          <option value="certificato_collaudo_statico">🏅 Certificato di collaudo statico (art. 67 D.P.R. 380/2001)</option>
           <option value="relazione_struttura_ultimata">📑 Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)</option>
           <option value="altro">📋 Altro verbale</option>
         </select>
@@ -2733,6 +2734,7 @@ async function openModalNuovoVerbale(){
     ${extraFieldsCertUltimazioneConOpereHtml('nv2')}
     ${extraFieldsRiconsegnaAnticipataHtml('nv2', teamDx)}
     ${extraFieldsCollaudoStaticoHtml('nv2', null, teamDx, getCantiereObj())}
+    ${extraFieldsCollaudoCertHtml('nv2', null, teamDx, getCantiereObj())}
     ${extraFieldsRSUHtml('nv2', null, teamDx, getCantiereObj())}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
@@ -2759,7 +2761,7 @@ async function salvaVerbale(){
   });
   if(error){ alert(error.message); return; }
   // Annotazione automatica sul giornale
-  const tipoL = {consegna_lavori:'Consegna lavori',consegna_parziale:'Consegna parziale lavori',sopralluogo:'Sopralluogo',sopralluogo_periodico:'Sopralluogo periodico',verifica_ods:'Verifica adempimento OdS',constatazione:'Constatazione',constatazione_stato_luoghi:'Constatazione stato dei luoghi',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',certificato_ultimazione:'Certificato di ultimazione lavori',certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare',riconsegna_anticipata:'Presa in consegna anticipata delle opere',collaudo_statico:'Verbale di visita di collaudo statico',relazione_struttura_ultimata:'Relazione a struttura ultimata',altro:'Verbale'};
+  const tipoL = {consegna_lavori:'Consegna lavori',consegna_parziale:'Consegna parziale lavori',sopralluogo:'Sopralluogo',sopralluogo_periodico:'Sopralluogo periodico',verifica_ods:'Verifica adempimento OdS',constatazione:'Constatazione',constatazione_stato_luoghi:'Constatazione stato dei luoghi',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',certificato_ultimazione:'Certificato di ultimazione lavori',certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare',riconsegna_anticipata:'Presa in consegna anticipata delle opere',collaudo_statico:'Verbale di visita di collaudo statico',certificato_collaudo_statico:'Certificato di collaudo statico',relazione_struttura_ultimata:'Relazione a struttura ultimata',altro:'Verbale'};
   const ogg = document.getElementById('nv2_ogg').value.trim();
   await annotaGiornale(data, `[VERBALE ${(tipoL[tipo]||tipo).toUpperCase()}]${ogg?' — '+ogg:''}`);
   closeModal();
@@ -2796,6 +2798,7 @@ async function openModalEditVerbale(id){
           <option value="certificato_ultimazione_con_opere"${v.tipo==='certificato_ultimazione_con_opere'?' selected':''}>✅ Certificato di ultimazione con opere da completare</option>
           <option value="riconsegna_anticipata"${v.tipo==='riconsegna_anticipata'?' selected':''}>🔑 Presa in consegna anticipata (riconsegna anticipata) delle opere</option>
           <option value="collaudo_statico"${v.tipo==='collaudo_statico'?' selected':''}>🏛️ Verbale di visita di collaudo statico</option>
+          <option value="certificato_collaudo_statico"${v.tipo==='certificato_collaudo_statico'?' selected':''}>🏅 Certificato di collaudo statico (art. 67 D.P.R. 380/2001)</option>
           <option value="relazione_struttura_ultimata"${v.tipo==='relazione_struttura_ultimata'?' selected':''}>📑 Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)</option>
           ${v.tipo==='fine_lavori'?'<option value="fine_lavori" selected>✅ Fine lavori (tipo dismesso — cambia in uno dei nuovi tipi sopra)</option>':''}
           <option value="altro"${v.tipo==='altro'?' selected':''}>📋 Altro verbale</option>
@@ -2836,6 +2839,7 @@ async function openModalEditVerbale(id){
     ${extraFieldsCertUltimazioneConOpereHtml('ev2', dx)}
     ${extraFieldsRiconsegnaAnticipataHtml('ev2', dxWithTeam)}
     ${extraFieldsCollaudoStaticoHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
+    ${extraFieldsCollaudoCertHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
     ${extraFieldsRSUHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
@@ -6474,7 +6478,7 @@ const VERBALE_FILE_CODE = {
   constatazione:'VER_CON', constatazione_stato_luoghi:'VER_STALUO',
   certificato_ultimazione:'VER_UL', certificato_ultimazione_con_opere:'VER_ULCO',
   riconsegna_anticipata:'VER_PCA', riunione:'VER_RIU',
-  verifica_ods:'VER_ODS', collaudo_statico:'VER_COL', relazione_struttura_ultimata:'REL_RSU', fine_lavori:'VER_GEN', altro:'VER_GEN'
+  verifica_ods:'VER_ODS', collaudo_statico:'VER_COL', certificato_collaudo_statico:'CERT_COL', relazione_struttura_ultimata:'REL_RSU', fine_lavori:'VER_GEN', altro:'VER_GEN'
 };
 const PRELIEVO_FILE_CODE = {
   acciaio_carpenteria:'ACC', barre_ca:'AC-CA', reti_tralicci:'RT-CA',
@@ -9132,6 +9136,19 @@ async function apriVerbaleFirmabile(id, solaLettura){
         ['IMPRESA', esc(c?.impresa||'')],
         rigaContratto(c)
       ];
+    } else if(v.tipo==='certificato_collaudo_statico'){
+      titolo = 'Certificato di collaudo statico';
+      normativa = 'D.P.R. 6/06/2001 n. 380, art. 67';
+      comune = dx.comune || c?.stazione_appaltante || '';
+      corpoHtml = bodyCollaudoCertificato(c, v, dx);
+      metaRows = [
+        dx.progetto_n ? ['PROGETTO N.', esc(dx.progetto_n)] : null,
+        ['LOCALIT&Agrave; E INDIRIZZO', esc(dx.localita||'')],
+        ['COMMITTENTE', esc(dx.committente||c?.stazione_appaltante||'')],
+        ['INTERVENTO', esc(dx.intervento||c?.descrizione||c?.nome||'')],
+        ['IMPRESA', esc(c?.impresa||'')],
+        rigaContratto(c)
+      ].filter(Boolean);
     } else if(v.tipo==='relazione_struttura_ultimata'){
       titolo = 'Relazione a struttura ultimata';
       normativa = 'D.P.R. 6/06/2001 n. 380, art. 65';
@@ -9164,11 +9181,14 @@ async function apriVerbaleFirmabile(id, solaLettura){
       consegna_lavori: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:dx.legale_rappresentante||'',ruolo:"L'Impresa"}],
       consegna_parziale: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:dx.dt_impresa_nome||'',ruolo:"L'Impresa"}],
       collaudo_statico: [{nome:dx.collaudatore_nome||'',ruolo:'Il Collaudatore Statico'},{nome:dx.dt_impresa_nome||'',ruolo:"L'Impresa"},{nome:dx.dl_nome||redattoreDefault,ruolo:'Il Direttore dei Lavori'}],
+      // Il certificato di collaudo e' sottoscritto dal solo collaudatore statico
+      certificato_collaudo_statico: [{nome:dx.collaudatore_nome||'', ruolo:'Il Collaudatore Statico'}],
       // La RSU e' sottoscritta dai professionisti della direzione lavori strutturali
       relazione_struttura_ultimata: ((dx.professionisti||[]).filter(p=>p.nome).length
         ? dx.professionisti.filter(p=>p.nome).map(p=>({nome:p.nome, ruolo:'Il Direttore dei Lavori strutturali'}))
         : [{nome:redattoreDefault, ruolo:'Il Direttore dei Lavori strutturali'}])
     };
+    const FIRMATARI_DA_DOCUMENTO = ['certificato_collaudo_statico','relazione_struttura_ultimata'];
     const firmatariDefault = firmatariDefaultMap[v.tipo] || [{nome:'',ruolo:'Il Direttore dei Lavori'},{nome:'',ruolo:"L'Impresa"}];
 
     apriDocumentoFirmabile({
@@ -9180,8 +9200,12 @@ async function apriVerbaleFirmabile(id, solaLettura){
       luogo: comune || c?.stazione_appaltante || c?.nome || '',
       dataDoc: v.data,
       fileName: nomeFileVerbale(c, v.data, VERBALE_FILE_CODE[v.tipo]||'VER_GEN', v.numero),
+      // Alcuni atti hanno firmatari propri, definiti dai dati del documento
+      // (il collaudatore, i professionisti della DL strutturale): per questi
+      // l'elenco dei "presenti" del cantiere non deve prendere il sopravvento.
       firmatari: (solaLettura && v.firmatari && v.firmatari.length) ? v.firmatari
-                 : (presenti.length ? presenti : firmatariDefault),
+                 : (FIRMATARI_DA_DOCUMENTO.includes(v.tipo) ? firmatariDefault
+                    : (presenti.length ? presenti : firmatariDefault)),
       solaLettura: !!solaLettura,
       dataGenerazione: v.pdf_generato_at||null,
       recordTable: 'verbali',
@@ -9197,7 +9221,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
 
 function toggleVerbaleExtra(prefix){
   const tipo = document.getElementById(prefix+'_tipo').value;
-  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata','collaudo_statico','relazione_struttura_ultimata'];
+  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata','collaudo_statico','certificato_collaudo_statico','relazione_struttura_ultimata'];
   TIPI_STRUTTURATI.forEach(function(t){
     const el = document.getElementById(prefix+'_extra_'+t);
     if(el) el.style.display = (tipo===t) ? 'block' : 'none';
@@ -10199,7 +10223,217 @@ function bodyRSU(c, v, dx){
   return h;
 }
 
+// ============================================================
+// CERTIFICATO DI COLLAUDO STATICO (D.P.R. 380/2001, art. 67)
+// ------------------------------------------------------------
+// Documento distinto dal verbale di visita di collaudo: e' l'atto
+// conclusivo con cui il collaudatore collauda le opere e ne attesta
+// la rispondenza alle norme tecniche.
+// ============================================================
+function ccsVisitaRigaHtml(d){
+  return `<div class="ccs-visita" style="display:flex;gap:6px;margin-bottom:5px;align-items:center">
+    <input class="form-control cv-data" type="date" style="max-width:190px;font-size:12px" value="${esc(d||'')}">
+    <button type="button" class="btn btn-danger btn-sm" style="padding:4px 8px" onclick="this.closest('.ccs-visita').remove()">&#10005;</button>
+  </div>`;
+}
+function ccsAggiungiVisita(prefix){
+  const c = document.getElementById(prefix+'_ccs_visite_cont');
+  if(c) c.insertAdjacentHTML('beforeend', ccsVisitaRigaHtml(''));
+}
+
+function extraFieldsCollaudoCertHtml(prefix, dx, team, cantiere){
+  dx = dx || {}; team = team || {}; cantiere = cantiere || {};
+  const visite = (dx.visite && dx.visite.length) ? dx.visite : [''];
+  return `<div id="${prefix}_extra_certificato_collaudo_statico" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:4px">
+      Certificato di collaudo statico &mdash; D.P.R. 6/06/2001 n. 380, art. 67
+    </div>
+    <div class="alert alert-info" style="font-size:11px;margin-bottom:12px">
+      Atto conclusivo del collaudo, distinto dal <em>verbale di visita</em>. Le dichiarazioni di legge
+      (requisiti del collaudatore, esame di progetto, relazione a struttura ultimata, certificati di prova,
+      ispezione in contraddittorio) sono generate automaticamente: qui si inseriscono i dati variabili.
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Progetto n.</label>
+        <input class="form-control" id="${prefix}_ccs_progetto" value="${esc(dx.progetto_n||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Comune</label>
+        <input class="form-control" id="${prefix}_ccs_comune" value="${esc(dx.comune||cantiere.stazione_appaltante||'')}">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Località e indirizzo</label>
+        <input class="form-control" id="${prefix}_ccs_localita" value="${esc(dx.localita||'')}" placeholder="Es. Via Roma 12, fraz. Villa">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Committente</label>
+        <input class="form-control" id="${prefix}_ccs_committente" value="${esc(dx.committente||cantiere.stazione_appaltante||'')}">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Intervento</label>
+        <textarea class="form-control" id="${prefix}_ccs_intervento" rows="2">${esc(dx.intervento||cantiere.descrizione||cantiere.nome||'')}</textarea>
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Normativa tecnica applicata nel progetto</label>
+        <input class="form-control" id="${prefix}_ccs_normativa" value="${esc(dx.normativa||'D.M. 17/01/2018')}">
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:14px 0 6px">Collaudatore statico</div>
+    <div class="form-grid">
+      <div class="form-group span-2">
+        <label class="form-label">Nome e cognome</label>
+        <input class="form-control" id="${prefix}_ccs_nome" value="${esc(dx.collaudatore_nome||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Codice fiscale</label>
+        <input class="form-control" id="${prefix}_ccs_cf" value="${esc(dx.collaudatore_cf||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Albo professionale</label>
+        <select class="form-control" id="${prefix}_ccs_albo">
+          <option value="Ingegneri"${dx.collaudatore_albo!=='Architetti'?' selected':''}>Ingegneri</option>
+          <option value="Architetti"${dx.collaudatore_albo==='Architetti'?' selected':''}>Architetti</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Provincia dell'albo</label>
+        <input class="form-control" id="${prefix}_ccs_prov" value="${esc(dx.collaudatore_prov||'')}" placeholder="Es. AN">
+      </div>
+      <div class="form-group">
+        <label class="form-label">N. iscrizione</label>
+        <input class="form-control" id="${prefix}_ccs_iscr" value="${esc(dx.collaudatore_iscrizione||'')}">
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:14px 0 6px">Visite in cantiere</div>
+    <div class="form-hint" style="margin-bottom:6px">Giorni in cui è stato effettuato il confronto in contraddittorio fra progetto depositato e costruito</div>
+    <div id="${prefix}_ccs_visite_cont">${visite.map(d=>ccsVisitaRigaHtml(d)).join('')}</div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="ccsAggiungiVisita('${prefix}')">+ Visita</button>
+
+    <div class="form-grid" style="margin-top:14px">
+      <div class="form-group span-2">
+        <label class="form-label">Estremi del deposito della relazione a struttura ultimata</label>
+        <input class="form-control" id="${prefix}_ccs_deposito" value="${esc(dx.deposito_rsu||'')}" placeholder="Es. prot. n. 12345 del 10/06/2026 — Struttura tecnica regionale">
+        <div class="form-hint">Se compilato, viene citato nella dichiarazione di esame della relazione a struttura ultimata</div>
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Prove eseguite nell'ambito della propria discrezionalità</label>
+        <textarea class="form-control" id="${prefix}_ccs_prove" rows="3" placeholder="Es. prove di carico su solaio del primo impalcato, prove sclerometriche su pilastri P1-P4...">${esc(dx.prove_discrezionali||'')}</textarea>
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Documentazione integrativa acquisita</label>
+        <textarea class="form-control" id="${prefix}_ccs_documentazione" rows="3">${esc(dx.documentazione_integrativa||'')}</textarea>
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Ulteriori considerazioni</label>
+        <textarea class="form-control" id="${prefix}_ccs_considerazioni" rows="3">${esc(dx.considerazioni||'')}</textarea>
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Prescrizioni o limitazioni d'uso</label>
+        <textarea class="form-control" id="${prefix}_ccs_prescrizioni" rows="2" placeholder="Lasciare vuoto se il collaudo è senza prescrizioni">${esc(dx.prescrizioni||'')}</textarea>
+        <div class="form-hint">Se compilato, il certificato subordina l'utilizzo al rispetto di quanto indicato</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function raccogliDatiCollaudoCert(prefix){
+  const g = id => { const e=document.getElementById(prefix+'_ccs_'+id); return e ? (e.value||'').trim()||null : null; };
+  const visite = [...document.querySelectorAll('#'+prefix+'_ccs_visite_cont .ccs-visita')]
+    .map(r=>r.querySelector('.cv-data')?.value||'').filter(Boolean);
+  return {
+    progetto_n: g('progetto'),
+    comune: g('comune'),
+    localita: g('localita'),
+    committente: g('committente'),
+    intervento: g('intervento'),
+    normativa: g('normativa'),
+    collaudatore_nome: g('nome'),
+    collaudatore_cf: g('cf'),
+    collaudatore_albo: g('albo'),
+    collaudatore_prov: g('prov'),
+    collaudatore_iscrizione: g('iscr'),
+    visite: visite,
+    deposito_rsu: g('deposito'),
+    prove_discrezionali: g('prove'),
+    documentazione_integrativa: g('documentazione'),
+    considerazioni: g('considerazioni'),
+    prescrizioni: g('prescrizioni')
+  };
+}
+
+function bodyCollaudoCertificato(c, v, dx){
+  dx = dx || {};
+  let h = '';
+
+  h += '<p>Normativa tecnica applicata nel progetto: <strong>'+esc(dx.normativa||'D.M. 17/01/2018')+'</strong>.</p>';
+  h += '<p>In relazione alle opere indicate in epigrafe, il sottoscritto collaudatore statico:</p>';
+
+  h += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin:6px 0">'
+    + '<tr><th style="border:1px solid #999;padding:4px;text-align:left">Nome e cognome</th>'
+    + '<th style="border:1px solid #999;padding:4px;text-align:left">Codice fiscale</th>'
+    + '<th style="border:1px solid #999;padding:4px;text-align:left">Albo professionale</th>'
+    + '<th style="border:1px solid #999;padding:4px;text-align:left">N. iscrizione</th></tr>'
+    + '<tr><td style="border:1px solid #999;padding:4px">'+esc(dx.collaudatore_nome||'')+'</td>'
+    + '<td style="border:1px solid #999;padding:4px">'+esc(dx.collaudatore_cf||'')+'</td>'
+    + '<td style="border:1px solid #999;padding:4px">'+esc(dx.collaudatore_albo||'Ingegneri')
+    + (dx.collaudatore_prov?' &mdash; Provincia: '+esc(dx.collaudatore_prov):'')+'</td>'
+    + '<td style="border:1px solid #999;padding:4px">'+esc(dx.collaudatore_iscrizione||'')+'</td></tr>'
+    + '</table>';
+
+  h += '<h3 style="text-align:center">DICHIARA</h3>';
+  h += '<ul>';
+  h += '<li>di possedere i requisiti necessari per lo svolgimento dell&rsquo;attivit&agrave; di collaudo e, in particolare, '
+    + 'di essere iscritto all&rsquo;albo professionale da pi&ugrave; di 10 anni e di non essere intervenuto in alcun modo nella '
+    + 'progettazione, direzione, esecuzione dell&rsquo;opera di cui trattasi, conformemente a quanto stabilito dall&rsquo;art. 67 '
+    + 'comma 2 del D.P.R. 380/2001;</li>';
+  h += '<li>di aver esaminato il progetto, comprese le eventuali varianti;</li>';
+  h += '<li>di aver esaminato la relazione a struttura ultimata redatta dal direttore dei lavori, che &egrave; stata depositata '
+    + 'presso la struttura tecnica regionale competente, come risulta dal relativo attestato di deposito'
+    + (dx.deposito_rsu ? ' (<strong>'+esc(dx.deposito_rsu)+'</strong>)' : '')+';</li>';
+  h += '<li>di aver esaminato, in particolare, i certificati relativi alle prove di accettazione dei materiali utilizzati '
+    + 'e i documenti di accompagnamento delle relative forniture;</li>';
+  const visite = (dx.visite||[]).filter(Boolean);
+  h += '<li>di aver ispezionato le opere eseguite, alla presenza del Direttore dei lavori e del Costruttore, confrontando '
+    + 'in contraddittorio il progetto depositato con il costruito, tramite visite in cantiere effettuate nei giorni: '
+    + '<strong>'+(visite.length ? visite.map(d=>fmt(d)).join(', ') : '____________')+'</strong>;</li>';
+  h += '<li>di aver verificato il corretto adempimento degli obblighi stabiliti dal D.P.R. 6/06/2001 n. 380 e dal Decreto '
+    + 'del Ministero delle Infrastrutture e Trasporti 17/01/2018, sia da parte del progettista strutturale che da parte '
+    + 'del direttore dei lavori.</li>';
+  h += '</ul>';
+
+  h += '<h3>PROVE ESEGUITE NELL&rsquo;AMBITO DELLA PROPRIA DISCREZIONALIT&Agrave;</h3>';
+  h += dx.prove_discrezionali ? paraP(dx.prove_discrezionali)
+    : '<p><em>Nessuna prova ulteriore rispetto a quelle gi&agrave; acquisite agli atti.</em></p>';
+
+  h += '<h3>DOCUMENTAZIONE INTEGRATIVA ACQUISITA</h3>';
+  h += dx.documentazione_integrativa ? paraP(dx.documentazione_integrativa)
+    : '<p><em>Nessuna documentazione integrativa richiesta.</em></p>';
+
+  if(dx.considerazioni){
+    h += '<h3>ULTERIORI CONSIDERAZIONI</h3>';
+    h += paraP(dx.considerazioni);
+  }
+
+  h += '<p>Per quanto sopra dichiarato, consapevole delle responsabilit&agrave; che ne derivano, ai sensi del '
+    + 'D.P.R. 6/6/2001 n. 380 art. 67 comma 7, il sottoscritto</p>';
+  h += '<h3 style="text-align:center">COLLAUDA</h3>';
+  h += '<p>le opere realizzate, consentendone l&rsquo;utilizzo con la destinazione d&rsquo;uso prevista nel progetto'
+    + (dx.prescrizioni ? ', subordinatamente al rispetto delle prescrizioni di seguito indicate' : '')+'.</p>';
+  if(dx.prescrizioni) h += paraP(dx.prescrizioni);
+  h += '<h3 style="text-align:center">ATTESTA</h3>';
+  h += '<p>la rispondenza delle opere eseguite alle norme tecniche per le costruzioni emanate ai sensi del '
+    + 'D.P.R. n. 380/2001, artt. 52 e 83, e al titolo abilitativo edilizio.</p>';
+  return h;
+}
+
 function raccogliDatiExtraVerbale(prefix, tipo){
+  if(tipo==='certificato_collaudo_statico'){
+    return raccogliDatiCollaudoCert(prefix);
+  }
   if(tipo==='relazione_struttura_ultimata'){
     return raccogliDatiRSU(prefix);
   }
