@@ -291,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.08e';
+const APP_VERSIONE = '2026.09.08f';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -634,6 +634,15 @@ async function renderStudio(){
       </div>
     </div>
 
+    <div style="font-size:12px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em;margin:20px 0 6px">Certificazioni possedute</div>
+    <div class="form-hint" style="margin-bottom:8px">
+      I marchi compaiono a destra nella testata dei documenti; la sigla viene riportata nel piè di pagina
+      accanto al nome dello studio, così resta chiaro chi possiede quale certificazione.
+      In un raggruppamento si affiancano i marchi di tutti gli studi in intestazione.
+    </div>
+    <div id="st_cert_cont">${(s.studio_certificazioni||[]).map(cz=>studioCertRigaHtml(cz)).join('')}</div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="studioAggiungiCert()">+ Certificazione</button>
+
     <div style="font-size:12px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em;margin:20px 0 10px">Dati dello studio</div>
     <div class="form-grid">
       <div class="form-group span-2">
@@ -669,9 +678,42 @@ async function renderStudio(){
   </div>`;
 }
 
-// Ridimensiona il logo lato client: evita di salvare in base64 immagini
-// da diversi MB che appesantirebbero ogni documento generato.
-function studioCaricaLogo(input){
+// ---- certificazioni dello studio (ISO 9001, 14001, 45001, SOA...) ----
+function studioCertRigaHtml(cz){
+  cz = cz || {};
+  const logo = cz.logo || '';
+  return `<div class="st-cert" style="display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:6px;padding:9px;margin-bottom:7px;background:white">
+    <div class="sc-prev" style="width:96px;height:52px;border:1px dashed var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:3px">
+      ${logo
+        ? `<img src="${esc(logo)}" alt="" style="max-height:46px;max-width:88px;object-fit:contain">`
+        : `<span style="font-size:10px;color:var(--muted)">nessun marchio</span>`}
+    </div>
+    <div style="flex:1;min-width:190px">
+      <input class="form-control sc-sigla" style="font-size:12px;margin-bottom:5px" placeholder="Sigla / norma — es. ISO 9001:2015" value="${esc(cz.sigla||'')}">
+      <input type="file" class="form-control sc-file" style="font-size:11px" accept="image/png,image/jpeg,image/webp" onchange="studioCaricaCert(this)">
+      <input type="hidden" class="sc-logo" value="${esc(logo)}">
+    </div>
+    <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="this.closest('.st-cert').remove()">&#10005;</button>
+  </div>`;
+}
+function studioAggiungiCert(){
+  const c = document.getElementById('st_cert_cont');
+  if(c) c.insertAdjacentHTML('beforeend', studioCertRigaHtml({}));
+}
+function studioCaricaCert(input){
+  const riga = input.closest('.st-cert');
+  // I marchi di certificazione sono piu' piccoli dei loghi studio: bastano 200x120
+  ridimensionaImmagine(input, 200, 120, dataUri=>{
+    riga.querySelector('.sc-logo').value = dataUri;
+    riga.querySelector('.sc-prev').innerHTML =
+      '<img src="'+dataUri+'" alt="" style="max-height:46px;max-width:88px;object-fit:contain">';
+  });
+}
+
+// Ridimensiona un'immagine scelta da un input file e restituisce un data URI PNG.
+// Evita di salvare in base64 immagini da diversi MB che appesantirebbero ogni
+// documento generato.
+function ridimensionaImmagine(input, maxW, maxH, onDone){
   const f = input.files && input.files[0];
   if(!f) return;
   if(f.size > 8*1024*1024){ alert('Immagine troppo grande (massimo 8 MB).'); input.value=''; return; }
@@ -679,25 +721,29 @@ function studioCaricaLogo(input){
   reader.onload = e => {
     const img = new Image();
     img.onload = () => {
-      const MAXW = 320, MAXH = 120;
-      let {width:w, height:h} = img;
-      const scala = Math.min(MAXW/w, MAXH/h, 1);
-      w = Math.round(w*scala); h = Math.round(h*scala);
+      let w = img.width, h = img.height;
+      const scala = Math.min(maxW/w, maxH/h, 1);
+      w = Math.max(1, Math.round(w*scala)); h = Math.max(1, Math.round(h*scala));
       const cv = document.createElement('canvas');
       cv.width = w; cv.height = h;
       const ctx = cv.getContext('2d');
       ctx.clearRect(0,0,w,h);
       ctx.drawImage(img, 0, 0, w, h);
       // PNG per non perdere la trasparenza dei loghi
-      const dataUri = cv.toDataURL('image/png');
-      document.getElementById('st_logo_data').value = dataUri;
-      const prev = document.getElementById('st_logo_prev');
-      if(prev) prev.innerHTML = '<img src="'+dataUri+'" alt="Logo studio" style="max-height:68px;max-width:180px;object-fit:contain">';
+      onDone(cv.toDataURL('image/png'));
     };
     img.onerror = () => alert('File immagine non leggibile.');
     img.src = e.target.result;
   };
   reader.readAsDataURL(f);
+}
+
+function studioCaricaLogo(input){
+  ridimensionaImmagine(input, 320, 120, dataUri=>{
+    document.getElementById('st_logo_data').value = dataUri;
+    const prev = document.getElementById('st_logo_prev');
+    if(prev) prev.innerHTML = '<img src="'+dataUri+'" alt="Logo studio" style="max-height:68px;max-width:180px;object-fit:contain">';
+  });
 }
 
 function studioRimuoviLogo(){
@@ -706,6 +752,15 @@ function studioRimuoviLogo(){
   if(prev) prev.innerHTML = '<span style="font-size:11px;color:var(--muted)">Nessun logo</span>';
   const file = document.getElementById('st_logo_file');
   if(file) file.value = '';
+}
+
+// Certificazioni compilate: si tiene solo chi ha almeno il marchio o la sigla
+function raccogliCertificazioni(){
+  const out = [...document.querySelectorAll('#st_cert_cont .st-cert')].map(r=>({
+    sigla:(r.querySelector('.sc-sigla')?.value||'').trim(),
+    logo: r.querySelector('.sc-logo')?.value || ''
+  })).filter(c=>c.sigla || c.logo);
+  return out.length ? out : null;
 }
 
 async function salvaStudio(){
@@ -717,11 +772,12 @@ async function salvaStudio(){
     studio_piva: val('st_piva'),
     studio_email: val('st_email'),
     studio_web: val('st_web'),
-    studio_logo: document.getElementById('st_logo_data')?.value || null
+    studio_logo: document.getElementById('st_logo_data')?.value || null,
+    studio_certificazioni: raccogliCertificazioni()
   }).eq('id', currentUser.id);
   if(error){
     alert(error.message.includes('studio_')
-      ? 'Le colonne dello studio non esistono ancora sul database.\nEsegui la migrazione SQL indicata nel README su Supabase.'
+      ? 'Le colonne dello studio non esistono ancora sul database.\nEsegui la migrazione SQL in sql/ su Supabase.'
       : error.message);
     return;
   }
@@ -2460,7 +2516,7 @@ async function pannelloStudiIntestazione(team){
   if(!idsDlDo.length) return '';
 
   const {data:profs} = await sb.from('profiles')
-    .select('id,nome,cognome,studio_denominazione,studio_logo')
+    .select('id,nome,cognome,studio_denominazione,studio_logo,studio_certificazioni')
     .in('id', idsDlDo);
   const conStudio = (profs||[]).filter(p=>p.studio_denominazione || p.studio_logo);
   const senzaStudio = (profs||[]).filter(p=>!p.studio_denominazione && !p.studio_logo);
@@ -2496,6 +2552,12 @@ async function pannelloStudiIntestazione(team){
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:600">${esc(nomeDi(p))}</div>
         <div style="font-size:11px;color:var(--muted)">${esc(((p.nome||'')+' '+(p.cognome||'')).trim())}${idx===0?' &mdash; <strong>mandataria</strong>':''}</div>
+        ${(p.studio_certificazioni||[]).filter(cz=>cz&&(cz.logo||cz.sigla)).length?`
+        <div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap">
+          ${(p.studio_certificazioni||[]).filter(cz=>cz&&cz.logo).map(cz=>
+            `<img src="${esc(cz.logo)}" alt="" title="${esc(cz.sigla||'Certificazione')}" style="max-height:20px;max-width:44px;object-fit:contain">`).join('')}
+          <span style="font-size:10px;color:var(--muted)">${(p.studio_certificazioni||[]).map(cz=>cz&&cz.sigla).filter(Boolean).map(esc).join(' · ')}</span>
+        </div>`:''}
       </div>
       ${currentRole==='dl'?`<div class="btn-group">
         <button class="btn btn-secondary btn-sm" title="Sposta su" onclick="spostaStudio(this,-1)">▲</button>
@@ -6278,7 +6340,7 @@ async function caricaStudiIntestazione(cantiereId){
     const ids = (membri||[]).filter(m=>m.ruolo==='dl'||m.ruolo==='do').map(m=>m.utente_id);
     if(!ids.length) return;
     const {data:prof} = await sb.from('profiles')
-      .select('id,nome,cognome,studio_denominazione,studio_sede_legale,studio_sede_operativa,studio_piva,studio_email,studio_web,studio_logo')
+      .select('id,nome,cognome,studio_denominazione,studio_sede_legale,studio_sede_operativa,studio_piva,studio_email,studio_web,studio_logo,studio_certificazioni')
       .in('id', ids);
     let studi = (prof||[]).filter(p=>p.studio_denominazione || p.studio_logo);
 
@@ -6313,9 +6375,28 @@ function letterheadHeaderHtml(){
     return '<div class="lh-studio">'+logo+etichetta+'</div>';
   }).join('<div class="lh-sep"></div>');
 
+  // Marchi delle certificazioni: come nelle carte intestate tradizionali stanno
+  // a destra, raccolti da tutti gli studi in intestazione. L'attribuzione allo
+  // studio che le possiede e' nel title e nel pie' di pagina.
+  const certs = [];
+  studi.forEach(function(s){
+    const nomeSt = s.studio_denominazione || ((s.nome||'')+' '+(s.cognome||'')).trim();
+    (s.studio_certificazioni||[]).forEach(function(cz){
+      if(cz && cz.logo) certs.push({logo:cz.logo, sigla:cz.sigla||'', studio:nomeSt});
+    });
+  });
+  const certHtml = certs.length
+    ? '<div class="lh-cert'+(certs.length>2?' many':'')+'">'
+      + certs.map(function(cz){
+          const t = (cz.sigla?cz.sigla:'Certificazione') + (cz.studio?' — '+cz.studio:'');
+          return '<img src="'+esc(cz.logo)+'" alt="'+esc(cz.sigla||'Certificazione')+'" title="'+esc(t)+'">';
+        }).join('')
+      + '</div>'
+    : '';
+
   // Oltre i due studi si rimpiccioliscono i loghi per non mandare a capo la testata
   const cls = 'lh-studi' + (studi.length>2 ? ' many' : '');
-  let html = '<div class="lh-header"><div class="'+cls+'">'+blocchi+'</div></div>';
+  let html = '<div class="lh-header"><div class="'+cls+'">'+blocchi+'</div>'+certHtml+'</div>';
   if(studi.length===1){
     const n = studi[0].studio_denominazione || ((studi[0].nome||'')+' '+(studi[0].cognome||'')).trim();
     if(n) html += '<div class="lh-title">'+esc(n).toUpperCase()+'</div>';
@@ -6339,6 +6420,10 @@ function letterheadFooterHtml(){
     if(s.studio_piva)  parti.push('P.I. '+esc(s.studio_piva));
     if(s.studio_web)   parti.push(esc(s.studio_web));
     if(s.studio_email) parti.push(esc(s.studio_email));
+    // Le certificazioni sono attribuite qui allo studio che le possiede:
+    // in testata i marchi sono raccolti insieme e non direbbero di chi sono
+    const sigle = (s.studio_certificazioni||[]).map(cz=>cz&&cz.sigla).filter(Boolean);
+    if(sigle.length) parti.push('Cert. '+sigle.map(esc).join(', '));
     return '<span class="st">'+(nome?'<b>'+esc(nome)+'</b>'+(parti.length?' &mdash; ':''):'')+parti.join(' &middot; ')+'</span>';
   }).join('');
   return '<div class="lh-footer">'+righe+'</div>';
@@ -6647,6 +6732,9 @@ body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12.5px;co
 .lh-studio img{height:40px;max-width:150px;object-fit:contain;display:block}
 .lh-studio .nm{font-size:8.5px;font-weight:700;color:#1F3864;line-height:1.25;max-width:130px}
 .lh-sep{width:1px;align-self:stretch;background:#CBD5E1;margin:2px 0}
+.lh-cert{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px}
+.lh-cert img{height:40px;max-width:78px;object-fit:contain;display:block}
+.lh-cert.many img{height:32px;max-width:62px}
 .lh-footer .st{display:block;margin-bottom:1px}
 .lh-footer .st b{color:#1F3864}
 .doc-title-block{text-align:center;margin:20px 0 16px}
