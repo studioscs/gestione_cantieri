@@ -290,7 +290,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.08a';
+const APP_VERSIONE = '2026.09.08b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -2322,12 +2322,12 @@ async function renderVerbali(){
 
   const tipoIcon = {
     consegna_lavori:'🏗️', consegna_parziale:'🏗️', sopralluogo:'👁️', sopralluogo_periodico:'🔎', verifica_ods:'📐', constatazione:'📝', constatazione_stato_luoghi:'🔍',
-    riunione:'👥', fine_lavori:'✅', certificato_ultimazione:'✅', certificato_ultimazione_con_opere:'✅', riconsegna_anticipata:'🔑', collaudo_statico:'🏛️', altro:'📋'
+    riunione:'👥', fine_lavori:'✅', certificato_ultimazione:'✅', certificato_ultimazione_con_opere:'✅', riconsegna_anticipata:'🔑', collaudo_statico:'🏛️', relazione_struttura_ultimata:'📑', altro:'📋'
   };
   const tipoLabel = {
     consegna_lavori:'Consegna lavori', consegna_parziale:'Consegna parziale lavori', sopralluogo:'Sopralluogo', sopralluogo_periodico:'Sopralluogo periodico', verifica_ods:'Verifica adempimento OdS',
     constatazione:'Constatazione', constatazione_stato_luoghi:'Constatazione stato dei luoghi', riunione:'Riunione di cantiere',
-    fine_lavori:'Fine lavori (dismesso)', certificato_ultimazione:'Certificato di ultimazione lavori', certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare', riconsegna_anticipata:'Presa in consegna anticipata delle opere', collaudo_statico:'Verbale di visita di collaudo statico', altro:'Altro verbale'
+    fine_lavori:'Fine lavori (dismesso)', certificato_ultimazione:'Certificato di ultimazione lavori', certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare', riconsegna_anticipata:'Presa in consegna anticipata delle opere', collaudo_statico:'Verbale di visita di collaudo statico', relazione_struttura_ultimata:'Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)', altro:'Altro verbale'
   };
 
   verbali.forEach(v=>{
@@ -2437,6 +2437,7 @@ async function openModalNuovoVerbale(){
           <option value="certificato_ultimazione_con_opere">✅ Certificato di ultimazione con opere da completare</option>
           <option value="riconsegna_anticipata">🔑 Presa in consegna anticipata (riconsegna anticipata) delle opere</option>
           <option value="collaudo_statico">🏛️ Verbale di visita di collaudo statico</option>
+          <option value="relazione_struttura_ultimata">📑 Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)</option>
           <option value="altro">📋 Altro verbale</option>
         </select>
       </div>
@@ -2476,6 +2477,7 @@ async function openModalNuovoVerbale(){
     ${extraFieldsCertUltimazioneConOpereHtml('nv2')}
     ${extraFieldsRiconsegnaAnticipataHtml('nv2', teamDx)}
     ${extraFieldsCollaudoStaticoHtml('nv2', null, teamDx, getCantiereObj())}
+    ${extraFieldsRSUHtml('nv2', null, teamDx, getCantiereObj())}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaVerbale()">Salva verbale</button>
@@ -2501,7 +2503,7 @@ async function salvaVerbale(){
   });
   if(error){ alert(error.message); return; }
   // Annotazione automatica sul giornale
-  const tipoL = {consegna_lavori:'Consegna lavori',consegna_parziale:'Consegna parziale lavori',sopralluogo:'Sopralluogo',sopralluogo_periodico:'Sopralluogo periodico',verifica_ods:'Verifica adempimento OdS',constatazione:'Constatazione',constatazione_stato_luoghi:'Constatazione stato dei luoghi',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',certificato_ultimazione:'Certificato di ultimazione lavori',certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare',riconsegna_anticipata:'Presa in consegna anticipata delle opere',collaudo_statico:'Verbale di visita di collaudo statico',altro:'Verbale'};
+  const tipoL = {consegna_lavori:'Consegna lavori',consegna_parziale:'Consegna parziale lavori',sopralluogo:'Sopralluogo',sopralluogo_periodico:'Sopralluogo periodico',verifica_ods:'Verifica adempimento OdS',constatazione:'Constatazione',constatazione_stato_luoghi:'Constatazione stato dei luoghi',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',certificato_ultimazione:'Certificato di ultimazione lavori',certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare',riconsegna_anticipata:'Presa in consegna anticipata delle opere',collaudo_statico:'Verbale di visita di collaudo statico',relazione_struttura_ultimata:'Relazione a struttura ultimata',altro:'Verbale'};
   const ogg = document.getElementById('nv2_ogg').value.trim();
   await annotaGiornale(data, `[VERBALE ${(tipoL[tipo]||tipo).toUpperCase()}]${ogg?' — '+ogg:''}`);
   closeModal();
@@ -2538,6 +2540,7 @@ async function openModalEditVerbale(id){
           <option value="certificato_ultimazione_con_opere"${v.tipo==='certificato_ultimazione_con_opere'?' selected':''}>✅ Certificato di ultimazione con opere da completare</option>
           <option value="riconsegna_anticipata"${v.tipo==='riconsegna_anticipata'?' selected':''}>🔑 Presa in consegna anticipata (riconsegna anticipata) delle opere</option>
           <option value="collaudo_statico"${v.tipo==='collaudo_statico'?' selected':''}>🏛️ Verbale di visita di collaudo statico</option>
+          <option value="relazione_struttura_ultimata"${v.tipo==='relazione_struttura_ultimata'?' selected':''}>📑 Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)</option>
           ${v.tipo==='fine_lavori'?'<option value="fine_lavori" selected>✅ Fine lavori (tipo dismesso — cambia in uno dei nuovi tipi sopra)</option>':''}
           <option value="altro"${v.tipo==='altro'?' selected':''}>📋 Altro verbale</option>
         </select>
@@ -2577,6 +2580,7 @@ async function openModalEditVerbale(id){
     ${extraFieldsCertUltimazioneConOpereHtml('ev2', dx)}
     ${extraFieldsRiconsegnaAnticipataHtml('ev2', dxWithTeam)}
     ${extraFieldsCollaudoStaticoHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
+    ${extraFieldsRSUHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaEditVerbale('${id}')">Salva</button>
@@ -6140,7 +6144,7 @@ const VERBALE_FILE_CODE = {
   constatazione:'VER_CON', constatazione_stato_luoghi:'VER_STALUO',
   certificato_ultimazione:'VER_UL', certificato_ultimazione_con_opere:'VER_ULCO',
   riconsegna_anticipata:'VER_PCA', riunione:'VER_RIU',
-  verifica_ods:'VER_ODS', collaudo_statico:'VER_COL', fine_lavori:'VER_GEN', altro:'VER_GEN'
+  verifica_ods:'VER_ODS', collaudo_statico:'VER_COL', relazione_struttura_ultimata:'REL_RSU', fine_lavori:'VER_GEN', altro:'VER_GEN'
 };
 const PRELIEVO_FILE_CODE = {
   acciaio_carpenteria:'ACC', barre_ca:'AC-CA', reti_tralicci:'RT-CA',
@@ -8396,6 +8400,18 @@ async function apriVerbaleFirmabile(id, solaLettura){
         ['IMPRESA', esc(c?.impresa||'')],
         rigaContratto(c)
       ];
+    } else if(v.tipo==='relazione_struttura_ultimata'){
+      titolo = 'Relazione a struttura ultimata';
+      normativa = 'D.P.R. 6/06/2001 n. 380, art. 65';
+      comune = dx.comune || c?.stazione_appaltante || '';
+      provincia = dx.provincia || '';
+      corpoHtml = bodyRSU(c, v, dx);
+      metaRows = [
+        ['LAVORI', esc(c?.descrizione||c?.nome||'') + (dx.opera?' &mdash; '+esc(dx.opera):'')],
+        ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+        ['IMPRESA', esc(c?.impresa||'')],
+        rigaContratto(c)
+      ];
     } else {
       const tipoLabelMap = {sopralluogo:'Verbale di sopralluogo',constatazione:'Verbale di constatazione',riunione:'Verbale di riunione di cantiere',fine_lavori:'Verbale di fine lavori',altro:'Verbale'};
       titolo = tipoLabelMap[v.tipo] || 'Verbale';
@@ -8415,7 +8431,11 @@ async function apriVerbaleFirmabile(id, solaLettura){
       certificato_ultimazione_con_opere: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:'',ruolo:"L'Impresa"}],
       consegna_lavori: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:dx.legale_rappresentante||'',ruolo:"L'Impresa"}],
       consegna_parziale: [{nome:redattoreDefault,ruolo:'Il Direttore dei Lavori'},{nome:dx.dt_impresa_nome||'',ruolo:"L'Impresa"}],
-      collaudo_statico: [{nome:dx.collaudatore_nome||'',ruolo:'Il Collaudatore Statico'},{nome:dx.dt_impresa_nome||'',ruolo:"L'Impresa"},{nome:dx.dl_nome||redattoreDefault,ruolo:'Il Direttore dei Lavori'}]
+      collaudo_statico: [{nome:dx.collaudatore_nome||'',ruolo:'Il Collaudatore Statico'},{nome:dx.dt_impresa_nome||'',ruolo:"L'Impresa"},{nome:dx.dl_nome||redattoreDefault,ruolo:'Il Direttore dei Lavori'}],
+      // La RSU e' sottoscritta dai professionisti della direzione lavori strutturali
+      relazione_struttura_ultimata: ((dx.professionisti||[]).filter(p=>p.nome).length
+        ? dx.professionisti.filter(p=>p.nome).map(p=>({nome:p.nome, ruolo:'Il Direttore dei Lavori strutturali'}))
+        : [{nome:redattoreDefault, ruolo:'Il Direttore dei Lavori strutturali'}])
     };
     const firmatariDefault = firmatariDefaultMap[v.tipo] || [{nome:'',ruolo:'Il Direttore dei Lavori'},{nome:'',ruolo:"L'Impresa"}];
 
@@ -8445,7 +8465,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
 
 function toggleVerbaleExtra(prefix){
   const tipo = document.getElementById(prefix+'_tipo').value;
-  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata','collaudo_statico'];
+  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata','collaudo_statico','relazione_struttura_ultimata'];
   TIPI_STRUTTURATI.forEach(function(t){
     const el = document.getElementById(prefix+'_extra_'+t);
     if(el) el.style.display = (tipo===t) ? 'block' : 'none';
@@ -8823,7 +8843,634 @@ function toggleCollaudoEsito(prefix){
   if(moWrap) moWrap.style.display = val==='non_conformi' ? 'block' : 'none';
 }
 
+// ============================================================
+// RELAZIONE A STRUTTURA ULTIMATA (D.P.R. 380/2001, art. 65)
+// ------------------------------------------------------------
+// Catalogo delle sezioni per materiale. Guida sia il form di
+// inserimento sia la generazione del documento, cosi' le due parti
+// non possono divergere. Per ogni sezione sono indicate le prove
+// prescritte con norma di riferimento e numerosita' dei campioni.
+// ============================================================
+const RSU_SEZIONI = [
+  {id:'E1', cod:'E.1', tit:'Calcestruzzo in opera o per prefabbricazione occasionale', rif:'§ 11.2',
+   opz:[
+     {v:'ind',  l:'Confezionato con processo industrializzato (§ 11.2.8)'},
+     {v:'cant', l:'Confezionato in cantiere &mdash; valutazione preliminare delle prestazioni (§ 11.2.3)'},
+     {v:'frc',  l:'Fibrorinforzato F.R.C. &mdash; con Certificato di Valutazione Tecnica (§ 11.2.12)'}
+   ],
+   prove:[
+     {t:'Compressione su cubetti/cilindri', n:'UNI EN 12390-3', q:'Prelievo = 2 provini. 1 prelievo per ogni giorno di getto. <strong>Controllo tipo A</strong> (§ 11.2.5.1, lotti fino a 300 m&sup3;): 1 prelievo ogni 100 m&sup3;, minimo 3 prelievi. <strong>Controllo tipo B</strong> (§ 11.2.5.2, obbligatorio oltre 1500 m&sup3;): 1 prelievo ogni 100 m&sup3;, minimo 15 prelievi.'},
+     {t:'Flessione su FRC (solo calcestruzzo fibrorinforzato)', n:'UNI EN 14651', q:'Prove di compressione e flessione secondo il cap. 5 delle Linee Guida FRC approvate con decreto n. 208 del 09/04/2019 del Presidente del C.S.LL.PP.'},
+     {t:'Prove complementari su struttura (facoltative)', n:'UNI EN 12504-1 / -2 / -4', q:'Carote, indice sclerometrico, ultrasuoni: solo a integrazione, mai in sostituzione dei controlli di accettazione.'}
+   ]},
+  {id:'E2', cod:'E.2', tit:'Acciaio per calcestruzzo armato (barre, rotoli, reti e tralicci elettrosaldati)', rif:'§ 11.3.2',
+   opz:[
+     {v:'cant', l:'Acciaio lavorato in cantiere (§ 11.3.1.5)'},
+     {v:'ct',   l:'Acciaio lavorato in un centro di trasformazione (§ 11.3.1.7)'}
+   ],
+   prove:[
+     {t:'Trazione (Re, Rm, Agt) e piegamento su barre', n:'UNI EN ISO 15630-1', q:'<strong>3 spezzoni marchiati</strong> per ogni diametro, per ciascun lotto di spedizione di massimo 30 t. Massimo 3 diametri per lotto: se i diametri impiegati sono piu&rsquo; di 3, si eseguono prelievi aggiuntivi. Prove da eseguire <strong>entro 30 giorni</strong> dalla data di consegna della fornitura (§ 11.3.2.10.4).'},
+     {t:'Trazione e distacco del nodo su reti e tralicci', n:'UNI EN ISO 15630-2', q:'<strong>3 saggi</strong> per ogni lotto di spedizione, ciascuno con almeno un nodo saldato, prelevati da rotoli/pannelli diversi (§ 11.3.2.10.4).'}
+   ]},
+  {id:'E3', cod:'E.3', tit:'Acciaio per calcestruzzo armato precompresso', rif:'§ 11.3.3',
+   opz:[
+     {v:'ct',   l:'Fornitura proveniente da un Centro di Trasformazione (§ 11.3.1.7)'},
+     {v:'cant', l:'Fornitura e lavorazione in cantiere (§ 11.3.1.5)'}
+   ],
+   prove:[
+     {t:'Trazione su trefoli, fili, barre', n:'UNI EN ISO 15630-3', q:'<strong>3 saggi</strong> per ogni lotto di spedizione di massimo 30 t, entro 30 giorni dalla consegna (§ 11.3.3.5.4).'}
+   ]},
+  {id:'E4', cod:'E.4', tit:'Acciaio per strutture metalliche e per strutture composte', rif:'§ 11.3.4',
+   opz:[
+     {v:'ce',    l:'Fornitura con marcatura CE (§ 11.3.4.11) &mdash; UNI EN 10025-1, 10210-1, 10219-1'},
+     {v:'noce',  l:'Fornitura senza marcatura CE &mdash; attestato di qualificazione del S.T.C.'},
+     {v:'ct',    l:'Fornito da un centro di trasformazione (§ 11.3.1.7)'},
+     {v:'diss',  l:'Regole addizionali per le zone dissipative (§ 11.3.4.9)'}
+   ],
+   prove:[
+     {t:'Trazione su provetta', n:'UNI EN ISO 6892-1', q:'<strong>1 saggio</strong> (3 provette) per ogni lotto di spedizione di massimo 30 t, o per ogni fornitura di quantita&rsquo; inferiore. Prove sempre obbligatorie (§ 11.3.4.11.3).'},
+     {t:'Resilienza KV su provetta con intaglio', n:'UNI EN ISO 148-1', q:'Sulla stessa numerosita&rsquo; delle prove di trazione, quando la classe di qualita&rsquo; dell&rsquo;acciaio (JR, J0, J2, K2) lo richiede e per le zone dissipative.'}
+   ]},
+  {id:'SALD', cod:'E.4bis', tit:'Saldature delle strutture metalliche', rif:'UNI EN 1090-2:2018 § 12.4',
+   opz:[
+     {v:'off', l:'Saldature eseguite in officina'},
+     {v:'cant',l:'Saldature eseguite in cantiere'},
+     {v:'wps', l:'Procedure di saldatura qualificate (WPS/WPQR) &mdash; UNI EN ISO 15614-1'},
+     {v:'sald',l:'Saldatori qualificati &mdash; UNI EN ISO 9606-1'},
+     {v:'cert',l:'Azienda certificata UNI EN 1090-1 e UNI EN ISO 3834'}
+   ],
+   prove:[
+     {t:'Controllo visivo (VT)', n:'UNI EN ISO 17637', q:'<strong>100% delle saldature</strong>, su tutta la lunghezza dei cordoni, per ogni classe di esecuzione. Criteri di accettazione UNI EN ISO 5817.'},
+     {t:'Controlli non distruttivi supplementari (NDT)', n:'UNI EN 1090-2 § 12.4.2.2, Tabella 24', q:'Estensione in funzione della classe di esecuzione: <strong>EXC1 = 0%</strong>, <strong>EXC2 = 10%</strong>, <strong>EXC3 = 20%</strong>, <strong>EXC4 = 100%</strong> dei giunti di testa trasversali e d&rsquo;angolo tesi (percentuali ridotte per giunti compressi e longitudinali).'},
+     {t:'Magnetoscopico (MT) &mdash; difetti superficiali', n:'UNI EN ISO 17638 &mdash; criteri UNI EN ISO 23278', q:'Per saldature a piena e parziale penetrazione e d&rsquo;angolo su materiali ferromagnetici.'},
+     {t:'Liquidi penetranti (PT) &mdash; difetti superficiali', n:'UNI EN ISO 3452-1 &mdash; criteri UNI EN ISO 23277', q:'Alternativa a MT, obbligatorio su acciai non ferromagnetici (inox).'},
+     {t:'Ultrasuoni (UT) &mdash; difetti interni', n:'UNI EN ISO 17640 &mdash; criteri UNI EN ISO 11666', q:'Per giunti di testa a piena penetrazione con spessore &ge; 8 mm.'},
+     {t:'Radiografico (RT) &mdash; difetti interni', n:'UNI EN ISO 17636-1 &mdash; criteri UNI EN ISO 10675-1', q:'Alternativa a UT per giunti di testa a piena penetrazione.'}
+   ]},
+  {id:'BULL', cod:'E.4ter', tit:'Bulloni e collegamenti meccanici delle strutture metalliche', rif:'UNI EN 1090-2:2018 § 8 e § 12.5',
+   opz:[
+     {v:'sb',   l:'Assiemi non precaricati SB &mdash; UNI EN 15048'},
+     {v:'hr',   l:'Assiemi precaricati a serraggio controllato HR/HV &mdash; UNI EN 14399 (classi 8.8 e 10.9)'},
+     {v:'coppia',l:'Serraggio con metodo della coppia (§ 8.5.3)'},
+     {v:'comb', l:'Serraggio con metodo combinato coppia/angolo (§ 8.5.4)'},
+     {v:'hrc',  l:'Serraggio con metodo HRC &mdash; bulloni a controllo di trazione (§ 8.5.5)'},
+     {v:'dti',  l:'Serraggio con metodo DTI &mdash; rondelle indicatrici di serraggio (§ 8.5.6)'}
+   ],
+   prove:[
+     {t:'Prove di trazione sul bullone', n:'UNI EN ISO 898-1 (viti) e 898-2 (dadi)', q:'<strong>3 bulloni per ogni tipo</strong> impiegato, dove per tipo si intende ogni combinazione di diametro e classe di resistenza. Prove di accettazione in cantiere ai sensi delle NTC § 11.3.4.6.'},
+     {t:'Controllo del serraggio (solo bulloni a serraggio controllato)', n:'UNI EN 1090-2 § 12.5.2.2', q:'Verifica del precarico sul <strong>5% dei bulloni di ogni lotto, con un minimo di 5 bulloni</strong>. Se un bullone risulta non conforme si controlla un ulteriore 5%; in caso di seconda non conformita&rsquo; si estende il controllo al <strong>100%</strong> del lotto.'},
+     {t:'Verifica documentale e geometrica', n:'UNI EN 14399-1 / UNI EN 15048-1', q:'Marcatura CE e dichiarazione di prestazione (DoP) per ogni lotto; verifica di diametro, lunghezza, classe e corrispondenza al progetto.'}
+   ]},
+  {id:'E5', cod:'E.5', tit:'Componenti prefabbricati in c.a. e c.a.p.', rif:'§ 11.8',
+   opz:[
+     {v:'ce',   l:'Prodotti con marcatura CE (§ 4.1.10; § 11.8.1)'},
+     {v:'serd', l:'Serie dichiarata &mdash; attestato di qualificazione S.T.C. (§ 11.8.4.2)'},
+     {v:'serc', l:'Serie controllata &mdash; Certificato di Valutazione Tecnica S.T.C. (§ 11.8.4.3)'}
+   ],
+   prove:[
+     {t:'Documentazione di accompagnamento', n:'§ 11.8.5', q:'Dichiarazione di conformita&rsquo; al progetto depositato, istruzioni di trasporto e disegni di montaggio, copia del registro di produzione, relazione sulle opere di completamento.'}
+   ]},
+  {id:'F1', cod:'F.1', tit:'Compositi fibrorinforzati a matrice polimerica (F.R.P.)', rif:'D.P.C.S.LL.PP. n. 293 del 29/05/2019',
+   opz:[
+     {v:'pre', l:'Sistemi preformati (lamine, barre)'},
+     {v:'situ',l:'Sistemi realizzati in situ (tessuti impregnati in opera)'},
+     {v:'ce',  l:'Prodotti con marcatura CE'},
+     {v:'cvt', l:'Prodotti privi di marcatura CE &mdash; con Certificato di Valutazione Tecnica S.T.C.'}
+   ],
+   prove:[
+     {t:'Trazione su sistemi preformati', n:'Linee Guida FRP, decreto 293/2019', q:'<strong>3 campioni</strong> per ciascun tipo di lamina utilizzata.'},
+     {t:'Trazione su sistemi realizzati in situ', n:'Linee Guida FRP, decreto 293/2019', q:'<strong>6 campioni</strong> per ciascun tipo di sistema di rinforzo da installare, realizzati in cantiere con il massimo numero di strati previsto nell&rsquo;intervento.'}
+   ]},
+  {id:'F2', cod:'F.2', tit:'Sistemi a rete preformata per intonaco armato (C.R.M.)', rif:'D.P.C.S.LL.PP. n. 292 del 29/05/2019',
+   opz:[
+     {v:'ce',  l:'Prodotti con marcatura CE'},
+     {v:'cvt', l:'Prodotti privi di marcatura CE &mdash; con Certificato di Valutazione Tecnica S.T.C.'}
+   ],
+   prove:[
+     {t:'Trazione sui componenti del sistema', n:'Linee Guida CRM, decreto 292/2019', q:'<strong>3 campioni per ognuno dei componenti</strong> del sistema di rinforzo da installare (rete preformata, connettori, angolari).'},
+     {t:'Compressione sulle malte', n:'UNI EN 1015-11', q:'<strong>2 provini per ogni lotto di spedizione</strong> della malta impiegata.'}
+   ]},
+  {id:'F3', cod:'F.3', tit:'Compositi fibrorinforzati a matrice inorganica (F.R.C.M.)', rif:'D.P.C.S.LL.PP. n. 1 del 08/01/2019',
+   opz:[
+     {v:'ce',  l:'Prodotti con marcatura CE'},
+     {v:'cvt', l:'Prodotti privi di marcatura CE &mdash; con Certificato di Valutazione Tecnica S.T.C.'}
+   ],
+   prove:[
+     {t:'Trazione sul sistema di rinforzo', n:'Linee Guida FRCM, decreto 1/2019', q:'<strong>6 campioni</strong> per ognuno dei tipi di sistema di rinforzo da installare.'}
+   ]},
+  {id:'G', cod:'G', tit:'Pali di fondazione', rif:'§ 6.4.3.6 &mdash; § 6.4.3.7',
+   opz:[
+     {v:'trivel', l:'Pali trivellati / eseguiti in opera'},
+     {v:'infissi', l:'Pali infissi prefabbricati'}
+   ],
+   prove:[
+     {t:'Controlli di integrita&rsquo;', n:'§ 6.4.3.7', q:'Prove soniche o eco-metriche su <strong>almeno il 5% dei pali</strong>, con un minimo di 2 pali.'},
+     {t:'Prove di carico statiche', n:'§ 6.4.3.7', q:'Prove di progetto su pali pilota e prove in corso d&rsquo;opera su <strong>almeno 1 palo ogni 100</strong>, con un minimo di 1 palo. Il verbale delle prove va allegato ai sensi dell&rsquo;art. 65 c.6 lett. c) del D.P.R. 380/2001.'}
+   ]},
+  {id:'H', cod:'H', tit:'Tiranti di ancoraggio per uso geotecnico', rif:'§ 6.4.4 &mdash; § 11.5.2',
+   opz:[
+     {v:'ce',  l:'Prodotti con marcatura CE'},
+     {v:'cvt', l:'Prodotti privi di marcatura CE &mdash; con Certificato di Valutazione Tecnica S.T.C.'}
+   ],
+   prove:[
+     {t:'Prove di carico in corso d&rsquo;opera', n:'§ 6.4.4', q:'Obbligatorie; da indicare il numero di tiranti provati. Verbale delle prove da allegare, firmato per copia conforme.'},
+     {t:'Verifica geometrica e delle tolleranze', n:'§ 11.5.2', q:'Su tutti i dispositivi, con valutazione delle caratteristiche meccaniche dei materiali componenti.'}
+   ]},
+  {id:'I', cod:'I', tit:'Ancoranti per uso strutturale e giunti di dilatazione', rif:'§ 11.4',
+   opz:[
+     {v:'anc',  l:'Ancoranti (chimici o meccanici) con E.T.A.'},
+     {v:'giunti',l:'Giunti di dilatazione con E.T.A.'}
+   ],
+   prove:[
+     {t:'Prove di estrazione (pull-out) in opera', n:'EAD / ETAG 001, All. A', q:'Facoltative salvo prescrizione di progetto: usualmente su <strong>almeno 3 ancoraggi per tipologia</strong>, con carico di prova pari a 1,5 volte il carico di esercizio.'}
+   ]},
+  {id:'L', cod:'L', tit:'Sistemi di precompressione a cavi post-tesi', rif:'§ 11.5',
+   opz:[
+     {v:'ce',  l:'Prodotti con marcatura CE'},
+     {v:'cvt', l:'Prodotti privi di marcatura CE &mdash; con Certificato di Valutazione Tecnica S.T.C.'}
+   ],
+   prove:[
+     {t:'Registrazione delle operazioni di tesatura', n:'§ 11.5', q:'Verbali di tesatura con allungamenti misurati e confronto con quelli teorici, per ogni cavo.'}
+   ]},
+  {id:'M', cod:'M', tit:'Appoggi strutturali', rif:'§ 11.6',
+   opz:[
+     {v:'ce',  l:'Dispositivi conformi alla UNI EN 1337, con marcatura CE'},
+     {v:'cvt', l:'Dispositivi non ricadenti nella UNI EN 1337 &mdash; con Certificato di Valutazione Tecnica S.T.C.'}
+   ],
+   prove:[
+     {t:'Documentazione di accompagnamento', n:'UNI EN 1337', q:'Marcatura CE, dichiarazione di prestazione e manuale con le specifiche per la posa in opera e la manutenzione.'}
+   ]},
+  {id:'N', cod:'N', tit:'Dispositivi antisismici e di controllo delle vibrazioni', rif:'§ 11.9',
+   opz:[
+     {v:'lin',  l:'A comportamento lineare (§ 11.9.4.1) / non lineare (§ 11.9.5.1)'},
+     {v:'visc', l:'A comportamento viscoso (§ 11.9.6.1)'},
+     {v:'elast',l:'Isolatori elastomerici (§ 11.9.7.1)'},
+     {v:'scorr',l:'Isolatori a scorrimento (§ 11.9.8.1)'},
+     {v:'fus',  l:'Dispositivo a vincolo rigido tipo &ldquo;fusibile&rdquo; (§ 11.9.9.1)'},
+     {v:'prov', l:'Dispositivo dinamico di vincolo provvisorio (§ 11.9.10.1)'}
+   ],
+   prove:[
+     {t:'Prove di accettazione sui dispositivi', n:'UNI EN 15129 &mdash; Factory Production Control tests', q:'Eseguite da laboratorio autorizzato dal S.T.C. con decreto; da indicare il numero di dispositivi provati, il laboratorio e gli estremi del decreto di autorizzazione.'}
+   ]},
+  {id:'O', cod:'O', tit:'Materiali e prodotti a base di legno', rif:'§ 11.7',
+   opz:[
+     {v:'mass', l:'Legno massiccio (§ 11.7.2)'},
+     {v:'dita', l:'Legno strutturale con giunti a dita (§ 11.7.3)'},
+     {v:'lam',  l:'Legno lamellare incollato (§ 11.7.4)'},
+     {v:'pann', l:'Pannelli a base di legno (§ 11.7.5)'},
+     {v:'colleg',l:'Elementi meccanici di collegamento (§ 11.7.8)'}
+   ],
+   prove:[
+     {t:'Classificazione visuale in cantiere (legno massiccio)', n:'§ 11.7.10.2', q:'Su <strong>almeno il 10% degli elementi</strong> costituenti il lotto di fornitura (percentuale da precisare), da confrontare con la classificazione effettuata in stabilimento.'},
+     {t:'Controllo disposizione lamelle e distanza giunto-nodo', n:'UNI EN 14080', q:'Su una percentuale degli elementi del lotto, da indicare, per legno lamellare e con giunti a dita.'},
+     {t:'Prove di carico in campo elastico (elementi lavorati in situ)', n:'UNI EN 408:2012', q:'Valutazione delle caratteristiche prestazionali degli elementi, eseguita da laboratorio.'}
+   ]},
+  {id:'P', cod:'P', tit:'Murature &mdash; elementi resistenti e malte', rif:'§ 11.10',
+   opz:[
+     {v:'cat1', l:'Elementi resistenti di Categoria I'},
+     {v:'cat2', l:'Elementi resistenti di Categoria II'},
+     {v:'mprest',l:'Malta a prestazione garantita (§ 11.10.2.1)'},
+     {v:'mcomp', l:'Malta a composizione prescritta (§ 11.10.2.2)'},
+     {v:'mcant', l:'Malta prodotta in cantiere (§ 11.10.2.3)'}
+   ],
+   prove:[
+     {t:'Compressione su elementi resistenti', n:'UNI EN 772-1', q:'Controlli di accettazione ai sensi del § 11.10.1.1.1, su campioni prelevati dalla fornitura in cantiere.'},
+     {t:'Flessione e compressione sulle malte', n:'UNI EN 1015-11', q:'Controlli di accettazione ai sensi del § 11.10.2.4, su provini prismatici 40x40x160 mm.'}
+   ]},
+  {id:'R', cod:'R', tit:'Malte strutturali tipo R4 per incamiciatura e ricostruzione volumetrica', rif:'§ 11.10.2.4 &mdash; UNI EN 1504-3',
+   opz:[
+     {v:'inc',  l:'Incamiciatura / aumento di sezione di travi e pilastri'},
+     {v:'ricos',l:'Ricostruzione volumetrica di elementi degradati'}
+   ],
+   prove:[
+     {t:'Flessione e compressione su provini prismatici', n:'UNI EN 1015-11 / UNI EN 196-1', q:'<strong>3 provini prismatici 40x40x160 mm per ogni controllo</strong>, con <strong>1 controllo ogni 350 m&sup3;</strong> di miscela omogenea. Per malte additivate con ghiaia (aumenti volumetrici oltre 8 cm) si eseguono 3 provini per ciascuna composizione. Valore limite di accettazione tipico per classe R4: <strong>&ge; 45 MPa</strong>.'}
+   ]}
+];
+
+function rsuSezById(id){ return RSU_SEZIONI.find(s=>s.id===id); }
+
+// Riga ripetibile della tabella certificati di prova
+function rsuProvaRigaHtml(p){
+  p = p || {};
+  return `<div class="rsu-prova" style="display:flex;gap:6px;margin-bottom:5px">
+    <input class="form-control rp-lab" style="flex:2;font-size:12px" placeholder="Laboratorio (art. 59 D.P.R. 380/2001)" value="${esc(p.lab||'')}">
+    <input class="form-control rp-num" style="flex:1;font-size:12px" placeholder="N. certificato" value="${esc(p.num||'')}">
+    <input class="form-control rp-data" style="width:140px;font-size:12px" type="date" value="${esc(p.data||'')}">
+    <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="rsuRimuoviRiga(this)">&#10005;</button>
+  </div>`;
+}
+function rsuProfRigaHtml(p){
+  p = p || {};
+  return `<div class="rsu-prof" style="display:flex;gap:6px;margin-bottom:5px">
+    <input class="form-control rf-nome" style="flex:2;font-size:12px" placeholder="Nome e cognome" value="${esc(p.nome||'')}">
+    <input class="form-control rf-cf" style="flex:1;font-size:12px" placeholder="Codice fiscale" value="${esc(p.cf||'')}">
+    <input class="form-control rf-albo" style="flex:1;font-size:12px" placeholder="Albo (es. Ingegneri)" value="${esc(p.albo||'')}">
+    <input class="form-control rf-prov" style="width:70px;font-size:12px" placeholder="Prov." value="${esc(p.prov||'')}">
+    <input class="form-control rf-num" style="width:100px;font-size:12px" placeholder="N. iscr." value="${esc(p.num||'')}">
+    <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="rsuRimuoviRiga(this)">&#10005;</button>
+  </div>`;
+}
+function rsuTitoloRigaHtml(t){
+  t = t || {};
+  return `<div class="rsu-titolo" style="display:flex;gap:6px;margin-bottom:5px">
+    <input class="form-control rt-tipo" style="flex:2;font-size:12px" placeholder="Tipo titolo (es. D.G., P.d.C., S.C.I.A.)" value="${esc(t.tipo||'')}">
+    <input class="form-control rt-num" style="flex:1;font-size:12px" placeholder="Numero" value="${esc(t.num||'')}">
+    <input class="form-control rt-data" style="width:140px;font-size:12px" type="date" value="${esc(t.data||'')}">
+    <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px" onclick="rsuRimuoviRiga(this)">&#10005;</button>
+  </div>`;
+}
+function rsuRimuoviRiga(btn){
+  const r = btn.closest('.rsu-prova') || btn.closest('.rsu-prof') || btn.closest('.rsu-titolo');
+  if(r) r.remove();
+}
+function rsuAggiungiProva(contId){
+  const c = document.getElementById(contId);
+  if(c) c.insertAdjacentHTML('beforeend', rsuProvaRigaHtml());
+}
+function rsuAggiungiProf(prefix){
+  const c = document.getElementById(prefix+'_rsu_prof_cont');
+  if(c) c.insertAdjacentHTML('beforeend', rsuProfRigaHtml());
+}
+function rsuAggiungiTitolo(prefix){
+  const c = document.getElementById(prefix+'_rsu_titoli_cont');
+  if(c) c.insertAdjacentHTML('beforeend', rsuTitoloRigaHtml());
+}
+
+// Apre/chiude il pannello di dettaglio di una sezione materiale
+function rsuToggleSezione(prefix, id){
+  const chk = document.getElementById(prefix+'_rsu_chk_'+id);
+  const body = document.getElementById(prefix+'_rsu_body_'+id);
+  if(body) body.style.display = (chk && chk.checked) ? 'block' : 'none';
+}
+// Mostra il campo osservazioni solo quando si dichiarano non conformita'
+function rsuToggleEsito(prefix, id){
+  const sel = document.getElementById(prefix+'_rsu_esito_'+id);
+  const w = document.getElementById(prefix+'_rsu_oss_wrap_'+id);
+  if(w) w.style.display = (sel && sel.value==='non_conforme') ? 'block' : 'none';
+}
+
+// Pannello di dettaglio di una singola sezione materiale
+function rsuSezioneFormHtml(prefix, sez, d){
+  d = d || {};
+  const attiva = !!d.attiva;
+  const opzSel = d.opzioni || [];
+  const prove  = (d.prove && d.prove.length) ? d.prove : [{}];
+
+  const opzHtml = sez.opz.map(o=>`
+    <label style="display:block;font-size:12px;margin-bottom:4px;cursor:pointer">
+      <input type="checkbox" class="rsu-opz-${sez.id}" value="${o.v}"${opzSel.includes(o.v)?' checked':''}> ${o.l}
+    </label>`).join('');
+
+  const proveRifHtml = sez.prove.map(p=>`
+    <div style="padding:6px 0;border-bottom:1px dashed var(--border)">
+      <div style="font-size:12px;font-weight:600">${p.t}</div>
+      <div style="font-size:11px;color:var(--primary);margin:2px 0">Norma: ${p.n}</div>
+      <div style="font-size:11px;color:var(--muted)">${p.q}</div>
+    </div>`).join('');
+
+  return `<div class="rsu-sez" data-sez="${sez.id}" style="border:1px solid var(--border);border-radius:6px;margin-bottom:8px;overflow:hidden">
+    <label style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:var(--surface);cursor:pointer">
+      <input type="checkbox" id="${prefix}_rsu_chk_${sez.id}" class="rsu-chk" data-sez="${sez.id}"
+        ${attiva?' checked':''} onchange="rsuToggleSezione('${prefix}','${sez.id}')" style="margin-top:2px">
+      <span>
+        <span style="font-size:12px;font-weight:700;color:var(--primary)">${sez.cod}</span>
+        <span style="font-size:12px;font-weight:600"> &mdash; ${sez.tit}</span>
+        <span style="font-size:11px;color:var(--muted);display:block">${sez.rif}</span>
+      </span>
+    </label>
+    <div id="${prefix}_rsu_body_${sez.id}" style="display:${attiva?'block':'none'};padding:12px;border-top:1px solid var(--border)">
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Fornitura e qualificazione</div>
+      ${opzHtml}
+
+      <details style="margin:10px 0;border:1px solid var(--border);border-radius:4px;background:#F8FAFC">
+        <summary style="padding:7px 10px;font-size:11px;font-weight:700;color:var(--primary);cursor:pointer">
+          📋 Prove prescritte, norme e numerosit&agrave; dei campioni
+        </summary>
+        <div style="padding:4px 10px 10px">${proveRifHtml}</div>
+      </details>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:10px 0 6px">
+        Certificati di prova allegati
+      </div>
+      <div id="${prefix}_rsu_prove_${sez.id}">${prove.map(p=>rsuProvaRigaHtml(p)).join('')}</div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="rsuAggiungiProva('${prefix}_rsu_prove_${sez.id}')">+ Certificato</button>
+
+      <div class="form-grid" style="margin-top:12px">
+        <div class="form-group span-2">
+          <label class="form-label">Prove eseguite &mdash; tipo e numerosit&agrave; effettiva</label>
+          <div class="form-hint">Indica quante prove sono state effettivamente eseguite e su cosa. Es. &laquo;n. 3 spezzoni per i diametri 16, 20 e 24 &mdash; trazione e piegamento&raquo;.</div>
+          <textarea class="form-control" id="${prefix}_rsu_eseguite_${sez.id}" rows="2">${esc(d.eseguite||'')}</textarea>
+        </div>
+        <div class="form-group span-2">
+          <label class="form-label">Esito dei controlli</label>
+          <select class="form-control" id="${prefix}_rsu_esito_${sez.id}" onchange="rsuToggleEsito('${prefix}','${sez.id}')">
+            <option value="conforme"${d.esito!=='non_conforme'?' selected':''}>I certificati dimostrano l'esito positivo dei controlli</option>
+            <option value="non_conforme"${d.esito==='non_conforme'?' selected':''}>I certificati indicano la presenza di non conformit&agrave;</option>
+          </select>
+        </div>
+        <div class="form-group span-2" id="${prefix}_rsu_oss_wrap_${sez.id}" style="display:${d.esito==='non_conforme'?'block':'none'}">
+          <label class="form-label">Non conformit&agrave; riscontrate e loro risoluzione</label>
+          <div class="form-hint">Nel documento sar&agrave; seguito dalla dichiarazione che le non conformit&agrave; si devono considerare definitivamente risolte.</div>
+          <textarea class="form-control" id="${prefix}_rsu_oss_${sez.id}" rows="3">${esc(d.osservazioni||'')}</textarea>
+        </div>
+        <div class="form-group span-2">
+          <label class="form-label">Ulteriori considerazioni</label>
+          <textarea class="form-control" id="${prefix}_rsu_note_${sez.id}" rows="2">${esc(d.note||'')}</textarea>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function extraFieldsRSUHtml(prefix, dx, team, cantiere){
+  dx = dx || {}; team = team || {}; cantiere = cantiere || {};
+  const prof = (dx.professionisti && dx.professionisti.length)
+    ? dx.professionisti
+    : [{nome: team.dl_nome || '', cf:'', albo:'Ingegneri', prov:'', num:''}];
+  const titoli = (dx.titoli && dx.titoli.length) ? dx.titoli : [{}];
+  const sezDati = dx.sezioni || {};
+
+  return `<div id="${prefix}_extra_relazione_struttura_ultimata" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:4px">
+      Relazione a struttura ultimata &mdash; D.P.R. 6/06/2001 n. 380, art. 65
+    </div>
+    <div class="alert alert-info" style="font-size:11px;margin-bottom:12px">
+      Seleziona i materiali e gli elementi effettivamente impiegati: per ciascuno si apre la sezione con le prove
+      prescritte, le norme di riferimento e la numerosit&agrave; dei campioni. Nel documento finale compariranno
+      solo le sezioni selezionate.
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Comune</label>
+        <input class="form-control" id="${prefix}_rsu_comune" value="${esc(dx.comune||cantiere.stazione_appaltante||'')}" placeholder="Es. Jesi">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Provincia</label>
+        <input class="form-control" id="${prefix}_rsu_provincia" value="${esc(dx.provincia||'')}" placeholder="Es. Ancona">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Normativa tecnica applicata nel progetto</label>
+        <input class="form-control" id="${prefix}_rsu_normativa" value="${esc(dx.normativa||'D.M. 17/01/2018')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Identificativo opera / lotto</label>
+        <input class="form-control" id="${prefix}_rsu_opera" value="${esc(dx.opera||'')}" placeholder="Es. Blocco A">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Se la relazione riguarda una parte dell'intervento</div>
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:14px 0 6px">
+      Direzione dei lavori strutturali
+    </div>
+    <div class="form-hint" style="margin-bottom:6px">Professionisti che sottoscrivono la relazione, ai sensi dell'art. 65 D.P.R. 380/2001 e dell'art. 359 c.p.</div>
+    <div id="${prefix}_rsu_prof_cont">${prof.map(p=>rsuProfRigaHtml(p)).join('')}</div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="rsuAggiungiProf('${prefix}')">+ Professionista</button>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:14px 0 6px">
+      Deposito, sorteggio e autorizzazione
+    </div>
+    <div class="form-grid">
+      <div class="form-group span-2">
+        <label style="display:block;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="${prefix}_rsu_sorteggio"${dx.sorteggio?' checked':''}>
+          Il progetto &egrave; stato sorteggiato ai sensi dell'art. 94bis, comma 5, D.P.R. 380/2001
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data sorteggio</label>
+        <input class="form-control" type="date" id="${prefix}_rsu_sort_data" value="${esc(dx.sorteggio_data||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Protocollo esito controllo</label>
+        <input class="form-control" id="${prefix}_rsu_sort_prot" value="${esc(dx.sorteggio_prot||'')}">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Estremi dell'autorizzazione (art. 94 D.P.R. 380/2001)</label>
+        <textarea class="form-control" id="${prefix}_rsu_autorizzazione" rows="2" placeholder="Es. autorizzato con provvedimento D.G. comunale n. 332 del 06/12/2022 e successiva variante n. 122 del 17/04/2025">${esc(dx.autorizzazione||'')}</textarea>
+      </div>
+      <div class="form-group span-2">
+        <label style="display:block;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="${prefix}_rsu_cap"${dx.cap_tesatura?' checked':''}>
+          Per le opere in c.a.p. viene esibita ogni indicazione inerente alla tesatura dei cavi e ai sistemi di messa in coazione
+        </label>
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:14px 0 6px">
+      Titoli abilitativi
+    </div>
+    <div id="${prefix}_rsu_titoli_cont">${titoli.map(t=>rsuTitoloRigaHtml(t)).join('')}</div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="rsuAggiungiTitolo('${prefix}')">+ Titolo abilitativo</button>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:16px 0 6px">
+      Materiali ed elementi impiegati
+    </div>
+    <div id="${prefix}_rsu_sezioni">
+      ${RSU_SEZIONI.map(s=>rsuSezioneFormHtml(prefix, s, sezDati[s.id])).join('')}
+    </div>
+
+    <div class="form-group" style="margin-top:12px">
+      <label class="form-label">Altro materiale innovativo impiegato</label>
+      <input class="form-control" id="${prefix}_rsu_altro" value="${esc(dx.altro_materiale||'')}" placeholder="Es. malta strutturale tipo R4 per incamiciatura">
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label class="form-label">Considerazioni conclusive</label>
+      <textarea class="form-control" id="${prefix}_rsu_conclusioni" rows="3">${esc(dx.conclusioni||'')}</textarea>
+    </div>
+  </div>`;
+}
+
+// Raccolta dei dati del form RSU
+function raccogliDatiRSU(prefix){
+  const g = id => document.getElementById(prefix+'_rsu_'+id);
+  const val = id => { const e=g(id); return e ? (e.value||'').trim()||null : null; };
+  const chk = id => { const e=g(id); return !!(e && e.checked); };
+
+  const professionisti = [...document.querySelectorAll('#'+prefix+'_rsu_prof_cont .rsu-prof')].map(r=>({
+    nome:(r.querySelector('.rf-nome')?.value||'').trim(),
+    cf:(r.querySelector('.rf-cf')?.value||'').trim(),
+    albo:(r.querySelector('.rf-albo')?.value||'').trim(),
+    prov:(r.querySelector('.rf-prov')?.value||'').trim(),
+    num:(r.querySelector('.rf-num')?.value||'').trim()
+  })).filter(p=>p.nome);
+
+  const titoli = [...document.querySelectorAll('#'+prefix+'_rsu_titoli_cont .rsu-titolo')].map(r=>({
+    tipo:(r.querySelector('.rt-tipo')?.value||'').trim(),
+    num:(r.querySelector('.rt-num')?.value||'').trim(),
+    data:r.querySelector('.rt-data')?.value||''
+  })).filter(t=>t.tipo||t.num);
+
+  const sezioni = {};
+  RSU_SEZIONI.forEach(s=>{
+    const c = document.getElementById(prefix+'_rsu_chk_'+s.id);
+    if(!c || !c.checked) return;
+    const prove = [...document.querySelectorAll('#'+prefix+'_rsu_prove_'+s.id+' .rsu-prova')].map(r=>({
+      lab:(r.querySelector('.rp-lab')?.value||'').trim(),
+      num:(r.querySelector('.rp-num')?.value||'').trim(),
+      data:r.querySelector('.rp-data')?.value||''
+    })).filter(p=>p.lab||p.num);
+    sezioni[s.id] = {
+      attiva:true,
+      opzioni:[...document.querySelectorAll('.rsu-opz-'+s.id)].filter(e=>e.checked).map(e=>e.value),
+      prove,
+      eseguite:(document.getElementById(prefix+'_rsu_eseguite_'+s.id)?.value||'').trim()||null,
+      esito:document.getElementById(prefix+'_rsu_esito_'+s.id)?.value||'conforme',
+      osservazioni:(document.getElementById(prefix+'_rsu_oss_'+s.id)?.value||'').trim()||null,
+      note:(document.getElementById(prefix+'_rsu_note_'+s.id)?.value||'').trim()||null
+    };
+  });
+
+  return {
+    comune: val('comune'),
+    provincia: val('provincia'),
+    normativa: val('normativa'),
+    opera: val('opera'),
+    professionisti,
+    sorteggio: chk('sorteggio'),
+    sorteggio_data: val('sort_data'),
+    sorteggio_prot: val('sort_prot'),
+    autorizzazione: val('autorizzazione'),
+    cap_tesatura: chk('cap'),
+    titoli,
+    sezioni,
+    altro_materiale: val('altro'),
+    conclusioni: val('conclusioni')
+  };
+}
+
+// Corpo del documento stampabile
+function bodyRSU(c, v, dx){
+  dx = dx || {};
+  const sezioni = dx.sezioni || {};
+  const attive = RSU_SEZIONI.filter(s=>sezioni[s.id] && sezioni[s.id].attiva);
+  const prof = dx.professionisti || [];
+  let h = '';
+
+  h += '<p>Normativa tecnica applicata nel progetto: <strong>'+esc(dx.normativa||'D.M. 17/01/2018')+'</strong>.</p>';
+
+  if(prof.length){
+    h += '<p>'+(prof.length>1
+      ? 'I sottoscritti professionisti, incaricati della direzione dei lavori strutturali dell&rsquo;opera in intestazione:'
+      : 'Il sottoscritto, incaricato della direzione dei lavori strutturali dell&rsquo;opera in intestazione:')+'</p>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin:6px 0">'
+      + '<tr><th style="border:1px solid #999;padding:4px;text-align:left">Nome e cognome</th>'
+      + '<th style="border:1px solid #999;padding:4px;text-align:left">Codice fiscale</th>'
+      + '<th style="border:1px solid #999;padding:4px;text-align:left">Albo professionale</th>'
+      + '<th style="border:1px solid #999;padding:4px;text-align:left">N. iscrizione</th></tr>';
+    prof.forEach(p=>{
+      h += '<tr><td style="border:1px solid #999;padding:4px">'+esc(p.nome||'')+'</td>'
+        + '<td style="border:1px solid #999;padding:4px">'+esc(p.cf||'')+'</td>'
+        + '<td style="border:1px solid #999;padding:4px">'+esc(p.albo||'')+(p.prov?' &mdash; Prov. '+esc(p.prov):'')+'</td>'
+        + '<td style="border:1px solid #999;padding:4px">'+esc(p.num||'')+'</td></tr>';
+    });
+    h += '</table>';
+  }
+
+  h += '<p>consapevol'+(prof.length>1?'i':'e')+' delle responsabilit&agrave; assunte ai sensi dell&rsquo;art. 65 del D.P.R. 380/2001 e dell&rsquo;art. 359 del Codice penale, '
+    + 'in quanto esercente un servizio di pubblica necessit&agrave;</p>';
+  h += '<h3 style="text-align:center">DICHIARA'+(prof.length>1?'NO':'')+'</h3>';
+  h += '<p>che i lavori in epigrafe sono terminati nel pieno rispetto delle norme tecniche per le costruzioni emanate ai sensi degli artt. 52 e 83 del D.P.R. 380/2001, '
+    + 'vigenti al momento della presentazione della denuncia dei lavori, ed inoltre:</p>';
+
+  h += '<p><strong>a)</strong> che il progetto '+(dx.sorteggio
+    ? '&egrave; stato sorteggiato ai sensi del D.P.R. n. 380/01, art. 94bis, comma 5, in data <strong>'+fmt(dx.sorteggio_data)+'</strong>'
+      + (dx.sorteggio_prot?', con esito del controllo comunicato con protocollo n. <strong>'+esc(dx.sorteggio_prot)+'</strong>':'')+';'
+    : 'non &egrave; stato sorteggiato ai sensi del D.P.R. n. 380/01, art. 94bis, comma 5;')+'</p>';
+
+  if(dx.autorizzazione)
+    h += '<p><strong>b)</strong> che il progetto, ai sensi del D.P.R. n. 380/01, art. 94, '+esc(dx.autorizzazione)+';</p>';
+
+  if(dx.cap_tesatura)
+    h += '<p><strong>c)</strong> che, per le opere in conglomerato armato precompresso, viene esibita ogni indicazione inerente alla tesatura dei cavi ed ai sistemi di messa in coazione;</p>';
+
+  h += '<p><strong>d)</strong> che per la realizzazione dell&rsquo;opera in oggetto sono stati utilizzati i seguenti materiali e/o elementi:</p>';
+  if(attive.length){
+    h += '<ul>';
+    attive.forEach(s=>{ h += '<li>'+s.tit+' <em>('+s.cod+')</em></li>'; });
+    if(dx.altro_materiale) h += '<li>Altro materiale innovativo: <strong>'+esc(dx.altro_materiale)+'</strong></li>';
+    h += '</ul>';
+  } else {
+    h += '<p><em>Nessun materiale selezionato.</em></p>';
+  }
+
+  h += '<p><strong>e)</strong> che per i materiali e gli elementi sopra elencati sono stati rispettati gli adempimenti di cui al '
+    + esc(dx.normativa||'D.M. 17/01/2018')+', o alla normativa vigente in precedenza, in merito ai controlli di qualificazione '
+    + 'ed accettazione di seguito elencati:</p>';
+
+  attive.forEach(s=>{
+    const d = sezioni[s.id];
+    h += '<h3>'+s.cod+'. '+s.tit.toUpperCase()+' ('+s.rif+')</h3>';
+
+    const opzSel = (d.opzioni||[]).map(v2=>{ const o=s.opz.find(x=>x.v===v2); return o?o.l:null; }).filter(Boolean);
+    if(opzSel.length){
+      h += '<p style="margin-bottom:4px">Fornitura e qualificazione:</p><ul>';
+      opzSel.forEach(l=>{ h += '<li>'+l+'</li>'; });
+      h += '</ul>';
+    }
+
+    h += '<p style="margin-bottom:4px">Controlli di accettazione prescritti:</p><ul>';
+    s.prove.forEach(p=>{ h += '<li><strong>'+p.t+'</strong> &mdash; '+p.n+'.<br><span style="font-size:11px">'+p.q+'</span></li>'; });
+    h += '</ul>';
+
+    if(d.eseguite) h += '<p>Prove effettivamente eseguite: '+esc(d.eseguite)+'</p>';
+
+    const prove = (d.prove||[]).filter(p=>p.lab||p.num);
+    if(prove.length){
+      h += '<p style="margin-bottom:4px">Certificati di prova ALLEGATI:</p>';
+      h += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin:4px 0">'
+        + '<tr><th style="border:1px solid #999;padding:4px;text-align:left">Laboratorio</th>'
+        + '<th style="border:1px solid #999;padding:4px;text-align:left">Numero certificato</th>'
+        + '<th style="border:1px solid #999;padding:4px;text-align:left">Data certificato</th></tr>';
+      prove.forEach(p=>{
+        h += '<tr><td style="border:1px solid #999;padding:4px">'+esc(p.lab||'')+'</td>'
+          + '<td style="border:1px solid #999;padding:4px">'+esc(p.num||'')+'</td>'
+          + '<td style="border:1px solid #999;padding:4px">'+(p.data?fmt(p.data):'')+'</td></tr>';
+      });
+      h += '</table>';
+    }
+
+    if(d.esito==='non_conforme'){
+      h += '<p>I certificati di prova allegati indicano la presenza delle seguenti non conformit&agrave;:</p>';
+      h += paraP(d.osservazioni||'');
+      h += '<p>Si dichiara che, per quanto sopra esposto, le non conformit&agrave; segnalate si devono considerare definitivamente risolte.</p>';
+    } else {
+      h += '<p>I certificati di prova allegati dimostrano l&rsquo;esito positivo dei controlli.</p>';
+    }
+
+    if(d.note){ h += '<p style="margin-bottom:2px">Ulteriori considerazioni:</p>'+paraP(d.note); }
+  });
+
+  const titoli = (dx.titoli||[]).filter(t=>t.tipo||t.num);
+  h += '<h3 style="text-align:center">DICHIARA'+(prof.length>1?'NO':'')+' INOLTRE</h3>';
+  h += '<p>sotto la propria responsabilit&agrave; e consapevol'+(prof.length>1?'i':'e')+' delle sanzioni penali nel caso di false dichiarazioni, '
+    + 'ai sensi dell&rsquo;art. 47 del D.P.R. 445/2000, che le opere sono state eseguite in conformit&agrave; al progetto presentato presso la struttura '
+    + 'tecnica competente e autorizzato'+(dx.comune?' dal Comune di '+esc(dx.comune):'')
+    + (titoli.length?' con i seguenti titoli abilitativi:':'.')+'</p>';
+  if(titoli.length){
+    h += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin:4px 0">'
+      + '<tr><th style="border:1px solid #999;padding:4px;text-align:left">Tipo titolo abilitativo</th>'
+      + '<th style="border:1px solid #999;padding:4px;text-align:left">Numero</th>'
+      + '<th style="border:1px solid #999;padding:4px;text-align:left">Data</th></tr>';
+    titoli.forEach(t=>{
+      h += '<tr><td style="border:1px solid #999;padding:4px">'+esc(t.tipo||'')+'</td>'
+        + '<td style="border:1px solid #999;padding:4px">'+esc(t.num||'')+'</td>'
+        + '<td style="border:1px solid #999;padding:4px">'+(t.data?fmt(t.data):'')+'</td></tr>';
+    });
+    h += '</table>';
+  }
+  h += '<p>che gli allegati certificati relativi alle prove sui materiali, eseguite da uno dei laboratori di cui all&rsquo;art. 59 del D.P.R. 380/2001, '
+    + 'sono firmati digitalmente dai tecnici del laboratorio che li ha emessi.</p>';
+
+  if(dx.conclusioni){ h += '<h3>CONSIDERAZIONI CONCLUSIVE</h3>'+paraP(dx.conclusioni); }
+  return h;
+}
+
 function raccogliDatiExtraVerbale(prefix, tipo){
+  if(tipo==='relazione_struttura_ultimata'){
+    return raccogliDatiRSU(prefix);
+  }
   if(tipo==='sopralluogo_periodico'){
     return {
       luogo: document.getElementById(prefix+'_luogo')?.value.trim()||null,
