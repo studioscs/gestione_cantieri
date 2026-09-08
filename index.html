@@ -290,7 +290,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.04c';
+const APP_VERSIONE = '2026.09.08a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -1158,6 +1158,9 @@ async function renderSospensioni(){
 
   const {data:sosp, error} = await sb.from('sospensioni').select('*').eq('cantiere_id',currentCantiere).order('data',{ascending:false});
   if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
+  const {data:varSosp} = await sb.from('varianti').select('numero,giorni_concessi').eq('cantiere_id',currentCantiere).order('numero');
+
+  html += riepilogoCalcoloFine(c, sosp||[], varSosp||[]);
 
   // Verifica se c'è una sospensione aperta (senza ripresa)
   const sospAperta = (sosp||[]).find(s=>s.tipo==='sospensione' && !s.data_ripresa);
@@ -1223,6 +1226,87 @@ async function renderSospensioni(){
 
   html += `</tbody></table></div>`;
   return html;
+}
+
+// Pannello di trasparenza: mostra come si arriva alla data fine aggiornata.
+// Serve a verificare il conteggio quando gli atti sono inseriti a posteriori
+// e non in ordine cronologico: il calcolo è per somma, non sequenziale.
+function riepilogoCalcoloFine(c, sosp, varianti){
+  if(!c) return '';
+  const base = c.data_fine_contratto || null;
+
+  let ggSosp=0, nSosp=0, ggPror=0, nPror=0, aperte=0;
+  (sosp||[]).forEach(s=>{
+    const tipoEv = s.tipo_evento || 'sospensione';
+    if(tipoEv==='proroga'){ if(s.giorni_proroga){ ggPror+=s.giorni_proroga; nPror++; } }
+    else if(s.giorni_sospensione){ ggSosp+=s.giorni_sospensione; nSosp++; }
+    else if(!s.data_ripresa) aperte++;
+  });
+  let ggVar=0, nVar=0;
+  (varianti||[]).forEach(v=>{ if(v.giorni_concessi){ ggVar+=v.giorni_concessi; nVar++; } });
+
+  const tot = ggSosp + ggPror + ggVar;
+  let attesa = null;
+  if(base){ const d=new Date(base+'T00:00:00'); d.setDate(d.getDate()+tot); attesa=d.toISOString().split('T')[0]; }
+  const reale = c.data_fine_aggiornata || c.data_fine || null;
+  const disallineato = attesa && reale && attesa !== reale;
+
+  const riga = (etichetta, valore, dettaglio, colore) =>
+    `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:5px 0;border-bottom:1px dashed var(--border)">
+      <span style="font-size:12px;color:var(--muted)">${etichetta}${dettaglio?` <span style="font-size:11px">(${dettaglio})</span>`:''}</span>
+      <span style="font-size:13px;font-weight:600;white-space:nowrap${colore?';color:'+colore:''}">${valore}</span>
+    </div>`;
+
+  let avvisi = '';
+  if(!base){
+    avvisi += `<div class="alert alert-warning" style="font-size:12px;margin:10px 0 0">
+      ⚠️ <strong>Fine contrattuale non impostata.</strong> È la base immutabile del calcolo: senza di essa
+      i giorni rischiano di essere sommati più volte. Impostala in <em>Cantieri → Modifica cantiere → Ultimazione contrattuale</em>.
+    </div>`;
+  }
+  if(aperte){
+    avvisi += `<div class="alert alert-info" style="font-size:12px;margin:10px 0 0">
+      ⏸️ ${aperte} sospension${aperte===1?'e':'i'} ancora apert${aperte===1?'a':'e'}: i giorni vengono conteggiati solo alla registrazione della ripresa.
+    </div>`;
+  }
+  if(disallineato){
+    avvisi += `<div class="alert alert-error" style="font-size:12px;margin:10px 0 0">
+      ❌ <strong>Disallineamento rilevato.</strong> La data fine salvata (${fmt(reale)}) non corrisponde
+      al calcolo (${fmt(attesa)}). ${can('write')?'Premi «Ricalcola» per riallinearla.':'Segnala al DL.'}
+    </div>`;
+  }
+
+  return `<div class="card" style="padding:16px;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:0.04em">
+        🧮 Come si ottiene la data fine aggiornata
+      </div>
+      ${can('write')?`<button class="btn btn-secondary btn-sm" onclick="forzaRicalcoloFine()">🔄 Ricalcola</button>`:''}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+      Il totale è una <strong>somma</strong> di tutti gli atti registrati: l'ordine di inserimento non incide sul risultato.
+    </div>
+    ${riga('Fine contrattuale (base)', base?fmt(base):'<span style="color:var(--red)">non impostata</span>','')}
+    ${riga('+ Sospensioni accertate', (ggSosp?'+':'')+ggSosp+' gg', nSosp?nSosp+' verbal'+(nSosp===1?'e':'i'):'nessuna')}
+    ${riga('+ Proroghe concesse', (ggPror?'+':'')+ggPror+' gg', nPror?nPror+' att'+(nPror===1?'o':'i'):'nessuna')}
+    ${riga('+ Giorni da varianti', (ggVar?'+':'')+ggVar+' gg', nVar?nVar+' variant'+(nVar===1?'e':'i'):'nessuna')}
+    ${riga('= Totale giorni aggiuntivi', tot+' gg','')}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:9px 0 2px">
+      <span style="font-size:12px;font-weight:700">Nuova fine lavori</span>
+      <span style="font-size:16px;font-weight:700;color:${disallineato?'var(--red)':'var(--primary)'}">${attesa?fmt(attesa):'—'}</span>
+    </div>
+    ${avvisi}
+  </div>`;
+}
+
+async function forzaRicalcoloFine(){
+  if(!currentCantiere) return;
+  const nuova = await ricalcolaFineLavori(currentCantiere);
+  await loadMyCantieri();
+  showView('sospensioni');
+  alert(nuova
+    ? `✅ Ricalcolo eseguito.\n\nNuova data fine lavori: ${fmt(nuova)}`
+    : '⚠️ Impossibile ricalcolare: imposta la data di ultimazione contrattuale nella scheda del cantiere.');
 }
 
 function openModalNuovaSospensione(){
@@ -1356,7 +1440,7 @@ async function salvaProroga(){
   const data = document.getElementById('np_data').value;
   if(!giorni||!data){ alert('Data e giorni di proroga obbligatori'); return; }
 
-  const {error} = await sb.from('sospensioni').insert({
+  const {data:ins, error} = await sb.from('sospensioni').insert({
     cantiere_id: currentCantiere,
     tipo: 'sospensione',          // campo legacy
     tipo_evento: 'proroga',
@@ -1366,11 +1450,14 @@ async function salvaProroga(){
     data_concessione_proroga: document.getElementById('np_dataconc').value||null,
     motivo: document.getElementById('np_motivo').value.trim()||null,
     created_by: currentUser.id
-  });
+  }).select('id').single();
   if(error){ alert(error.message); return; }
 
-  // Ricalcola data_fine_aggiornata
-  await ricalcolaFineLavori(currentCantiere);
+  // Ricalcola data_fine_aggiornata e registra la nuova fine sulla proroga
+  const nuovaFineCalc = await ricalcolaFineLavori(currentCantiere);
+  if(nuovaFineCalc && ins?.id){
+    await sb.from('sospensioni').update({nuova_fine_lavori: nuovaFineCalc}).eq('id',ins.id);
+  }
 
   // Annotazione giornale
   const dataAnnot = document.getElementById('np_dataconc').value || data;
@@ -1666,9 +1753,12 @@ async function salvaRipresa(sospId, dataSosp, rapporto=1, isParziale=false){
 }
 
 async function eliminaSospensione(id){
-  if(!confirm('Eliminare questo verbale di sospensione?\nAttenzione: le fasi eventualmente già shiftate NON vengono ripristinate automaticamente.')) return;
+  if(!confirm('Eliminare questo verbale?\nI giorni verranno scomputati dalla data fine aggiornata.\nAttenzione: le fasi eventualmente già shiftate NON vengono ripristinate automaticamente.')) return;
   const {error} = await sb.from('sospensioni').delete().eq('id',id);
   if(error){ alert(error.message); return; }
+  // Scomputa i giorni dell'evento eliminato dalla data fine
+  await ricalcolaFineLavori(currentCantiere);
+  await loadMyCantieri();
   showView('sospensioni');
 }
 
@@ -1840,7 +1930,7 @@ async function salvaVariante(){
   const giorniConcessi = parseInt(document.getElementById('nv_giorni').value)||0;
   const dataFirma = document.getElementById('nv_firma').value||null;
 
-  const {error} = await sb.from('varianti').insert({
+  const {data:ins, error} = await sb.from('varianti').insert({
     cantiere_id: currentCantiere,
     numero: num,
     data,
@@ -1848,17 +1938,20 @@ async function salvaVariante(){
     tipo_atto: document.getElementById('nv_tipo').value,
     data_firma: dataFirma,
     giorni_concessi: giorniConcessi||null,
-    nuova_fine_lavori: document.getElementById('nv_fine_calc').value||null,
     data_approvazione: document.getElementById('nv_data_approv').value||null,
     estremi_approvazione: document.getElementById('nv_estremi_approv').value.trim()||null,
     importo_contratto_nuovo: parseFloat(document.getElementById('nv_importo_nuovo').value)||null,
     oneri_sicurezza_nuovo: parseFloat(document.getElementById('nv_oneri_nuovo').value)||null,
     created_by: currentUser.id
-  });
+  }).select('id').single();
   if(error){ alert(error.message); return; }
 
-  // Ricalcola data_fine_aggiornata includendo questa variante
+  // Ricalcola data_fine_aggiornata includendo questa variante,
+  // poi registra sulla variante la data effettivamente calcolata
   const nuovaFineCalc = await ricalcolaFineLavori(currentCantiere);
+  if(nuovaFineCalc && ins?.id){
+    await sb.from('varianti').update({nuova_fine_lavori: nuovaFineCalc}).eq('id',ins.id);
+  }
   await loadMyCantieri();
 
   // Annotazione automatica sul giornale
@@ -1946,8 +2039,11 @@ async function salvaEditVariante(id){
   }).eq('id',id);
   if(error){ alert(error.message); return; }
 
-  // Ricalcola data_fine_aggiornata
-  await ricalcolaFineLavori(currentCantiere);
+  // Ricalcola data_fine_aggiornata e riallinea la fine registrata sulla variante
+  const nuovaFineCalc = await ricalcolaFineLavori(currentCantiere);
+  if(nuovaFineCalc){
+    await sb.from('varianti').update({nuova_fine_lavori: nuovaFineCalc}).eq('id',id);
+  }
   await loadMyCantieri();
 
   closeModal();
@@ -1955,9 +2051,12 @@ async function salvaEditVariante(id){
 }
 
 async function eliminaVariante(id, numero){
-  if(!confirm(`Eliminare la Variante V${numero}?`)) return;
+  if(!confirm(`Eliminare la Variante V${numero}?\nGli eventuali giorni concessi verranno scomputati dalla data fine aggiornata.`)) return;
   const {error} = await sb.from('varianti').delete().eq('id',id);
   if(error){ alert(error.message); return; }
+  // Scomputa i giorni della variante eliminata dalla data fine
+  await ricalcolaFineLavori(currentCantiere);
+  await loadMyCantieri();
   showView('varianti');
 }
 
@@ -4030,6 +4129,9 @@ async function salvaEditCantiere(id){
     link_box: document.getElementById('e_link_box').value.trim()||null
   }).eq('id',id);
   if(error){alert(error.message);return;}
+  // La fine contrattuale è la base del calcolo: se cambia va ripropagata
+  // su data_fine_aggiornata sommando di nuovo sospensioni, proroghe e varianti
+  await ricalcolaFineLavori(id);
   closeModal();await loadMyCantieri();showView('cantieri');
 }
 
@@ -5124,27 +5226,111 @@ async function eliminaSAL(id, numero){
 async function openModalEditSospensione(id){
   const {data:s} = await sb.from('sospensioni').select('*').eq('id',id).single();
   if(!s) return;
-  openModal('Modifica Sospensione', `
-    <div class="form-group" style="margin-bottom:12px">
-      <label class="form-label">Data sospensione *</label>
-      <input class="form-control" type="date" id="es2_data" value="${s.data||''}">
+  const isProroga = (s.tipo_evento||'sospensione')==='proroga';
+  openModal(isProroga?'Modifica Proroga':'Modifica Sospensione', `
+    <div class="alert alert-info" style="font-size:12px">
+      Modificando le date o i giorni, la <strong>data fine aggiornata</strong> del cantiere viene ricalcolata
+      sommando alla fine contrattuale tutti i giorni di sospensioni, proroghe e varianti.
     </div>
-    <div class="form-group" style="margin-bottom:12px">
-      <label class="form-label">Motivo sospensione</label>
-      <textarea class="form-control" id="es2_motivo" rows="4">${esc(s.motivo||'')}</textarea>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">${isProroga?'Data atto':'Data sospensione'} *</label>
+        <input class="form-control" type="date" id="es2_data" value="${s.data||''}"
+          oninput="ricalcolaGiorniEditSosp(${isProroga})">
+      </div>
+      ${isProroga?`
+      <div class="form-group">
+        <label class="form-label">Giorni di proroga concessi *</label>
+        <input class="form-control" type="number" min="1" id="es2_giorni" value="${s.giorni_proroga||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data richiesta proroga</label>
+        <input class="form-control" type="date" id="es2_datarich" value="${s.data_richiesta_proroga||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data concessione proroga</label>
+        <input class="form-control" type="date" id="es2_dataconc" value="${s.data_concessione_proroga||''}">
+      </div>`:`
+      <div class="form-group">
+        <label class="form-label">Data ripresa lavori</label>
+        <input class="form-control" type="date" id="es2_ripresa" value="${s.data_ripresa||''}"
+          oninput="ricalcolaGiorniEditSosp(false)">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Lascia vuoto se la sospensione è ancora aperta</div>
+      </div>
+      <div class="form-group span-2">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:10px;font-size:12px">
+          Giorni ${s.tipo_sospensione==='parziale'?'effettivi (calendario × rapporto)':'di sospensione'} accertati:
+          <strong id="es2_gg_hint" style="color:var(--primary)">${s.giorni_sospensione!=null?s.giorni_sospensione+' gg':'—'}</strong>
+          <input type="hidden" id="es2_rapporto" value="${s.tipo_sospensione==='parziale'&&s.rapporto_parziale?s.rapporto_parziale:1}">
+        </div>
+      </div>`}
+      <div class="form-group span-2">
+        <label class="form-label">Motivo / Note</label>
+        <textarea class="form-control" id="es2_motivo" rows="4">${esc(s.motivo||'')}</textarea>
+      </div>
     </div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
-      <button class="btn btn-primary" onclick="salvaEditSospensione('${id}')">Salva</button>
+      <button class="btn btn-primary" onclick="salvaEditSospensione('${id}',${isProroga})">Salva</button>
     </div>`);
 }
 
-async function salvaEditSospensione(id){
-  const {error} = await sb.from('sospensioni').update({
-    data: document.getElementById('es2_data').value,
-    motivo: document.getElementById('es2_motivo').value.trim()
-  }).eq('id',id);
+// Ricalcola in tempo reale i giorni accertati quando si modificano le date
+function ricalcolaGiorniEditSosp(isProroga){
+  if(isProroga) return;
+  const dSosp = document.getElementById('es2_data')?.value;
+  const dRip  = document.getElementById('es2_ripresa')?.value;
+  const hint  = document.getElementById('es2_gg_hint');
+  if(!hint) return;
+  if(!dSosp||!dRip){ hint.textContent = '— (sospensione aperta)'; return; }
+  const rapporto = parseFloat(document.getElementById('es2_rapporto')?.value)||1;
+  const ggCal = Math.ceil((new Date(dRip+'T00:00:00') - new Date(dSosp+'T00:00:00'))/(1000*60*60*24));
+  if(ggCal<=0){ hint.textContent = 'data ripresa non valida'; return; }
+  const ggEff = Math.round(ggCal*rapporto);
+  hint.textContent = rapporto<1 ? `${ggEff} gg (${ggCal} gg cal. × ${(rapporto*100).toFixed(2)}%)` : `${ggEff} gg`;
+}
+
+async function salvaEditSospensione(id, isProroga){
+  const dSosp = document.getElementById('es2_data').value;
+  if(!dSosp){ alert('La data è obbligatoria'); return; }
+
+  const upd = {
+    data: dSosp,
+    motivo: document.getElementById('es2_motivo').value.trim()||null
+  };
+
+  if(isProroga){
+    const gg = parseInt(document.getElementById('es2_giorni').value);
+    if(!gg||gg<1){ alert('Indica i giorni di proroga concessi'); return; }
+    upd.giorni_proroga = gg;
+    upd.data_richiesta_proroga = document.getElementById('es2_datarich').value||null;
+    upd.data_concessione_proroga = document.getElementById('es2_dataconc').value||null;
+  } else {
+    // Riallinea i giorni accertati alle date: altrimenti giorni_sospensione
+    // resterebbe quello vecchio e il totale risulterebbe errato
+    const dRip = document.getElementById('es2_ripresa').value||null;
+    upd.data_ripresa = dRip;
+    if(dRip){
+      const rapporto = parseFloat(document.getElementById('es2_rapporto').value)||1;
+      const ggCal = Math.ceil((new Date(dRip+'T00:00:00') - new Date(dSosp+'T00:00:00'))/(1000*60*60*24));
+      if(ggCal<=0){ alert('La data di ripresa deve essere successiva alla data di sospensione'); return; }
+      upd.giorni_calendario = ggCal;
+      upd.giorni_sospensione = Math.round(ggCal*rapporto);
+    } else {
+      // Sospensione riaperta: nessun giorno accertato finché non c'è la ripresa
+      upd.giorni_calendario = null;
+      upd.giorni_sospensione = null;
+    }
+  }
+
+  const {error} = await sb.from('sospensioni').update(upd).eq('id',id);
   if(error){ alert(error.message); return; }
+
+  const nuovaFineCalc = await ricalcolaFineLavori(currentCantiere);
+  if(nuovaFineCalc){
+    await sb.from('sospensioni').update({nuova_fine_lavori: nuovaFineCalc}).eq('id',id);
+  }
+  await loadMyCantieri();
   closeModal(); showView('sospensioni');
 }
 
