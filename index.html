@@ -291,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.08c';
+const APP_VERSIONE = '2026.09.08d';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -6478,7 +6478,7 @@ const VERBALE_FILE_CODE = {
 };
 const PRELIEVO_FILE_CODE = {
   acciaio_carpenteria:'ACC', barre_ca:'AC-CA', reti_tralicci:'RT-CA',
-  calcestruzzo:'CA', bulloni:'BUL', malta:'MAL', muratura:'MRT',
+  calcestruzzo:'CA', bulloni:'BUL', saldature:'SALD', malta:'MAL', muratura:'MRT',
   frp:'FRP', frcm:'FRCM', crm:'CRM', generico:'GEN-STR'
 };
 // Testo contrattuale compatto per la riga CONTRATTO della tabella superiore.
@@ -7914,6 +7914,172 @@ function bodyOdsRimandoVariante(c, o, dx){
 }
 
 
+// ============================================================
+// CONTROLLI SULLE SALDATURE — UNI EN 1090-2:2018
+// ------------------------------------------------------------
+// Categorie di giunto della Tabella 24 (§ 12.4.2.2) con l'estensione
+// dei controlli non distruttivi supplementari per classe di esecuzione,
+// e metodi NDT applicabili secondo UNI EN ISO 17635.
+// ============================================================
+const SALD_CATEGORIE = [
+  {v:'testa_traz_alta', giunto:'testa',
+   l:'Giunti di testa e a parziale penetrazione, trasversali, in trazione — grado di utilizzo U ≥ 0,5',
+   breve:'Testa/parz. pen. trasversale in trazione, U ≥ 0,5',
+   exc:{EXC1:'0%', EXC2:'10%', EXC3:'20%', EXC4:'100%'}, natura:'volumetrico'},
+  {v:'testa_traz_bassa', giunto:'testa',
+   l:'Giunti di testa e a parziale penetrazione, trasversali, in trazione — grado di utilizzo U < 0,5',
+   breve:'Testa/parz. pen. trasversale in trazione, U < 0,5',
+   exc:{EXC1:'0%', EXC2:'0%', EXC3:'10%', EXC4:'50%'}, natura:'volumetrico'},
+  {v:'testa_compr', giunto:'testa',
+   l:'Giunti di testa e a parziale penetrazione, trasversali, in compressione',
+   breve:'Testa/parz. pen. trasversale in compressione',
+   exc:{EXC1:'0%', EXC2:'0%', EXC3:'10%', EXC4:'20%'}, natura:'volumetrico'},
+  {v:'angolo_grande', giunto:'angolo',
+   l:'Giunti d’angolo trasversali in trazione o taglio — altezza di gola a > 12 mm oppure spessore t > 20 mm',
+   breve:'Angolo trasversale, a > 12 mm o t > 20 mm',
+   exc:{EXC1:'0%', EXC2:'5%', EXC3:'10%', EXC4:'20%'}, natura:'superficiale'},
+  {v:'angolo_piccolo', giunto:'angolo',
+   l:'Giunti d’angolo trasversali in trazione o taglio — altezza di gola a ≤ 12 mm e spessore t ≤ 20 mm',
+   breve:'Angolo trasversale, a ≤ 12 mm e t ≤ 20 mm',
+   exc:{EXC1:'0%', EXC2:'0%', EXC3:'5%', EXC4:'10%'}, natura:'superficiale'},
+  {v:'longitudinale', giunto:'long',
+   l:'Giunti longitudinali e saldature degli irrigidimenti',
+   breve:'Longitudinali e irrigidimenti',
+   exc:{EXC1:'0%', EXC2:'0%', EXC3:'5%', EXC4:'10%'}, natura:'superficiale'}
+];
+
+const SALD_NDT = [
+  {v:'VT', l:'VT — Esame visivo', natura:'superficiale',
+   norma:'UNI EN ISO 17637', crit:'UNI EN ISO 5817',
+   note:'Obbligatorio sul 100% delle saldature e preliminare a ogni altro controllo.'},
+  {v:'MT', l:'MT — Magnetoscopico a particelle magnetiche', natura:'superficiale',
+   norma:'UNI EN ISO 17638', crit:'UNI EN ISO 23278',
+   note:'Difetti superficiali e sub-superficiali su acciai ferromagnetici. È il metodo di riferimento per i giunti d’angolo.'},
+  {v:'PT', l:'PT — Liquidi penetranti', natura:'superficiale',
+   norma:'UNI EN ISO 3452-1', crit:'UNI EN ISO 23277',
+   note:'Solo difetti affioranti. Alternativa a MT e unico metodo superficiale utilizzabile su acciai non ferromagnetici (inox austenitici).'},
+  {v:'UT', l:'UT — Ultrasuoni', natura:'volumetrico',
+   norma:'UNI EN ISO 17640', crit:'UNI EN ISO 11666',
+   note:'Difetti interni nei giunti di testa a piena penetrazione con spessore ≥ 8 mm.'},
+  {v:'RT', l:'RT — Radiografico', natura:'volumetrico',
+   norma:'UNI EN ISO 17636-1', crit:'UNI EN ISO 10675-1',
+   note:'Difetti interni; da preferire a UT sui piccoli spessori (< 8 mm), meno efficace sulle cricche piane.'}
+];
+
+// Livelli di qualita' UNI EN ISO 5817 associati alla classe di esecuzione
+const SALD_LIVELLI = {EXC1:'D', EXC2:'C', EXC3:'B', EXC4:'B+ (B con requisiti addizionali)'};
+
+function saldCatById(v){ return SALD_CATEGORIE.find(c=>c.v===v); }
+
+// Schemi dei giunti: SVG inline, cosi' compaiono anche nel documento stampato
+// senza dipendere da file esterni.
+function saldGiuntoSvg(kind, w){
+  w = w || 96;
+  const P='#94A3B8', PD='#64748B', S='#C2410C', T='#1F3864';
+  const wrap = inner => '<svg viewBox="0 0 96 58" width="'+w+'" height="'+Math.round(w*58/96)+'" role="img">'+inner+'</svg>';
+  if(kind==='testa'){
+    // due piatti testa a testa con cianfrino a V riempito
+    return wrap(
+      '<rect x="4" y="24" width="36" height="12" fill="'+P+'" stroke="'+PD+'"/>'+
+      '<rect x="56" y="24" width="36" height="12" fill="'+P+'" stroke="'+PD+'"/>'+
+      '<path d="M40 36 L56 36 L52 24 L44 24 Z" fill="'+S+'"/>'+
+      '<path d="M42 24 Q48 19 54 24 Z" fill="'+S+'"/>'+
+      '<text x="48" y="52" font-size="9" fill="'+T+'" text-anchor="middle" font-family="sans-serif">testa</text>');
+  }
+  if(kind==='angolo'){
+    // giunto a T con cordoni d'angolo su entrambi i lati
+    return wrap(
+      '<rect x="8" y="34" width="80" height="12" fill="'+P+'" stroke="'+PD+'"/>'+
+      '<rect x="42" y="6" width="12" height="28" fill="'+P+'" stroke="'+PD+'"/>'+
+      '<path d="M42 34 L42 22 L30 34 Z" fill="'+S+'"/>'+
+      '<path d="M54 34 L54 22 L66 34 Z" fill="'+S+'"/>'+
+      '<text x="48" y="55" font-size="9" fill="'+T+'" text-anchor="middle" font-family="sans-serif">angolo</text>');
+  }
+  if(kind==='long'){
+    // due piatti affiancati con cordone continuo longitudinale
+    return wrap(
+      '<rect x="6" y="12" width="84" height="14" fill="'+P+'" stroke="'+PD+'"/>'+
+      '<rect x="6" y="30" width="84" height="14" fill="'+P+'" stroke="'+PD+'"/>'+
+      '<rect x="6" y="26" width="84" height="4" fill="'+S+'"/>'+
+      '<text x="48" y="55" font-size="9" fill="'+T+'" text-anchor="middle" font-family="sans-serif">longitudinale</text>');
+  }
+  return '';
+}
+
+// Pannello di riferimento con la Tabella 24 e i metodi NDT.
+// `compatto` = versione per il documento stampato.
+function saldTabella24Html(compatto){
+  const bordo = 'border:1px solid #999;padding:3px 5px';
+  let h = '<table style="width:100%;border-collapse:collapse;font-size:'+(compatto?'9.5px':'11px')+'">'
+    + '<thead><tr>'
+    + '<th style="'+bordo+';text-align:left">Schema</th>'
+    + '<th style="'+bordo+';text-align:left">Categoria di giunto (Tab. 24)</th>'
+    + '<th style="'+bordo+'">EXC1</th><th style="'+bordo+'">EXC2</th>'
+    + '<th style="'+bordo+'">EXC3</th><th style="'+bordo+'">EXC4</th>'
+    + '<th style="'+bordo+';text-align:left">Controllo</th>'
+    + '</tr></thead><tbody>';
+  SALD_CATEGORIE.forEach(cat=>{
+    h += '<tr>'
+      + '<td style="'+bordo+';text-align:center">'+saldGiuntoSvg(cat.giunto, compatto?54:70)+'</td>'
+      + '<td style="'+bordo+'">'+cat.l+'</td>'
+      + ['EXC1','EXC2','EXC3','EXC4'].map(e=>'<td style="'+bordo+';text-align:center'
+          + (cat.exc[e]==='0%'?';color:#94A3B8':';font-weight:700')+'">'+cat.exc[e]+'</td>').join('')
+      + '<td style="'+bordo+'">'+(cat.natura==='volumetrico'?'volumetrico (UT / RT)':'superficiale (MT / PT)')+'</td>'
+      + '</tr>';
+  });
+  h += '</tbody></table>';
+  h += '<div style="font-size:'+(compatto?'9px':'10.5px')+';color:#6C757D;margin-top:5px">'
+    + 'Percentuali di controlli non distruttivi <strong>supplementari</strong> rispetto all’esame visivo, '
+    + 'che resta comunque obbligatorio sul 100% delle saldature. Il grado di utilizzo U è il rapporto '
+    + 'fra la tensione di progetto e la resistenza di progetto del giunto.</div>';
+  return h;
+}
+
+function saldMetodiHtml(compatto){
+  const bordo = 'border:1px solid #999;padding:3px 5px';
+  let h = '<table style="width:100%;border-collapse:collapse;font-size:'+(compatto?'9.5px':'11px')+'">'
+    + '<thead><tr>'
+    + '<th style="'+bordo+';text-align:left">Metodo</th>'
+    + '<th style="'+bordo+';text-align:left">Natura</th>'
+    + '<th style="'+bordo+';text-align:left">Norma di esecuzione</th>'
+    + '<th style="'+bordo+';text-align:left">Criteri di accettazione</th>'
+    + '<th style="'+bordo+';text-align:left">Campo di impiego</th>'
+    + '</tr></thead><tbody>';
+  SALD_NDT.forEach(m=>{
+    h += '<tr>'
+      + '<td style="'+bordo+'"><strong>'+esc(m.l)+'</strong></td>'
+      + '<td style="'+bordo+'">'+m.natura+'</td>'
+      + '<td style="'+bordo+'">'+m.norma+'</td>'
+      + '<td style="'+bordo+'">'+m.crit+'</td>'
+      + '<td style="'+bordo+'">'+m.note+'</td>'
+      + '</tr>';
+  });
+  h += '</tbody></table>';
+  return h;
+}
+
+// Ricalcola estensione minima e metodi suggeriti quando cambiano categoria o EXC
+function saldAggiornaRiga(el){
+  const riga = el.closest('.prelievo-riga');
+  if(!riga) return;
+  const val = k => riga.querySelector('.prelievo-campo[data-key="'+k+'"]')?.value || '';
+  const cat = saldCatById(val('categoria'));
+  const exc = val('exc');
+  const est = riga.querySelector('.prelievo-campo[data-key="estensione"]');
+  if(est && cat && exc && !est.dataset.tocco) est.value = cat.exc[exc] || '';
+  const box = riga.querySelector('.sald-sugg');
+  if(box){
+    if(!cat){ box.innerHTML = ''; return; }
+    const metodi = SALD_NDT.filter(m=>m.natura===cat.natura || m.v==='VT');
+    box.innerHTML = '<div style="background:#EEF2F8;border-left:3px solid var(--primary);padding:6px 8px;border-radius:3px;font-size:11px;margin-top:4px">'
+      + '<strong>Controllo ' + cat.natura + '</strong> &mdash; metodi applicabili: '
+      + metodi.map(m=>'<strong>'+m.v+'</strong>').join(', ') + '.'
+      + (exc ? ' Estensione minima per ' + exc + ': <strong>' + (cat.exc[exc]||'—') + '</strong>'
+             + ' &mdash; livello di qualit&agrave; UNI EN ISO 5817: <strong>' + (SALD_LIVELLI[exc]||'—') + '</strong>.' : '')
+      + '</div>';
+  }
+}
+
 const PRELIEVO_TIPI = {
   bulloni: {
     label: 'Prelievo di bulloni',
@@ -7922,13 +8088,59 @@ const PRELIEVO_TIPI = {
     icon: '🔩',
     cols: [
       {key:'sigla', label:'Sigla campione'},
+      {key:'diametro', label:'Diametro', type:'datalist',
+       opts:['M8','M10','M12','M14','M16','M18','M20','M22','M24','M27','M30','M33','M36','M39','M42'],
+       placeholder:'es. M16', hint:'Filettatura metrica ISO; ammessi anche valori non in elenco'},
+      {key:'classe', label:'Tipologia e classe di resistenza', type:'datalist',
+       opts:['4.6','5.6','6.8','8.8','10.9','12.9','HR 8.8','HR 10.9','HV 8.8','HV 10.9'],
+       placeholder:'es. 10.9'},
+      {key:'lotto', label:'Lotto di produzione', placeholder:'N. lotto / colata',
+       hint:'Riportato su imballo, DDT o certificato 3.1'},
       {key:'produttore', label:'Produttore'},
-      {key:'classe', label:'Tipologia e classe di resistenza'},
-      {key:'norma', label:'Normativa di riferimento'},
+      {key:'norma', label:'Normativa di riferimento', type:'datalist',
+       opts:['UNI EN 14399-1 (precaricati HR/HV)','UNI EN 15048-1 (non precaricati SB)','UNI EN ISO 898-1','UNI EN ISO 898-2'],
+       placeholder:'es. UNI EN 14399-1'},
       {key:'marchio_ce', label:'N. Marchio CE'},
-      {key:'ddt', label:'D.D.T. o Fattura'}
+      {key:'ddt', label:'D.D.T. o Fattura'},
+      {key:'dettaglio', label:'Dettaglio costruttivo di riferimento / strutture interessate dal prelievo', span2:true,
+       placeholder:'es. Nodo trave-pilastro P3, tav. S-12 part. 4 — controventi di falda asse B',
+       hint:'Elaborato o particolare di progetto e parti d\'opera da cui provengono i bulloni prelevati'}
     ],
     firmatariRuoli: ['Per l\'impresa esecutrice', 'Per il fornitore dell\'acciaio', 'Direzione dei Lavori']
+  },
+  saldature: {
+    label: 'Controlli su saldature',
+    titolo: 'VERBALE DI CONTROLLO SULLE SALDATURE',
+    normativa: 'UNI EN 1090-2:2018 § 12.4 — criteri di accettazione UNI EN ISO 5817',
+    icon: '🔥',
+    cols: [
+      {key:'sigla', label:'Sigla / identificativo giunto', placeholder:'es. S-01'},
+      {key:'categoria', label:'Categoria di giunto (Tabella 24)', type:'select', span2:true,
+       opts: SALD_CATEGORIE.map(c=>({v:c.v, l:c.breve})),
+       onchange:'saldAggiornaRiga(this)',
+       hint:'Determina natura ed estensione dei controlli non distruttivi supplementari'},
+      {key:'exc', label:'Classe di esecuzione', type:'select',
+       opts:[{v:'EXC1',l:'EXC1'},{v:'EXC2',l:'EXC2'},{v:'EXC3',l:'EXC3'},{v:'EXC4',l:'EXC4'}],
+       onchange:'saldAggiornaRiga(this)'},
+      {key:'estensione', label:'Estensione controlli (%)', placeholder:'auto da Tab. 24',
+       oninput:"this.dataset.tocco='1'",
+       hint:'Precompilato dalla Tabella 24; modificabile se il progetto prescrive di più'},
+      {key:'metodo', label:'Metodo NDT eseguito', type:'select',
+       opts: SALD_NDT.map(m=>({v:m.v, l:m.l}))},
+      {key:'spessore', label:'Spessore t / gola a (mm)', placeholder:'es. t 15 — a 8'},
+      {key:'posizione', label:'Posizione di saldatura', type:'datalist',
+       opts:['PA — piano','PB — piano frontale','PC — frontale','PD — frontale sopratesta','PE — sopratesta','PF — verticale ascendente','PG — verticale discendente'],
+       placeholder:'es. PF'},
+      {key:'saldatore', label:'Saldatore / patentino', placeholder:'Nome — cert. UNI EN ISO 9606-1'},
+      {key:'wps', label:'Procedura WPS / WPQR', placeholder:'es. WPS 12 — WPQR 05/2025'},
+      {key:'esito', label:'Esito', type:'select',
+       opts:[{v:'conforme',l:'Conforme'},{v:'non_conforme',l:'Non conforme'},{v:'in_attesa',l:'In attesa di esito'}]},
+      {key:'dettaglio', label:'Dettaglio costruttivo di riferimento / strutture interessate', span2:true,
+       placeholder:'es. Nodo trave-colonna asse C4, tav. S-08 part. 2 — calastrellature pilastro P7',
+       hint:'Elaborato o particolare di progetto e parti d\'opera oggetto del controllo'}
+    ],
+    suggBox: true,
+    firmatariRuoli: ['Il tecnico incaricato dei controlli', 'Per l\'Impresa esecutrice', 'Il Direttore dei Lavori']
   },
   barre_ca: {
     label: 'Prelievo barre di armatura (c.a.)',
@@ -8088,6 +8300,67 @@ const PRELIEVO_TIPI = {
   }
 };
 
+// Riferimenti normativi allegati al verbale saldature: si stampano solo le
+// categorie di giunto effettivamente controllate e i metodi effettivamente
+// impiegati, cosi' il documento resta leggibile e pertinente.
+function bodySaldatureRiferimenti(dp){
+  const campioni = dp.campioni || [];
+  const catUsate = SALD_CATEGORIE.filter(c=>campioni.some(r=>r.categoria===c.v));
+  const metUsati = SALD_NDT.filter(m=>campioni.some(r=>r.metodo===m.v));
+  const bordo = 'border:1px solid #999;padding:3px 5px';
+  let h = '';
+
+  if(catUsate.length){
+    h += '<h3>CATEGORIE DI GIUNTO ED ESTENSIONE DEI CONTROLLI</h3>';
+    h += '<p style="font-size:10.5px">Estensione dei controlli non distruttivi supplementari secondo la Tabella 24 della '
+      + 'UNI EN 1090-2:2018 (§ 12.4.2.2). L’esame visivo resta obbligatorio sul 100% delle saldature.</p>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:9.5px"><thead><tr>'
+      + '<th style="'+bordo+';text-align:left">Schema</th>'
+      + '<th style="'+bordo+';text-align:left">Categoria di giunto</th>'
+      + '<th style="'+bordo+'">EXC1</th><th style="'+bordo+'">EXC2</th>'
+      + '<th style="'+bordo+'">EXC3</th><th style="'+bordo+'">EXC4</th>'
+      + '<th style="'+bordo+';text-align:left">Controllo</th></tr></thead><tbody>';
+    catUsate.forEach(cat=>{
+      h += '<tr><td style="'+bordo+';text-align:center">'+saldGiuntoSvg(cat.giunto, 54)+'</td>'
+        + '<td style="'+bordo+'">'+cat.l+'</td>'
+        + ['EXC1','EXC2','EXC3','EXC4'].map(e=>'<td style="'+bordo+';text-align:center'
+            + (cat.exc[e]==='0%'?';color:#94A3B8':';font-weight:700')+'">'+cat.exc[e]+'</td>').join('')
+        + '<td style="'+bordo+'">'+(cat.natura==='volumetrico'?'volumetrico (UT / RT)':'superficiale (MT / PT)')+'</td></tr>';
+    });
+    h += '</tbody></table>';
+  }
+
+  if(metUsati.length){
+    h += '<h3>METODI DI CONTROLLO IMPIEGATI</h3>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:9.5px"><thead><tr>'
+      + '<th style="'+bordo+';text-align:left">Metodo</th>'
+      + '<th style="'+bordo+';text-align:left">Natura</th>'
+      + '<th style="'+bordo+';text-align:left">Norma di esecuzione</th>'
+      + '<th style="'+bordo+';text-align:left">Criteri di accettazione</th></tr></thead><tbody>';
+    metUsati.forEach(m=>{
+      h += '<tr><td style="'+bordo+'"><strong>'+esc(m.l)+'</strong></td>'
+        + '<td style="'+bordo+'">'+m.natura+'</td>'
+        + '<td style="'+bordo+'">'+m.norma+'</td>'
+        + '<td style="'+bordo+'">'+m.crit+'</td></tr>';
+    });
+    h += '</tbody></table>';
+  }
+
+  if(dp.exc_opera){
+    h += '<p>Per la classe di esecuzione <strong>'+esc(dp.exc_opera)+'</strong> i criteri di accettazione delle imperfezioni '
+      + 'sono quelli del livello di qualit&agrave; <strong>'+esc(SALD_LIVELLI[dp.exc_opera]||'')+'</strong> della UNI EN ISO 5817.</p>';
+  }
+
+  const nonConf = campioni.filter(r=>r.esito==='non_conforme');
+  if(nonConf.length){
+    h += '<p>Sono risultati <strong>non conformi</strong> i giunti: '
+      + nonConf.map(r=>esc(r.sigla||'—')).join(', ')
+      + '. Ai sensi della UNI EN 1090-2 § 12.4.4 le saldature non conformi devono essere riparate secondo procedura qualificata '
+      + 'e sottoposte a nuovo controllo con la stessa estensione.</p>';
+  }
+  return h;
+}
+
 function bodyPrelievoStrutture(c, v, dp){
   const tipo = v.tipo_prelievo || 'generico';
   const cfg = PRELIEVO_TIPI[tipo] || PRELIEVO_TIPI.generico;
@@ -8103,14 +8376,30 @@ function bodyPrelievoStrutture(c, v, dp){
   // intro narrativo
   html += prelievoIntro(dp, redattore);
   const nCamp = dp.n_prelievi || (dp.campioni ? dp.campioni.length : '');
-  html += ' ha eseguito n° <strong>'+esc(nCamp||'____')+'</strong> prelievi di <strong>'+esc(cfg.label.replace(/^Prelievo (di |campioni di |provini di |barre di )?/i,''))
-    + '</strong>, identificati con targhette, come da tabella seguente.</p>';
+  if(tipo==='saldature'){
+    html += ' ha eseguito i controlli su n° <strong>'+esc(nCamp||'____')+'</strong> giunti saldati'
+      + (dp.exc_opera?', per opere in classe di esecuzione <strong>'+esc(dp.exc_opera)+'</strong>':'')
+      + ', ai sensi della UNI EN 1090-2:2018 § 12.4, come da tabella seguente.</p>';
+  } else {
+    html += ' ha eseguito n° <strong>'+esc(nCamp||'____')+'</strong> prelievi di <strong>'+esc(cfg.label.replace(/^Prelievo (di |campioni di |provini di |barre di )?/i,''))
+      + '</strong>, identificati con targhette, come da tabella seguente.</p>';
+  }
 
   html += prelievoPresentiBlocco(dp);
 
+  if(tipo==='saldature'){
+    if(dp.ente_ndt){
+      html += '<p>I controlli non distruttivi sono stati eseguiti da <strong>'+esc(dp.ente_ndt)+'</strong>'
+        + (dp.rapporto_ndt?', '+esc(dp.rapporto_ndt):'')+'.</p>';
+    }
+    html += '<p><strong>Giunti controllati:</strong></p>';
+    html += prelievoTabellaCampioni(cfg.cols, dp.campioni);
+    html += bodySaldatureRiferimenti(dp);
+  } else {
   // tabella campioni specifica
   html += '<p><strong>Campioni prelevati:</strong></p>';
   html += prelievoTabellaCampioni(cfg.cols, dp.campioni);
+  }
 
   // sezioni aggiuntive specifiche per alcuni tipi
   if(tipo==='malta' && dp.composizione){
@@ -8134,13 +8423,19 @@ function bodyPrelievoStrutture(c, v, dp){
 
   // clausola di chiusura standard NTC (per acciai/cls/materiali strutturali)
   const clausolaResp = ['bulloni','barre_ca','acciaio_carpenteria','reti_tralicci','calcestruzzo','generico'].includes(tipo);
-  if(clausolaResp){
+  if(tipo==='saldature'){
+    html += '<p style="font-size:11px">I controlli sono stati eseguiti secondo la UNI EN 1090-2:2018 § 12.4, con criteri di accettazione '
+      + 'della UNI EN ISO 5817. L\'accettazione delle strutture saldate resta subordinata al favorevole esito dei controlli non distruttivi '
+      + 'nell\'estensione prescritta dalla Tabella 24 per la classe di esecuzione di progetto: le saldature non conformi devono essere '
+      + 'riparate secondo procedura qualificata, a totale carico dell\'Impresa esecutrice, e sottoposte a nuovo controllo.</p>';
+  } else if(clausolaResp){
     html += '<p style="font-size:11px">L\'impiego dei materiali per la realizzazione dei lavori in oggetto resta subordinato al favorevole esito delle prove di laboratorio e dei controlli di accettazione previsti dalle normative vigenti. L\'eventuale messa in opera prima dell\'acquisizione dei risultati è ad esclusivo rischio e sotto la piena responsabilità dell\'Impresa esecutrice, obbligata alla demolizione e rifacimento — a suo totale carico — delle strutture interessate da materiali che dovessero risultare non conformi alle vigenti NTC.</p>';
   } else {
     html += '<p style="font-size:11px">Il prelievo ed il confezionamento dei campioni sono stati eseguiti secondo quanto previsto dalle '+esc(cfg.normativa)+'.</p>';
   }
 
-  html += '<p>Il prelievo è stato eseguito in data '+fmt(dp.data)+(dp.ora?' alle ore '+esc(dp.ora):'')+'.</p>';
+  html += '<p>'+(tipo==='saldature'?'I controlli sono stati eseguiti':'Il prelievo è stato eseguito')
+    + ' in data '+fmt(dp.data)+(dp.ora?' alle ore '+esc(dp.ora):'')+'.</p>';
   html += '<p>Il presente verbale viene redatto in unico originale per la D.LL. e consegnato in copia alle parti che ne fanno richiesta.</p>';
 
   return html;
@@ -8176,7 +8471,7 @@ async function renderPrelievi(){
 
   if(!prelievi||!prelievi.length){
     return html + `<div class="empty"><div class="empty-icon">🧪</div><h3>Nessun verbale di prelievo</h3>
-      <p>Crea verbali di prelievo per bulloni, barre d'armatura, calcestruzzo, malta, muratura, compositi e altri materiali.</p></div>`;
+      <p>Crea verbali di prelievo per bulloni, barre d'armatura, calcestruzzo, malta, muratura, compositi e altri materiali, e verbali di controllo sulle saldature.</p></div>`;
   }
 
   html += '<div class="card" style="padding:0;overflow:hidden"><table><thead><tr>'
@@ -8224,11 +8519,28 @@ function prelievoCampioniEditorHtml(prefix, tipo, campioni){
   const cfg = PRELIEVO_TIPI[tipo] || PRELIEVO_TIPI.generico;
   campioni = (campioni && campioni.length) ? campioni : [{}];
   let html = `<div id="${prefix}_campioni_wrap" data-tipo="${tipo}">`;
-  html += `<div style="font-size:12px;font-weight:700;color:var(--primary);margin:6px 0">Campioni prelevati</div>`;
+  if(tipo==='saldature'){
+    html += `<details style="border:1px solid var(--border);border-radius:6px;background:#F8FAFC;margin:6px 0 10px">
+      <summary style="padding:8px 10px;font-size:11px;font-weight:700;color:var(--primary);cursor:pointer">
+        📐 Tabella 24 UNI EN 1090-2 — categorie di giunto ed estensione dei controlli
+      </summary>
+      <div style="padding:4px 10px 12px;overflow-x:auto">${saldTabella24Html(false)}
+        <div style="font-size:11px;font-weight:700;color:var(--primary);margin:14px 0 6px">Metodi di controllo non distruttivo</div>
+        ${saldMetodiHtml(false)}
+      </div>
+    </details>`;
+  }
+  html += `<div style="font-size:12px;font-weight:700;color:var(--primary);margin:6px 0">${tipo==='saldature'?'Giunti controllati':'Campioni prelevati'}</div>`;
   html += `<div id="${prefix}_campioni_rows">`;
   campioni.forEach((row,idx)=>{ html += prelievoCampioneRigaHtml(prefix, cfg, row, idx); });
   html += `</div>`;
-  html += `<button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="prelievoAddRiga('${prefix}')">+ Aggiungi campione</button>`;
+  html += `<button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="prelievoAddRiga('${prefix}')">+ ${tipo==='saldature'?'Aggiungi giunto':'Aggiungi campione'}</button>`;
+  // Datalist condivise da tutte le righe: emesse una volta sola, cosi'
+  // duplicare una riga non genera id ripetuti nel DOM
+  cfg.cols.filter(c=>c.type==='datalist').forEach(col=>{
+    html += `<datalist id="${prefix}_dl_${col.key}">`
+      + (col.opts||[]).map(o=>`<option value="${esc(o)}">`).join('')+`</datalist>`;
+  });
   html += `</div>`;
   return html;
 }
@@ -8245,12 +8557,38 @@ function prelievoCampioneRigaHtml(prefix, cfg, row, idx){
     </div>
     <div class="form-grid">`;
   cfg.cols.forEach(col=>{
-    html += `<div class="form-group">
+    const val = row[col.key]||'';
+    let campo;
+    if(col.type==='select'){
+      // opts: stringhe oppure {v,l}
+      campo = `<select class="form-control prelievo-campo" data-key="${col.key}"`
+        + (col.onchange?` onchange="${col.onchange}"`:'')+`><option value=""></option>`
+        + (col.opts||[]).map(o=>{
+            const v = (typeof o==='string')?o:o.v, l = (typeof o==='string')?o:o.l;
+            return `<option value="${esc(v)}"${val===v?' selected':''}>${esc(l)}</option>`;
+          }).join('')
+        + `</select>`;
+    } else if(col.type==='datalist'){
+      // input libero con suggerimenti: la datalist e' condivisa, emessa una
+      // sola volta a fondo editor, cosi' i cloni non duplicano gli id
+      campo = `<input class="form-control prelievo-campo" data-key="${col.key}" list="${prefix}_dl_${col.key}" value="${esc(val)}"`
+        + (col.placeholder?` placeholder="${esc(col.placeholder)}"`:'')
+        + (col.oninput?` oninput="${col.oninput}"`:'')+`>`;
+    } else {
+      campo = `<input class="form-control prelievo-campo" data-key="${col.key}" value="${esc(val)}"`
+        + (col.placeholder?` placeholder="${esc(col.placeholder)}"`:'')
+        + (col.oninput?` oninput="${col.oninput}"`:'')+`>`;
+    }
+    html += `<div class="form-group${col.span2?' span-2':''}">
       <label class="form-label" style="font-size:11px">${col.label}</label>
-      <input class="form-control prelievo-campo" data-key="${col.key}" value="${esc(row[col.key]||'')}">
+      ${campo}
+      ${col.hint?`<div class="form-hint" style="font-size:10px">${col.hint}</div>`:''}
     </div>`;
   });
-  html += `</div></div>`;
+  html += `</div>`;
+  // Riquadro con metodi applicabili ed estensione minima, per i tipi che lo prevedono
+  if(cfg.suggBox) html += `<div class="sald-sugg"></div>`;
+  html += `</div>`;
   return html;
 }
 
@@ -8262,7 +8600,37 @@ function prelievoAddRiga(prefix){
   const idx = rows.querySelectorAll('.prelievo-riga').length;
   const div = document.createElement('div');
   div.innerHTML = prelievoCampioneRigaHtml(prefix, cfg, {}, idx);
-  rows.appendChild(div.firstChild);
+  const nuova = div.firstChild;
+  rows.appendChild(nuova);
+  // La nuova riga eredita la classe di esecuzione dell'opera, se impostata
+  if(tipo==='saldature'){
+    const excOpera = document.getElementById(prefix+'_exc_opera')?.value;
+    const campoExc = nuova.querySelector?.('.prelievo-campo[data-key="exc"]');
+    if(excOpera && campoExc && !campoExc.value){ campoExc.value = excOpera; }
+    const cat = nuova.querySelector?.('.prelievo-campo[data-key="categoria"]');
+    if(cat) saldAggiornaRiga(cat);
+  }
+}
+
+// Propaga la classe di esecuzione dell'opera ai giunti che non ne hanno una propria
+function saldApplicaExcOpera(prefix){
+  const exc = document.getElementById(prefix+'_exc_opera')?.value;
+  if(!exc) return;
+  document.querySelectorAll('#'+prefix+'_campioni_rows .prelievo-riga').forEach(riga=>{
+    const campo = riga.querySelector('.prelievo-campo[data-key="exc"]');
+    if(campo && !campo.value){
+      campo.value = exc;
+      saldAggiornaRiga(campo);
+    }
+  });
+}
+
+// Popola i riquadri suggerimento sulle righe gia' presenti (apertura del form)
+function saldInitRighe(prefix){
+  document.querySelectorAll('#'+prefix+'_campioni_rows .prelievo-riga').forEach(riga=>{
+    const cat = riga.querySelector('.prelievo-campo[data-key="categoria"]');
+    if(cat) saldAggiornaRiga(cat);
+  });
 }
 
 function prelievoRemoveRiga(btn){
@@ -8301,12 +8669,31 @@ function prelievoOnTipoChange(prefix){
   // aggiorna eventuali sezioni extra
   const extra = document.getElementById(prefix+'_extra_specifico');
   if(extra) extra.innerHTML = prelievoExtraFieldsHtml(prefix, tipo, {});
+  if(tipo==='saldature') saldInitRighe(prefix);
 }
 
 // sezioni extra specifiche (malta: composizione/rapporto acqua; muratura: rapporto; tutti: custodia/laboratorio/prova)
 function prelievoExtraFieldsHtml(prefix, tipo, dp){
   dp = dp || {};
   let html = '';
+  if(tipo==='saldature'){
+    html += `<div class="form-group span-2">
+      <label class="form-label">Classe di esecuzione dell'opera (EXC)</label>
+      <select class="form-control" id="${prefix}_exc_opera" onchange="saldApplicaExcOpera('${prefix}')">
+        <option value=""></option>
+        ${['EXC1','EXC2','EXC3','EXC4'].map(e=>`<option value="${e}"${dp.exc_opera===e?' selected':''}>${e} — livello di qualità UNI EN ISO 5817: ${SALD_LIVELLI[e]}</option>`).join('')}
+      </select>
+      <div class="form-hint">Impostandola qui viene applicata a tutti i giunti che non ne hanno già una propria</div>
+    </div>
+    <div class="form-group span-2">
+      <label class="form-label">Ente / tecnico incaricato dei controlli</label>
+      <input class="form-control" id="${prefix}_ente_ndt" value="${esc(dp.ente_ndt||'')}" placeholder="Es. Per. Ind. Mario Rossi — cert. UNI EN ISO 9712 liv. II">
+    </div>
+    <div class="form-group span-2">
+      <label class="form-label">Estremi del rapporto di prova</label>
+      <input class="form-control" id="${prefix}_rapporto_ndt" value="${esc(dp.rapporto_ndt||'')}" placeholder="Es. rapporto n. 26-0991 del 27/08/2026">
+    </div>`;
+  }
   if(tipo==='malta'){
     html += `<div class="form-group span-2"><label class="form-label">Composizione impasto (confezionamento cantiere/laboratorio)</label>
       <textarea class="form-control" id="${prefix}_composizione" rows="2" placeholder="Es. cemento 20%, calce idraulica 10%, sabbia 70%...">${esc(dp.composizione||'')}</textarea></div>`;
@@ -8448,6 +8835,9 @@ function raccogliDatiPrelievo(prefix){
   // extra specifici
   const comp = document.getElementById(prefix+'_composizione'); if(comp) dp.composizione = comp.value.trim()||null;
   const racq = document.getElementById(prefix+'_rapporto_acqua'); if(racq) dp.rapporto_acqua = racq.value.trim()||null;
+  const exo = document.getElementById(prefix+'_exc_opera'); if(exo) dp.exc_opera = exo.value||null;
+  const ent = document.getElementById(prefix+'_ente_ndt'); if(ent) dp.ente_ndt = ent.value.trim()||null;
+  const rap = document.getElementById(prefix+'_rapporto_ndt'); if(rap) dp.rapporto_ndt = rap.value.trim()||null;
 
   return {tipo, dp, data: g('data'), numero: g('numero')||null, dl_nome: g('dl_nome')||null, qualifica_redattore: g('qualifica_redattore')||null};
 }
@@ -8465,6 +8855,7 @@ async function openModalNuovoPrelievo(){
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaPrelievo()">Salva verbale</button>
     </div>`);
+  if(seed.tipo_prelievo==='saldature') saldInitRighe('np');
 }
 
 async function salvaPrelievo(){
@@ -8515,6 +8906,7 @@ async function openModalEditPrelievo(id){
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaEditPrelievo('${id}')">Salva</button>
     </div>`);
+  if((p.tipo_prelievo||'')==='saldature') saldInitRighe('ep');
 }
 
 async function salvaEditPrelievo(id){
