@@ -270,6 +270,7 @@ textarea.form-control{resize:vertical;min-height:80px}
       <div class="nav-section">
         <div class="nav-label">Sistema</div>
         <div class="nav-item" onclick="showView('report')" data-view="report"><span class="nav-icon">📊</span> Report SA</div>
+        <div class="nav-item" onclick="showView('studio')" data-view="studio"><span class="nav-icon">🏛️</span> Il mio studio</div>
       </div>
     </nav>
     <main class="main" id="mainContent"></main>
@@ -290,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.08b';
+const APP_VERSIONE = '2026.09.08c';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -541,6 +542,9 @@ function selectCantiere(id, skipView){
   const nav = document.getElementById('navCantiere');
   nav.style.opacity = id?'1':'0.4';
   nav.style.pointerEvents = id?'auto':'none';
+  // Carica gli studi da mettere in carta intestata (non blocca la navigazione:
+  // servono solo quando si genera un documento, molto dopo)
+  caricaStudiIntestazione(id);
   if(id && !skipView) showView('cantieri');
 }
 
@@ -564,7 +568,7 @@ async function showView(view){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active', el.dataset.view===view));
   const main = document.getElementById('mainContent');
   main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  const views = {dashboard:renderDashboard,cantieri:renderCantieri,fasi:renderFasi,sospensioni:renderSospensioni,varianti:renderVarianti,giornale:renderGiornale,ods:renderODS,comunicazioni:renderComunicazioni,verbali:renderVerbali,prelievi:renderPrelievi,liste:renderListe,sal:renderSAL,ditte:renderDitte,team:renderTeam,report:renderReport};
+  const views = {dashboard:renderDashboard,cantieri:renderCantieri,fasi:renderFasi,sospensioni:renderSospensioni,varianti:renderVarianti,giornale:renderGiornale,ods:renderODS,comunicazioni:renderComunicazioni,verbali:renderVerbali,prelievi:renderPrelievi,liste:renderListe,sal:renderSAL,ditte:renderDitte,team:renderTeam,report:renderReport,studio:renderStudio};
   try {
     const out = await views[view]();
     if(myToken !== _viewToken) return; // nel frattempo e' partita una navigazione piu' recente: non sovrascrivere
@@ -589,6 +593,161 @@ function odsStatoBadge(s){const m={bozza:['badge-grey','Bozza'],emessa:['badge-b
 function commTipoBadge(t){const m={nota:['badge-blue','📋 Nota'],richiesta:['badge-yellow','❓ Richiesta'],diffida:['badge-red','⚠️ Diffida']};const[c,l]=m[t]||['badge-grey',t];return`<span class="badge ${c}">${l}</span>`;}
 function roleBadge(r){const m={dl:['badge-blue','DL'],rup:['badge-green','RUP / Committente'],dt_impresa:['badge-yellow','DT Impresa'],do:['badge-grey','DO'],committente:['badge-blue','Committente'],cse:['badge-red','CSE']};const[c,l]=m[r]||['badge-grey',r];return`<span class="badge ${c}">${l}</span>`;}
 function getCantiereObj(id){return myCantieri.find(x=>x.cantiere.id===(id||currentCantiere))?.cantiere;}
+
+// ============================================================
+// IL MIO STUDIO — logo e dati per la carta intestata
+// ============================================================
+async function renderStudio(){
+  const {data:p} = await sb.from('profiles').select('*').eq('id',currentUser.id).single();
+  const s = p || {};
+  const logo = s.studio_logo || '';
+
+  return `<div class="section-header">
+    <div>
+      <div class="page-title">Il mio studio</div>
+      <div class="page-subtitle">Logo e dati che compaiono nella carta intestata dei documenti</div>
+    </div>
+  </div>
+  <div class="alert alert-info" style="font-size:12px">
+    Questi dati sono <strong>tuoi</strong> e valgono per tutti i cantieri in cui sei DL o DO.
+    Quando la direzione lavori è affidata a più professionisti, in intestazione compaiono i loghi di tutti gli
+    studi del raggruppamento: ciascuno compila la propria scheda qui, e dal
+    <strong>Team cantiere</strong> si sceglie quali far comparire e in che ordine.
+  </div>
+
+  <div class="card" style="padding:16px;max-width:820px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px">Logo</div>
+    <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+      <div id="st_logo_prev" style="min-width:190px;height:80px;border:1px dashed var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;background:white;padding:6px">
+        ${logo
+          ? `<img src="${esc(logo)}" alt="Logo studio" style="max-height:68px;max-width:180px;object-fit:contain">`
+          : `<span style="font-size:11px;color:var(--muted)">Nessun logo</span>`}
+      </div>
+      <div style="flex:1;min-width:240px">
+        <input type="file" id="st_logo_file" accept="image/png,image/jpeg,image/webp" class="form-control" onchange="studioCaricaLogo(this)">
+        <div class="form-hint" style="margin-top:5px">
+          PNG, JPEG o WebP. L'immagine viene ridotta automaticamente a 320&times;120 px circa e salvata nel gestionale:
+          non serve caricarla ad alta risoluzione. Per i loghi con sfondo trasparente usa il PNG.
+        </div>
+        <input type="hidden" id="st_logo_data" value="${esc(logo)}">
+        ${logo?`<button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="studioRimuoviLogo()">🗑️ Rimuovi logo</button>`:''}
+      </div>
+    </div>
+
+    <div style="font-size:12px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em;margin:20px 0 10px">Dati dello studio</div>
+    <div class="form-grid">
+      <div class="form-group span-2">
+        <label class="form-label">Denominazione</label>
+        <input class="form-control" id="st_den" value="${esc(s.studio_denominazione||'')}" placeholder="Es. Studio Tecnico SCS S.r.l. tra Professionisti">
+        <div class="form-hint">Compare nel titolo dell'intestazione e nel piè di pagina</div>
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Sede legale</label>
+        <input class="form-control" id="st_legale" value="${esc(s.studio_sede_legale||'')}" placeholder="Es. Via Piaggia Castelnuovo 10 — 62019 Recanati (MC)">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Sede operativa</label>
+        <input class="form-control" id="st_operativa" value="${esc(s.studio_sede_operativa||'')}" placeholder="Es. Via San Francesco d'Assisi 44 — 61121 Pesaro (PU)">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Partita IVA</label>
+        <input class="form-control" id="st_piva" value="${esc(s.studio_piva||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-control" id="st_email" value="${esc(s.studio_email||'')}">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Sito web</label>
+        <input class="form-control" id="st_web" value="${esc(s.studio_web||'')}" placeholder="www.esempio.it">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="anteprimaIntestazione()">👁️ Anteprima intestazione</button>
+      <button class="btn btn-primary" onclick="salvaStudio()">Salva</button>
+    </div>
+  </div>`;
+}
+
+// Ridimensiona il logo lato client: evita di salvare in base64 immagini
+// da diversi MB che appesantirebbero ogni documento generato.
+function studioCaricaLogo(input){
+  const f = input.files && input.files[0];
+  if(!f) return;
+  if(f.size > 8*1024*1024){ alert('Immagine troppo grande (massimo 8 MB).'); input.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const MAXW = 320, MAXH = 120;
+      let {width:w, height:h} = img;
+      const scala = Math.min(MAXW/w, MAXH/h, 1);
+      w = Math.round(w*scala); h = Math.round(h*scala);
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      ctx.clearRect(0,0,w,h);
+      ctx.drawImage(img, 0, 0, w, h);
+      // PNG per non perdere la trasparenza dei loghi
+      const dataUri = cv.toDataURL('image/png');
+      document.getElementById('st_logo_data').value = dataUri;
+      const prev = document.getElementById('st_logo_prev');
+      if(prev) prev.innerHTML = '<img src="'+dataUri+'" alt="Logo studio" style="max-height:68px;max-width:180px;object-fit:contain">';
+    };
+    img.onerror = () => alert('File immagine non leggibile.');
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(f);
+}
+
+function studioRimuoviLogo(){
+  document.getElementById('st_logo_data').value = '';
+  const prev = document.getElementById('st_logo_prev');
+  if(prev) prev.innerHTML = '<span style="font-size:11px;color:var(--muted)">Nessun logo</span>';
+  const file = document.getElementById('st_logo_file');
+  if(file) file.value = '';
+}
+
+async function salvaStudio(){
+  const val = id => (document.getElementById(id)?.value||'').trim()||null;
+  const {error} = await sb.from('profiles').update({
+    studio_denominazione: val('st_den'),
+    studio_sede_legale: val('st_legale'),
+    studio_sede_operativa: val('st_operativa'),
+    studio_piva: val('st_piva'),
+    studio_email: val('st_email'),
+    studio_web: val('st_web'),
+    studio_logo: document.getElementById('st_logo_data')?.value || null
+  }).eq('id', currentUser.id);
+  if(error){
+    alert(error.message.includes('studio_')
+      ? 'Le colonne dello studio non esistono ancora sul database.\nEsegui la migrazione SQL indicata nel README su Supabase.'
+      : error.message);
+    return;
+  }
+  await caricaStudiIntestazione(currentCantiere);
+  alert('✅ Dati dello studio salvati.');
+  showView('studio');
+}
+
+// Anteprima della carta intestata come apparira' nei documenti
+async function anteprimaIntestazione(){
+  await caricaStudiIntestazione(currentCantiere);
+  const w = window.open('', '_blank');
+  if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup.'); return; }
+  scriviPopupHtml(w, '<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">'
+    + '<title>Anteprima intestazione</title><style>'+PDF_ENGINE_CSS+'</style></head><body>'
+    + '<div class="doc-wrap"><table class="doc-table">'
+    + '<thead><tr><td>'+letterheadHeaderHtml()+'</td></tr></thead>'
+    + '<tfoot><tr><td>'+letterheadFooterHtml()+'</td></tr></tfoot>'
+    + '<tbody><tr><td>'
+    + '<div style="padding:40px 0;text-align:center;color:#6C757D;font-size:12px">'
+    + (STUDI_INTESTAZIONE.length
+        ? '&mdash; corpo del documento &mdash;<br><br><span style="font-size:11px">Studi in intestazione: '
+          + STUDI_INTESTAZIONE.map(s=>esc(s.studio_denominazione||((s.nome||'')+' '+(s.cognome||'')).trim())).join(' &middot; ')+'</span>'
+        : '&mdash; corpo del documento &mdash;<br><br><span style="font-size:11px">Nessuno studio configurato: viene usata l\'intestazione predefinita</span>')
+    + '</div></td></tr></tbody></table></div></body></html>');
+}
 
 // ============================================================
 // VIEWS
@@ -2290,7 +2449,104 @@ async function renderTeam(){
   });
   html += `</tbody></table></div>
     <div class="alert alert-info mt-16">Per aggiungere un membro deve prima essersi registrato. Inserisci la sua email esatta e seleziona il ruolo.</div>`;
+  html += await pannelloStudiIntestazione(team);
   return html;
+}
+
+// Scelta e ordinamento degli studi che compaiono in carta intestata.
+// Serve quando la direzione lavori e' affidata a piu' professionisti (RTP).
+async function pannelloStudiIntestazione(team){
+  const idsDlDo = (team||[]).filter(t=>t.ruolo==='dl'||t.ruolo==='do').map(t=>t.utente_id);
+  if(!idsDlDo.length) return '';
+
+  const {data:profs} = await sb.from('profiles')
+    .select('id,nome,cognome,studio_denominazione,studio_logo')
+    .in('id', idsDlDo);
+  const conStudio = (profs||[]).filter(p=>p.studio_denominazione || p.studio_logo);
+  const senzaStudio = (profs||[]).filter(p=>!p.studio_denominazione && !p.studio_logo);
+
+  const nomeDi = p => p.studio_denominazione || ((p.nome||'')+' '+(p.cognome||'')).trim() || '—';
+
+  if(!conStudio.length){
+    return `<div class="card mt-16" style="padding:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">🏛️ Studi in carta intestata</div>
+      <div style="font-size:12px;color:var(--muted)">
+        Nessun DL o DO di questo cantiere ha ancora compilato la propria scheda studio, quindi i documenti usano
+        l'intestazione predefinita. Ciascun professionista la compila da <strong>Il mio studio</strong> nel menu laterale.
+      </div>
+    </div>`;
+  }
+
+  // Ordine salvato sul cantiere; gli studi non ancora elencati vanno in coda
+  const sel = getCantiereObj()?.studi_intestazione;
+  const ordinati = Array.isArray(sel) && sel.length
+    ? sel.map(id=>conStudio.find(p=>p.id===id)).filter(Boolean)
+        .concat(conStudio.filter(p=>!sel.includes(p.id)))
+    : conStudio.slice().sort((a,b)=>nomeDi(a).localeCompare(nomeDi(b)));
+  const attivi = Array.isArray(sel) && sel.length ? sel : ordinati.map(p=>p.id);
+
+  const righe = ordinati.map((p,idx)=>`
+    <div class="studio-riga" data-id="${p.id}" style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:5px;margin-bottom:6px;background:white">
+      <input type="checkbox" class="si-chk"${attivi.includes(p.id)?' checked':''}>
+      <div style="width:92px;height:36px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        ${p.studio_logo
+          ? `<img src="${esc(p.studio_logo)}" alt="" style="max-height:34px;max-width:88px;object-fit:contain">`
+          : `<span style="font-size:10px;color:var(--muted)">no logo</span>`}
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600">${esc(nomeDi(p))}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(((p.nome||'')+' '+(p.cognome||'')).trim())}${idx===0?' &mdash; <strong>mandataria</strong>':''}</div>
+      </div>
+      ${currentRole==='dl'?`<div class="btn-group">
+        <button class="btn btn-secondary btn-sm" title="Sposta su" onclick="spostaStudio(this,-1)">▲</button>
+        <button class="btn btn-secondary btn-sm" title="Sposta gi&ugrave;" onclick="spostaStudio(this,1)">▼</button>
+      </div>`:''}
+    </div>`).join('');
+
+  return `<div class="card mt-16" style="padding:16px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">🏛️ Studi in carta intestata</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">
+      I loghi degli studi spuntati compaiono in testata di tutti i documenti di questo cantiere, nell'ordine indicato.
+      Il primo è considerato mandataria del raggruppamento. Il piè di pagina riporta i dati di tutti.
+    </div>
+    <div id="studiIntestazioneCont">${righe}</div>
+    ${senzaStudio.length?`<div style="font-size:11px;color:var(--muted);margin-top:8px">
+      Senza scheda studio compilata: ${senzaStudio.map(p=>esc(((p.nome||'')+' '+(p.cognome||'')).trim()||'—')).join(', ')}.
+    </div>`:''}
+    ${currentRole==='dl'?`<div class="form-actions" style="margin-top:10px">
+      <button class="btn btn-secondary" onclick="anteprimaIntestazione()">👁️ Anteprima</button>
+      <button class="btn btn-primary" onclick="salvaStudiIntestazione()">Salva intestazione</button>
+    </div>`:`<div style="font-size:11px;color:var(--muted);margin-top:8px">Solo il DL può modificare questa impostazione.</div>`}
+  </div>`;
+}
+
+function spostaStudio(btn, dir){
+  const riga = btn.closest('.studio-riga');
+  const cont = riga?.parentElement;
+  if(!cont) return;
+  if(dir<0 && riga.previousElementSibling) cont.insertBefore(riga, riga.previousElementSibling);
+  if(dir>0 && riga.nextElementSibling) cont.insertBefore(riga.nextElementSibling, riga);
+}
+
+async function salvaStudiIntestazione(){
+  const scelti = [...document.querySelectorAll('#studiIntestazioneCont .studio-riga')]
+    .filter(r=>r.querySelector('.si-chk')?.checked)
+    .map(r=>r.dataset.id);
+  const {error} = await sb.from('cantieri')
+    .update({studi_intestazione: scelti.length ? scelti : null})
+    .eq('id', currentCantiere);
+  if(error){
+    alert(error.message.includes('studi_intestazione')
+      ? 'La colonna studi_intestazione non esiste ancora sul database.\nEsegui la migrazione SQL indicata nel README su Supabase.'
+      : error.message);
+    return;
+  }
+  await loadMyCantieri();
+  await caricaStudiIntestazione(currentCantiere);
+  alert(scelti.length
+    ? `✅ Intestazione aggiornata: ${scelti.length} stud${scelti.length===1?'io':'i'} in testata.`
+    : '✅ Nessuno studio selezionato: verrà usata l\'intestazione predefinita.');
+  showView('team');
 }
 
 
@@ -5998,16 +6254,90 @@ function dataInLettere(dateStr){
   };
 }
 
-function letterheadHeaderHtml(){
-  return '<div class="lh-header">'
-    +'<div class="lh-logo"><img src="data:image/png;base64,'+LOGO_SCS_B64+'" alt="Studio SCS"></div>'
-    +'<div class="lh-cqy"><img src="data:image/png;base64,'+LOGO_CQY_B64+'" alt="Certificazione CQY"></div>'
-    +'</div>'
-    +'<div class="lh-title">STUDIO SCS &ndash; SOCIET&Agrave; DI ARCHITETTURA E INGEGNERIA</div>';
+// ============================================================
+// CARTA INTESTATA — supporta piu' studi (direzione lavori in RTP)
+// ------------------------------------------------------------
+// Gli studi vengono dai profili dei membri DL/DO del cantiere che
+// hanno compilato la sezione "Il mio studio". Il cantiere puo'
+// restringere/riordinare l'elenco tramite cantieri.studi_intestazione.
+// Se nessuno ha configurato uno studio si ricade sull'intestazione
+// storica dello Studio SCS, cosi' i documenti esistenti non cambiano.
+// ============================================================
+let STUDI_INTESTAZIONE = [];
+
+async function caricaStudiIntestazione(cantiereId){
+  STUDI_INTESTAZIONE = [];
+  if(!cantiereId) return;
+  try{
+    const {data:membri} = await sb.from('cantiere_utenti')
+      .select('utente_id,ruolo').eq('cantiere_id',cantiereId);
+    const ids = (membri||[]).filter(m=>m.ruolo==='dl'||m.ruolo==='do').map(m=>m.utente_id);
+    if(!ids.length) return;
+    const {data:prof} = await sb.from('profiles')
+      .select('id,nome,cognome,studio_denominazione,studio_sede_legale,studio_sede_operativa,studio_piva,studio_email,studio_web,studio_logo')
+      .in('id', ids);
+    let studi = (prof||[]).filter(p=>p.studio_denominazione || p.studio_logo);
+
+    // Selezione/ordinamento salvati sul cantiere (la prima e' la mandataria)
+    const sel = getCantiereObj(cantiereId)?.studi_intestazione;
+    if(Array.isArray(sel) && sel.length){
+      studi = sel.map(id=>studi.find(s=>s.id===id)).filter(Boolean);
+    } else {
+      studi.sort((a,b)=>(a.studio_denominazione||'').localeCompare(b.studio_denominazione||''));
+    }
+    STUDI_INTESTAZIONE = studi;
+  }catch(e){ console.warn('caricaStudiIntestazione:', e?.message||e); }
 }
+
+function letterheadHeaderHtml(){
+  const studi = STUDI_INTESTAZIONE || [];
+  if(!studi.length){
+    // Nessuno studio configurato: intestazione storica
+    return '<div class="lh-header">'
+      +'<div class="lh-logo"><img src="data:image/png;base64,'+LOGO_SCS_B64+'" alt="Studio SCS"></div>'
+      +'<div class="lh-cqy"><img src="data:image/png;base64,'+LOGO_CQY_B64+'" alt="Certificazione CQY"></div>'
+      +'</div>'
+      +'<div class="lh-title">STUDIO SCS &ndash; SOCIET&Agrave; DI ARCHITETTURA E INGEGNERIA</div>';
+  }
+  const blocchi = studi.map(function(s){
+    const nome = s.studio_denominazione || ((s.nome||'')+' '+(s.cognome||'')).trim();
+    const logo = s.studio_logo ? '<img src="'+esc(s.studio_logo)+'" alt="'+esc(nome)+'">' : '';
+    // Il nome accanto al logo serve solo a chi il logo non ce l'ha: altrimenti
+    // allargherebbe la testata inutilmente, visto che il pie' di pagina li
+    // riporta tutti per esteso (e con un solo studio c'e' gia' la riga titolo).
+    const etichetta = (!logo && nome) ? '<div class="nm">'+esc(nome)+'</div>' : '';
+    return '<div class="lh-studio">'+logo+etichetta+'</div>';
+  }).join('<div class="lh-sep"></div>');
+
+  // Oltre i due studi si rimpiccioliscono i loghi per non mandare a capo la testata
+  const cls = 'lh-studi' + (studi.length>2 ? ' many' : '');
+  let html = '<div class="lh-header"><div class="'+cls+'">'+blocchi+'</div></div>';
+  if(studi.length===1){
+    const n = studi[0].studio_denominazione || ((studi[0].nome||'')+' '+(studi[0].cognome||'')).trim();
+    if(n) html += '<div class="lh-title">'+esc(n).toUpperCase()+'</div>';
+  } else {
+    html += '<div class="lh-title">RAGGRUPPAMENTO TEMPORANEO DI PROFESSIONISTI &mdash; DIREZIONE DEI LAVORI</div>';
+  }
+  return html;
+}
+
 function letterheadFooterHtml(){
-  return '<div class="lh-footer">Sede legale: Recanati (MC) Via Piaggia Castelnuovo 10 &mdash; Sede operativa: Pesaro (PU) Via San Francesco d&rsquo;Assisi 44<br>'
-    +'P.I. 02077580435 &middot; www.studiotecnicoscs.com &middot; info@studiotecnicoscs.com</div>';
+  const studi = STUDI_INTESTAZIONE || [];
+  if(!studi.length){
+    return '<div class="lh-footer">Sede legale: Recanati (MC) Via Piaggia Castelnuovo 10 &mdash; Sede operativa: Pesaro (PU) Via San Francesco d&rsquo;Assisi 44<br>'
+      +'P.I. 02077580435 &middot; www.studiotecnicoscs.com &middot; info@studiotecnicoscs.com</div>';
+  }
+  const righe = studi.map(function(s){
+    const nome = s.studio_denominazione || ((s.nome||'')+' '+(s.cognome||'')).trim();
+    const parti = [];
+    if(s.studio_sede_legale)   parti.push('Sede legale: '+esc(s.studio_sede_legale));
+    if(s.studio_sede_operativa) parti.push('Sede operativa: '+esc(s.studio_sede_operativa));
+    if(s.studio_piva)  parti.push('P.I. '+esc(s.studio_piva));
+    if(s.studio_web)   parti.push(esc(s.studio_web));
+    if(s.studio_email) parti.push(esc(s.studio_email));
+    return '<span class="st">'+(nome?'<b>'+esc(nome)+'</b>'+(parti.length?' &mdash; ':''):'')+parti.join(' &middot; ')+'</span>';
+  }).join('');
+  return '<div class="lh-footer">'+righe+'</div>';
 }
 
 function metaBlockHtml(rows){
@@ -6305,6 +6635,16 @@ body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12.5px;co
 .lh-cqy img{height:42px;display:block}
 .lh-title{font-size:10px;font-weight:700;color:#1F3864;letter-spacing:.03em;margin-top:5px}
 .lh-footer{border-top:1px solid #DEE2E6;padding-top:5px;font-size:8.5px;color:#6C757D;text-align:center}
+.lh-studi{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.lh-studi.many{gap:11px}
+.lh-studi.many .lh-studio img{height:32px;max-width:115px}
+.lh-studi.many .nm{font-size:7.5px;max-width:100px}
+.lh-studio{display:flex;align-items:center;gap:7px}
+.lh-studio img{height:40px;max-width:150px;object-fit:contain;display:block}
+.lh-studio .nm{font-size:8.5px;font-weight:700;color:#1F3864;line-height:1.25;max-width:130px}
+.lh-sep{width:1px;align-self:stretch;background:#CBD5E1;margin:2px 0}
+.lh-footer .st{display:block;margin-bottom:1px}
+.lh-footer .st b{color:#1F3864}
 .doc-title-block{text-align:center;margin:20px 0 16px}
 .doc-title-block h1{font-size:14px;color:#1F3864;margin:0 0 2px;font-weight:700}
 .doc-title-block h2{font-size:13.5px;font-weight:800;letter-spacing:.03em;margin:8px 0 3px;color:#212529}
