@@ -291,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.08f';
+const APP_VERSIONE = '2026.09.09a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -8567,7 +8567,9 @@ async function renderPrelievi(){
   }
 
   html += '<div class="card" style="padding:0;overflow:hidden"><table><thead><tr>'
-    + '<th style="width:90px">Data</th><th style="width:70px">N.</th><th>Tipo</th><th>Campioni</th><th style="width:220px;text-align:right">Azioni</th>'
+    + '<th style="width:90px">Data</th><th style="width:70px">N.</th><th>Tipo</th><th>Campioni</th>'
+    + '<th style="width:130px;text-align:center">Richiesta prove</th>'
+    + '<th style="width:220px;text-align:right">Azioni</th>'
     + '</tr></thead><tbody>';
 
   prelievi.forEach(p=>{
@@ -8580,11 +8582,19 @@ async function renderPrelievi(){
           ? ` <span class="badge-firmato">&#10003; FIRMATO il ${fmt(String(p.pdf_generato_at).slice(0,10))} &mdash; ${nFirme} firm${nFirme===1?'a':'e'}</span>`
           : ` <span class="badge-firmato pending">Generato il ${fmt(String(p.pdf_generato_at).slice(0,10))}</span>`)
       : '';
-    html += `<tr>
+    const inviata = !!p.richiesta_prove_inviata;
+    // Promemoria visivo: finché non si spunta l'invio, la riga resta evidenziata
+    html += `<tr${inviata?'':' style="background:#FFF8E7"'}>
       <td style="font-size:12px">${fmt(p.data)}</td>
       <td style="font-size:12px">${esc(p.numero||'—')}</td>
       <td style="font-size:12px">${cfg.icon} ${esc(cfg.label)}${firmato}</td>
       <td style="font-size:12px">${esc(nCamp)}</td>
+      <td style="text-align:center">
+        <label style="display:inline-flex;align-items:center;gap:5px;cursor:${can('write')?'pointer':'default'};font-size:11px" title="Spunta quando invii la richiesta prove al laboratorio">
+          <input type="checkbox" ${inviata?'checked':''} ${can('write')?'':'disabled'} onchange="toggleRichiestaProve('${p.id}', this.checked)">
+          ${inviata ? `<span style="color:var(--green)">Inviata${p.richiesta_prove_data?'<br>'+fmt(p.richiesta_prove_data):''}</span>` : `<span style="color:#B8860B">Da inviare</span>`}
+        </label>
+      </td>
       <td style="text-align:right;white-space:nowrap">
         <button class="btn btn-primary btn-sm" onclick="apriPrelievoFirmabile('${p.id}')">📄 PDF / Firma</button>
         <button class="btn btn-secondary btn-sm" title="Visualizza il verbale generato (sola lettura)" onclick="apriPrelievoFirmabile('${p.id}', true)">👁️</button>
@@ -8596,6 +8606,23 @@ async function renderPrelievi(){
   });
   html += '</tbody></table></div>';
   return html;
+}
+
+// Promemoria "richiesta prove inviata al laboratorio": una spunta indipendente
+// dalla firma/generazione del PDF, per non dimenticare di inoltrare la
+// richiesta dopo aver registrato il prelievo dei campioni.
+async function toggleRichiestaProve(id, inviata){
+  const upd = inviata
+    ? {richiesta_prove_inviata:true, richiesta_prove_data:today()}
+    : {richiesta_prove_inviata:false, richiesta_prove_data:null};
+  const {error} = await sb.from('verbali_prelievo').update(upd).eq('id',id);
+  if(error){
+    alert(error.message.includes('richiesta_prove')
+      ? 'La colonna richiesta_prove_inviata non esiste ancora sul database.\nEsegui la migrazione SQL in sql/ su Supabase.'
+      : error.message);
+    return;
+  }
+  showView('prelievi');
 }
 
 // ---- opzioni <select> tipo prelievo ----
