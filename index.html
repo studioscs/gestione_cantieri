@@ -291,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.09a';
+const APP_VERSIONE = '2026.09.09b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -8592,8 +8592,11 @@ async function renderPrelievi(){
       <td style="text-align:center">
         <label style="display:inline-flex;align-items:center;gap:5px;cursor:${can('write')?'pointer':'default'};font-size:11px" title="Spunta quando invii la richiesta prove al laboratorio">
           <input type="checkbox" ${inviata?'checked':''} ${can('write')?'':'disabled'} onchange="toggleRichiestaProve('${p.id}', this.checked)">
-          ${inviata ? `<span style="color:var(--green)">Inviata${p.richiesta_prove_data?'<br>'+fmt(p.richiesta_prove_data):''}</span>` : `<span style="color:#B8860B">Da inviare</span>`}
+          ${inviata ? `<span style="color:var(--green)">Inviata</span>` : `<span style="color:#B8860B">Da inviare</span>`}
         </label>
+        ${inviata ? `<div style="margin-top:3px">
+          <input type="date" class="form-control" style="font-size:11px;padding:2px 4px;height:auto" value="${esc(p.richiesta_prove_data||'')}" ${can('write')?'':'disabled'} onchange="modificaDataRichiestaProve('${p.id}', this.value)" title="Modifica la data di invio">
+        </div>` : ''}
       </td>
       <td style="text-align:right;white-space:nowrap">
         <button class="btn btn-primary btn-sm" onclick="apriPrelievoFirmabile('${p.id}')">📄 PDF / Firma</button>
@@ -8623,6 +8626,16 @@ async function toggleRichiestaProve(id, inviata){
     return;
   }
   showView('prelievi');
+}
+
+// Correzione della data di invio: la spunta registra automaticamente la
+// data odierna, ma se ci si accorge dopo (anche il giorno successivo) di
+// dover segnare l'invio, la data va corretta a quella reale — altrimenti
+// resterebbe quella del click, non quella dell'effettivo invio.
+async function modificaDataRichiestaProve(id, nuovaData){
+  if(!nuovaData){ alert('La data non può essere vuota: togli la spunta se l\'invio non è stato effettuato.'); showView('prelievi'); return; }
+  const {error} = await sb.from('verbali_prelievo').update({richiesta_prove_data: nuovaData}).eq('id',id);
+  if(error){ alert(error.message); showView('prelievi'); return; }
 }
 
 // ---- opzioni <select> tipo prelievo ----
