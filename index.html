@@ -291,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.09b';
+const APP_VERSIONE = '2026.09.10a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -5755,7 +5755,7 @@ async function stampaODS(id){
   const c=getCantiereObj(o.cantiere_id);
   const firme=o.firme||[];
   const w=window.open('','_blank');
-  scriviPopupHtml(w, `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${esc(o.numero)}</title>
+  scriviPopupHtml(w, `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${esc(nomeFileVerbale(c, o.data, 'ODS', o.numero))}</title>
   <style>body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:13px;margin:40px;color:#212529}
   .header{text-align:center;margin-bottom:32px;border-bottom:2px solid #1F3864;padding-bottom:16px}
   .meta-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;font-size:12px}
@@ -5817,7 +5817,7 @@ async function generaReportSA(cantiereId){
   const w=window.open('','_blank');
   scriviPopupHtml(w, `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Report SA \u2014 ${esc(c?.nome||'')}</title>
+  <title>${esc(nomeFileVerbale(c, today(), 'REPORT_SA'))}</title>
   <style>
 
   *{box-sizing:border-box;margin:0;padding:0}
@@ -6125,7 +6125,7 @@ async function generaReportGiornale(cantiereId){
   const w=window.open('','_blank');
   scriviPopupHtml(w, `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0">
-  <title>Giornale dei Lavori &mdash; ${esc(c?.nome||'')}</title>
+  <title>${esc(nomeFileVerbale(c, today(), 'GIORNALE_LAVORI'))}</title>
   <style>
 
   *{box-sizing:border-box;margin:0;padding:0}
@@ -6540,14 +6540,22 @@ function apriDocumentoFirmabile(opts){
 
 // ============================================================
 // Nomi file PDF — schema: {commessa}_{AAMMGG}_{CODICE}[_{num}]
-// La "commessa" è la parte del nome cantiere prima di " - "
-// (es. "2025_06 - Palestra" -> "2025_06"). Il titolo del documento
-// è ciò che il browser propone come nome file al salvataggio del PDF.
+// La "commessa" è il campo "Codice commessa" del cantiere (es. "2025_02"),
+// non la denominazione: quest'ultima è testo libero e spesso più lunga,
+// mentre il codice commessa è pensato apposta per essere lo short-code
+// che identifica la pratica in archivio.
+// Il titolo del documento è ciò che il browser propone come nome file al
+// salvataggio del PDF.
 // ============================================================
 function sanitizzaNomeFile(s){
   return (s==null?'':String(s)).trim().replace(/\s+/g,'_').replace(/[\\\/:*?"<>|#%&{}]/g,'').replace(/_{2,}/g,'_');
 }
 function codiceCommessa(c){
+  const codice = (c?.codice_commessa||'').trim();
+  if(codice) return sanitizzaNomeFile(codice);
+  // Ripiego per i cantieri che non hanno ancora impostato il codice
+  // commessa: si ricava dalla denominazione, come si faceva prima
+  // (es. "2025_06 - Palestra" -> "2025_06").
   let nome = (c?.nome||'').trim();
   if(nome.includes(' - ')) nome = nome.split(' - ')[0];
   return sanitizzaNomeFile(nome) || 'CANTIERE';
