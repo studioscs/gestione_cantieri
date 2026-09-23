@@ -291,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.10a';
+const APP_VERSIONE = '2026.09.23a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -2718,11 +2718,33 @@ async function getTeamRoster(cantiereId){
   return roster;
 }
 
+// Presenti proposti di default su verbali e sopralluoghi: solo chi partecipa
+// normalmente alla visita, cioe' il Direttore dei Lavori e il Direttore
+// Tecnico dell'impresa. Gli altri ruoli del team (RUP, CSE, committente)
+// intervengono in via eccezionale e si aggiungono a mano quando serve.
+const PRESENTI_DEFAULT_RUOLI = ['dl','dt_impresa'];
+
 function formatPresentiFromTeam(team){
-  return Object.keys(team)
+  return PRESENTI_DEFAULT_RUOLI
     .filter(function(r){ return team[r] && team[r].nome; })
     .map(function(r){ return team[r].nome+' ('+(ROLE_LABELS[r]||r)+')'; })
     .join('\n');
+}
+
+// Luogo del cantiere per i campi "sito in / luogo": indirizzo e comune presi
+// dalla scheda del cantiere. La stazione appaltante resta solo come ultimo
+// ripiego per i cantieri creati prima dell'introduzione di questi campi.
+function luogoCantiere(c){
+  if(!c) return '';
+  const parti = [];
+  if(c.indirizzo) parti.push(String(c.indirizzo).trim());
+  if(c.comune) parti.push(String(c.comune).trim());
+  return parti.join(' — ') || (c.stazione_appaltante||'');
+}
+
+// Comune del cantiere per l'intestazione "COMUNE DI …" dei documenti
+function comuneCantiere(c){
+  return (c && (c.comune || c.stazione_appaltante)) || '';
 }
 
 async function openModalNuovoVerbale(){
@@ -2787,7 +2809,7 @@ async function openModalNuovoVerbale(){
         <textarea class="form-control" id="nv2_pres" rows="3" placeholder="Ing. Rossi (DL)&#10;Geom. Bianchi (RUP/Committente)&#10;Ing. Verdi (DT Impresa)">${esc(presentiDefault)}</textarea>
       </div>
     </div>
-    ${extraFieldsSopralluogoHtml('nv2', teamDx)}
+    ${extraFieldsSopralluogoHtml('nv2', teamDx, getCantiereObj())}
     ${extraFieldsVerificaODSHtml('nv2', null, ODS_LIST_PER_VERBALE)}
     ${extraFieldsConsegnaLavoriHtml('nv2', teamDx)}
     ${extraFieldsConsegnaParzialeHtml('nv2', teamDx)}
@@ -2892,7 +2914,7 @@ async function openModalEditVerbale(id){
         <textarea class="form-control" id="ev2_pres" rows="3">${esc(presentiValue)}</textarea>
       </div>
     </div>
-    ${extraFieldsSopralluogoHtml('ev2', dxWithTeam)}
+    ${extraFieldsSopralluogoHtml('ev2', dxWithTeam, getCantiereObj(v.cantiere_id))}
     ${extraFieldsVerificaODSHtml('ev2', dx, ODS_LIST_PER_VERBALE)}
     ${extraFieldsConsegnaLavoriHtml('ev2', dxWithTeam)}
     ${extraFieldsConsegnaParzialeHtml('ev2', dxWithTeam)}
@@ -4245,6 +4267,10 @@ function openModalNuovoCantiere(){
       <div class="form-group"><label class="form-label">CUP</label><input class="form-control" id="f_cup"></div>
       <div class="form-group"><label class="form-label">Stazione Appaltante *</label><input class="form-control" id="f_sa"></div>
       <div class="form-group"><label class="form-label">Impresa esecutrice</label><input class="form-control" id="f_impresa"></div>
+      <div class="form-group"><label class="form-label">Comune del cantiere</label><input class="form-control" id="f_comune" placeholder="Es. Treia">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Compare come intestazione "COMUNE DI …" nei verbali</div></div>
+      <div class="form-group"><label class="form-label">Indirizzo / località cantiere</label><input class="form-control" id="f_indirizzo" placeholder="Es. Via Roma 12, fraz. Chiesanuova">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Precompila il luogo nei verbali di sopralluogo, prelievo e collaudo</div></div>
       <div class="form-group"><label class="form-label">Importo contrattuale (€) *</label><input class="form-control" type="number" id="f_importo"></div>
       <div class="form-group"><label class="form-label">Stato</label><select class="form-control" id="f_stato"><option value="attivo">Attivo</option><option value="sospeso">Sospeso</option><option value="concluso">Concluso</option></select></div>
       <div class="form-group"><label class="form-label">Data consegna lavori</label><input class="form-control" type="date" id="f_dc"></div>
@@ -4277,6 +4303,20 @@ function openModalNuovoCantiere(){
     <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" id="saveCantBtn" onclick="salvaCantiere()">Salva cantiere</button></div>`);
 }
 
+// Scrive comune e indirizzo su un cantiere appena creato tramite la funzione
+// server-side crea_cantiere, che non li prevede fra i suoi parametri.
+// Se la funzione non restituisce un id riconoscibile non fa nulla: i campi
+// restano compilabili dalla scheda del cantiere.
+async function salvaLuogoCantiere(rpcData, luogo){
+  if(!luogo || (!luogo.comune && !luogo.indirizzo)) return;
+  const id = (typeof rpcData === 'string') ? rpcData
+           : (rpcData && (rpcData.id || rpcData.cantiere_id)) || null;
+  if(!id) return;
+  try{
+    await sb.from('cantieri').update({comune:luogo.comune, indirizzo:luogo.indirizzo}).eq('id', id);
+  }catch(e){ console.error('salvaLuogoCantiere', e); }
+}
+
 async function salvaCantiere(){
   // Guardia lato client (la vera sicurezza è nella funzione server-side)
   if(!canCreateCantiere()){ alert('Solo il Direttore dei Lavori può creare un nuovo cantiere.'); return; }
@@ -4286,6 +4326,10 @@ async function salvaCantiere(){
   const cig=document.getElementById('f_cig').value.trim();
   const sa=document.getElementById('f_sa').value.trim();
   const importo=parseFloat(document.getElementById('f_importo').value)||0;
+  const luogoNuovo = {
+    comune: document.getElementById('f_comune').value.trim()||null,
+    indirizzo: document.getElementById('f_indirizzo').value.trim()||null
+  };
   if(!nome){alert('Denominazione cantiere obbligatoria');return;}
   const btn=document.getElementById('saveCantBtn');btn.disabled=true;btn.textContent='Salvataggio…';
 
@@ -4316,6 +4360,11 @@ async function salvaCantiere(){
   try {
     const {data:rpcData, error:rpcErr} = await sb.rpc('crea_cantiere', payload);
     if(!rpcErr){
+      // Comune e indirizzo non fanno parte della firma della funzione
+      // crea_cantiere: aggiungerli al payload la farebbe risultare
+      // inesistente sui database che hanno ancora la versione precedente.
+      // Si scrivono quindi subito dopo, se la funzione restituisce l'id.
+      await salvaLuogoCantiere(rpcData, luogoNuovo);
       closeModal();
       await loadMyCantieri();
       showView('cantieri');
@@ -4331,6 +4380,7 @@ async function salvaCantiere(){
     const {data:cant,error} = await sb.from('cantieri').insert({
       nome, codice_commessa:codice, descrizione:descr, cig,
       cup:payload.p_cup, stazione_appaltante:sa,
+      comune:luogoNuovo.comune, indirizzo:luogoNuovo.indirizzo,
       impresa:payload.p_impresa, importo,
       stato:payload.p_stato,
       estremi_contratto:payload.p_estremi_contratto,
@@ -4389,6 +4439,10 @@ function openModalEditCantiere(id){
       <div class="form-group"><label class="form-label">CUP</label><input class="form-control" id="e_cup" value="${esc(c.cup||'')}"></div>
       <div class="form-group"><label class="form-label">Stazione Appaltante</label><input class="form-control" id="e_sa" value="${esc(c.stazione_appaltante||'')}"></div>
       <div class="form-group"><label class="form-label">Impresa</label><input class="form-control" id="e_impresa" value="${esc(c.impresa||'')}"></div>
+      <div class="form-group"><label class="form-label">Comune del cantiere</label><input class="form-control" id="e_comune" value="${esc(c.comune||'')}" placeholder="Es. Treia">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Compare come intestazione "COMUNE DI …" nei verbali</div></div>
+      <div class="form-group"><label class="form-label">Indirizzo / località cantiere</label><input class="form-control" id="e_indirizzo" value="${esc(c.indirizzo||'')}" placeholder="Es. Via Roma 12, fraz. Chiesanuova">
+        <div class="form-hint" style="font-size:11px;color:#ADB5BD">Precompila il luogo nei verbali di sopralluogo, prelievo e collaudo</div></div>
       <div class="form-group"><label class="form-label">Importo (€)</label><input class="form-control" type="number" id="e_importo" value="${c.importo||0}"></div>
       <div class="form-group"><label class="form-label">Stato</label>
         <select class="form-control" id="e_stato">
@@ -4443,6 +4497,8 @@ async function salvaEditCantiere(id){
     cup: document.getElementById('e_cup').value.trim(),
     stazione_appaltante: document.getElementById('e_sa').value.trim(),
     impresa: document.getElementById('e_impresa').value.trim(),
+    comune: document.getElementById('e_comune').value.trim()||null,
+    indirizzo: document.getElementById('e_indirizzo').value.trim()||null,
     importo: parseFloat(document.getElementById('e_importo').value)||0,
     stato: document.getElementById('e_stato').value,
     data_consegna: document.getElementById('e_dc').value||null,
@@ -7223,7 +7279,7 @@ function bodyGenericoVerbale(c, v){
 // ---- 4. VERBALE DI SOSPENSIONE LAVORI ----
 function bodySospensione(c, s, dx){
   const dl = dataInLettere(s.data);
-  const comune = dx.comune || c?.stazione_appaltante || '';
+  const comune = dx.comune || comuneCantiere(c);
   let html = '';
   html += '<p>L\'anno <strong>'+dl.anno+'</strong> il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>'
     + (comune?' nel Comune di '+esc(comune):'') + ', il sottoscritto ' + esc(dx.redattore||'')
@@ -7296,7 +7352,7 @@ function bodySospensione(c, s, dx){
 // ---- 5. VERBALE DI RIPRESA DEI LAVORI ----
 function bodyRipresa(c, s, dx){
   const dl = dataInLettere(s.data_ripresa || today());
-  const comune = dx.comune || c?.stazione_appaltante || '';
+  const comune = dx.comune || comuneCantiere(c);
   let html = '';
   html += '<p>L\'anno <strong>'+dl.anno+'</strong> il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>'
     + (comune?' nel Comune di '+esc(comune):'') + ', il sottoscritto ' + esc(dx.redattore||'')
@@ -7369,7 +7425,7 @@ function bodyRipresa(c, s, dx){
 // ---- 6. VERBALE DI CONSEGNA LAVORI ----
 function bodyConsegnaLavori(c, v, dx){
   const dl = dataInLettere(v.data);
-  const comune = dx.comune || c?.stazione_appaltante || '';
+  const comune = dx.comune || comuneCantiere(c);
   const importo = c?.importo ? fmtEur(c.importo) : '—';
   const redattore = v.redattore || dx.redattore || '';
   let html = '';
@@ -7401,7 +7457,7 @@ function bodyConsegnaLavori(c, v, dx){
 // ---- 7. VERBALE DI CONSEGNA PARZIALE LAVORI ----
 function bodyConsegnaParziale(c, v, dx){
   const dl = dataInLettere(v.data);
-  const comune = dx.comune || c?.stazione_appaltante || '';
+  const comune = dx.comune || comuneCantiere(c);
   const importo = c?.importo ? fmtEur(c.importo) : '—';
   const redattore = v.redattore || dx.redattore || '';
   let html = '';
@@ -7574,7 +7630,7 @@ function bodyConstatazioneStatoLuoghi(c, v, dx){
 // ---- 9. CERTIFICATO DI ULTIMAZIONE LAVORI ----
 function bodyCertificatoUltimazione(c, v, dx){
   const dl = dataInLettere(v.data);
-  const comune = dx.comune || c?.stazione_appaltante || '';
+  const comune = dx.comune || comuneCantiere(c);
   const redattore = v.redattore || dx.redattore || '';
   let html = '';
   html += '<p>L\'anno <strong>'+dl.anno+'</strong> il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>'
@@ -7601,7 +7657,7 @@ function bodyCertificatoUltimazione(c, v, dx){
 // ---- 10. CERTIFICATO DI ULTIMAZIONE LAVORI CON OPERE DA COMPLETARE ----
 function bodyCertificatoUltimazioneConOpere(c, v, dx){
   const dl = dataInLettere(v.data);
-  const comune = dx.comune || c?.stazione_appaltante || '';
+  const comune = dx.comune || comuneCantiere(c);
   const giorniCompl = dx.giorni_completamento || '60';
   const redattore = v.redattore || dx.redattore || '';
   let html = '';
@@ -7632,7 +7688,7 @@ function bodyCertificatoUltimazioneConOpere(c, v, dx){
 // ---- 11. VERBALE DI PRESA IN CONSEGNA ANTICIPATA (RICONSEGNA ANTICIPATA) DELLE OPERE ----
 function bodyRiconsegnaAnticipata(c, v, dx){
   const dl = dataInLettere(v.data);
-  const comune = dx.comune || c?.stazione_appaltante || '';
+  const comune = dx.comune || comuneCantiere(c);
   const redattore = v.redattore || dx.redattore || '';
   let html = '';
   html += '<p>L\'anno <strong>'+dl.anno+'</strong> il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong>'
@@ -7671,7 +7727,7 @@ function prelievoIntestazioneLavori(c, dp){
   // blocco "Lavori di / Cantiere / Impresa / DL / Committente" comune a quasi tutti
   const rows = [
     ['Lavori di', esc(dp.lavori_di || c?.descrizione || c?.nome || '')],
-    ['Cantiere sito in', esc(dp.cantiere_luogo || c?.stazione_appaltante || '')],
+    ['Cantiere sito in', esc(dp.cantiere_luogo || luogoCantiere(c))],
     ['Impresa esecutrice', esc(dp.impresa || c?.impresa || '')],
     ['Direttore dei Lavori', esc(dp.dl_nome || '')]
   ];
@@ -8898,7 +8954,7 @@ function prelievoFormHtml(prefix, p, teamDx){
       <div class="form-group span-2"><label class="form-label">Lavori di</label>
         <input class="form-control" id="${prefix}_lavori_di" value="${esc(dp.lavori_di||c?.descrizione||c?.nome||'')}"></div>
       <div class="form-group"><label class="form-label">Cantiere sito in</label>
-        <input class="form-control" id="${prefix}_cantiere_luogo" value="${esc(dp.cantiere_luogo||c?.stazione_appaltante||'')}"></div>
+        <input class="form-control" id="${prefix}_cantiere_luogo" value="${esc(dp.cantiere_luogo||luogoCantiere(c))}"></div>
       <div class="form-group"><label class="form-label">Impresa esecutrice</label>
         <input class="form-control" id="${prefix}_impresa" value="${esc(dp.impresa||c?.impresa||'')}"></div>
       <div class="form-group"><label class="form-label">Direttore dei Lavori</label>
@@ -8986,7 +9042,9 @@ function raccogliDatiPrelievo(prefix){
 async function openModalNuovoPrelievo(){
   const team = await getTeamRoster(currentCantiere);
   const teamDx = { dl_nome: (team.dl && team.dl.nome) || '' };
+  // Presenti proposti: DL e DT impresa, come sugli altri verbali
   const presentiSuggeriti = [];
+  if(team.dl && team.dl.nome) presentiSuggeriti.push({ruolo:'Il Direttore dei Lavori', nome:team.dl.nome});
   if(team.dt_impresa && team.dt_impresa.nome) presentiSuggeriti.push({ruolo:"Per l'Impresa esecutrice", nome:team.dt_impresa.nome});
   const seed = { tipo_prelievo:'bulloni', data:today(), dati_prelievo:{ dl_nome:teamDx.dl_nome, presenti_prelievo:presentiSuggeriti } };
   openModal('Nuovo verbale di prelievo', `
@@ -9011,6 +9069,14 @@ async function salvaPrelievo(){
   };
   const {error} = await sb.from('verbali_prelievo').insert(rec);
   if(error){ alert('Errore salvataggio: '+error.message); return; }
+  // Annotazione automatica sul giornale, come per gli altri verbali:
+  // il prelievo e' un'attivita' di cantiere e va registrata in quel giorno
+  const cfgPrel = PRELIEVO_TIPI[d.tipo] || PRELIEVO_TIPI.generico;
+  const nCampioni = (d.dp.campioni||[]).length || d.dp.n_prelievi || '';
+  await annotaGiornale(d.data,
+    `[${cfgPrel.label.toUpperCase()}]`
+    + (d.numero ? ' n. '+d.numero : '')
+    + (nCampioni ? ` — ${nCampioni} ${d.tipo==='saldature'?'giunti controllati':'campioni prelevati'}` : ''));
   closeModal();
   showView('prelievi');
 }
@@ -9138,7 +9204,7 @@ async function apriPrelievoFirmabile(id, solaLettura){
       if(dlRow) dlRow.nome = redattore;
     }
 
-    const comune = dp.cantiere_luogo || c?.stazione_appaltante || '';
+    const comune = dp.cantiere_luogo || luogoCantiere(c);
 
     apriDocumentoFirmabile({
       titolo: cfg.titolo,
@@ -9200,7 +9266,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
     } else if(v.tipo==='consegna_lavori'){
       titolo = 'Verbale di consegna lavori';
       normativa = 'd.lgs. 36/2023 All. II.14 art.3 comma 9';
-      comune = dx.comune || c?.stazione_appaltante || '';
+      comune = dx.comune || comuneCantiere(c);
       corpoHtml = bodyConsegnaLavori(c, v, dx);
       metaRows = [
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
@@ -9211,7 +9277,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
     } else if(v.tipo==='consegna_parziale'){
       titolo = 'Verbale di consegna parziale lavori';
       normativa = 'd.lgs. 36/2023 All. II.14 art.3 comma 9';
-      comune = dx.comune || c?.stazione_appaltante || '';
+      comune = dx.comune || comuneCantiere(c);
       corpoHtml = bodyConsegnaParziale(c, v, dx);
       metaRows = [
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
@@ -9232,7 +9298,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
     } else if(v.tipo==='certificato_ultimazione'){
       titolo = 'Certificato di ultimazione lavori';
       normativa = 'd.lgs. 36/2023 All. II.14';
-      comune = dx.comune || c?.stazione_appaltante || '';
+      comune = dx.comune || comuneCantiere(c);
       corpoHtml = bodyCertificatoUltimazione(c, v, dx);
       metaRows = [
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
@@ -9243,7 +9309,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
     } else if(v.tipo==='certificato_ultimazione_con_opere'){
       titolo = 'Certificato di ultimazione lavori con opere da completare';
       normativa = 'd.lgs. 36/2023 All. II.14';
-      comune = dx.comune || c?.stazione_appaltante || '';
+      comune = dx.comune || comuneCantiere(c);
       corpoHtml = bodyCertificatoUltimazioneConOpere(c, v, dx);
       metaRows = [
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
@@ -9254,7 +9320,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
     } else if(v.tipo==='riconsegna_anticipata'){
       titolo = 'Verbale di presa in consegna anticipata delle opere';
       normativa = 'd.lgs. 36/2023 All. II.14 art. 24';
-      comune = dx.comune || c?.stazione_appaltante || '';
+      comune = dx.comune || comuneCantiere(c);
       corpoHtml = bodyRiconsegnaAnticipata(c, v, dx);
       metaRows = [
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
@@ -9264,7 +9330,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
       ];
     } else if(v.tipo==='collaudo_statico'){
       titolo = 'Verbale di visita di collaudo statico';
-      comune = dx.luogo || c?.stazione_appaltante || '';
+      comune = dx.luogo || luogoCantiere(c);
       corpoHtml = bodyCollaudoStatico(c, v, dx);
       metaRows = [
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
@@ -9275,7 +9341,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
     } else if(v.tipo==='certificato_collaudo_statico'){
       titolo = 'Certificato di collaudo statico';
       normativa = 'D.P.R. 6/06/2001 n. 380, art. 67';
-      comune = dx.comune || c?.stazione_appaltante || '';
+      comune = dx.comune || comuneCantiere(c);
       corpoHtml = bodyCollaudoCertificato(c, v, dx);
       metaRows = [
         dx.progetto_n ? ['PROGETTO N.', esc(dx.progetto_n)] : null,
@@ -9288,7 +9354,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
     } else if(v.tipo==='relazione_struttura_ultimata'){
       titolo = 'Relazione a struttura ultimata';
       normativa = 'D.P.R. 6/06/2001 n. 380, art. 65';
-      comune = dx.comune || c?.stazione_appaltante || '';
+      comune = dx.comune || comuneCantiere(c);
       provincia = dx.provincia || '';
       corpoHtml = bodyRSU(c, v, dx);
       metaRows = [
@@ -9333,7 +9399,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
       comune: comune||'', provincia: provincia||'',
       metaRows: (metaRows||[]).concat(await caricaRigheVarianti(v.cantiere_id)),
       corpoHtml: corpoHtml,
-      luogo: comune || c?.stazione_appaltante || c?.nome || '',
+      luogo: comune || comuneCantiere(c) || c?.nome || '',
       dataDoc: v.data,
       fileName: nomeFileVerbale(c, v.data, VERBALE_FILE_CODE[v.tipo]||'VER_GEN', v.numero),
       // Alcuni atti hanno firmatari propri, definiti dai dati del documento
@@ -9375,13 +9441,13 @@ function toggleVerbaleExtra(prefix){
   }
 }
 
-function extraFieldsSopralluogoHtml(prefix, dx){
-  dx = dx || {};
+function extraFieldsSopralluogoHtml(prefix, dx, cantiere){
+  dx = dx || {}; cantiere = cantiere || {};
   return `<div id="${prefix}_extra_sopralluogo_periodico" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
     <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli sopralluogo periodico</div>
     <div class="form-grid">
       <div class="form-group"><label class="form-label">Luogo cantiere</label>
-        <input class="form-control" id="${prefix}_luogo" value="${esc(dx.luogo||'')}" placeholder="Es. Via Roma 12, Treia (MC)"></div>
+        <input class="form-control" id="${prefix}_luogo" value="${esc(dx.luogo||luogoCantiere(cantiere))}" placeholder="Es. Via Roma 12, Treia (MC)"></div>
       <div class="form-group"><label class="form-label">R.U.P.</label>
         <input class="form-control" id="${prefix}_rup" value="${esc(dx.rup_nome||'')}"></div>
       <div class="form-group"><label class="form-label">Esito verifica *</label>
@@ -9683,7 +9749,7 @@ function extraFieldsCollaudoStaticoHtml(prefix, dx, team, cantiere){
   const dlNome = dx.dl_nome || team.dl_nome || '';
   const dtNome = dx.dt_impresa_nome || team.dt_impresa_nome || '';
   const committente = dx.committente_nome || cantiere.stazione_appaltante || '';
-  const luogo = dx.luogo || '';
+  const luogo = dx.luogo || luogoCantiere(cantiere);
   const descr = dx.descrizione_lavori || cantiere.descrizione || cantiere.nome || '';
   return `<div id="${prefix}_extra_collaudo_statico" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
     <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli verbale di visita di collaudo statico</div>
@@ -10096,7 +10162,7 @@ function extraFieldsRSUHtml(prefix, dx, team, cantiere){
     <div class="form-grid">
       <div class="form-group">
         <label class="form-label">Comune</label>
-        <input class="form-control" id="${prefix}_rsu_comune" value="${esc(dx.comune||cantiere.stazione_appaltante||'')}" placeholder="Es. Jesi">
+        <input class="form-control" id="${prefix}_rsu_comune" value="${esc(dx.comune||comuneCantiere(cantiere))}" placeholder="Es. Jesi">
       </div>
       <div class="form-group">
         <label class="form-label">Provincia</label>
@@ -10397,11 +10463,11 @@ function extraFieldsCollaudoCertHtml(prefix, dx, team, cantiere){
       </div>
       <div class="form-group">
         <label class="form-label">Comune</label>
-        <input class="form-control" id="${prefix}_ccs_comune" value="${esc(dx.comune||cantiere.stazione_appaltante||'')}">
+        <input class="form-control" id="${prefix}_ccs_comune" value="${esc(dx.comune||comuneCantiere(cantiere))}">
       </div>
       <div class="form-group span-2">
         <label class="form-label">Località e indirizzo</label>
-        <input class="form-control" id="${prefix}_ccs_localita" value="${esc(dx.localita||'')}" placeholder="Es. Via Roma 12, fraz. Villa">
+        <input class="form-control" id="${prefix}_ccs_localita" value="${esc(dx.localita||luogoCantiere(cantiere))}" placeholder="Es. Via Roma 12, fraz. Villa">
       </div>
       <div class="form-group span-2">
         <label class="form-label">Committente</label>
@@ -10987,7 +11053,7 @@ async function openModalGeneraVerbaleSospensione(sospId, tipoVerbale){
       <div class="form-group"><label class="form-label">Referente Impresa esecutrice</label>
         <input class="form-control" id="gvs_impresa_ref" value="${esc(impresaRef)}"></div>
       <div class="form-group"><label class="form-label">Comune</label>
-        <input class="form-control" id="gvs_comune" value="${esc(c?.stazione_appaltante||'')}"></div>
+        <input class="form-control" id="gvs_comune" value="${esc(comuneCantiere(c))}"></div>
       ${campiSpecifici}
       <div class="form-group span-2"><label class="form-label">Presenti (uno per riga, formato "Nome (Ruolo)")</label>
         <textarea class="form-control" id="gvs_presenti" rows="3" placeholder="Ing. Francesco Stortoni (Direttore dei Lavori)&#10;Sig. Mario Rossi (Impresa)">${esc(formatPresentiFromTeam(team))}</textarea>
