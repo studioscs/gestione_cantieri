@@ -291,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.09.23a';
+const APP_VERSIONE = '2026.10.03a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -5818,7 +5818,7 @@ async function stampaODS(id){
   .label{font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#6C757D}
   .body-text{margin:24px 0;line-height:1.8;white-space:pre-wrap}
   .firma-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-top:40px}
-  .firma-box{border:1px solid #dee2e6;padding:16px;text-align:center;min-height:80px}
+  .firma-box{border:1px solid #dee2e6;padding:16px;text-align:center;min-height:160px}
   @media print{body{margin:20px}}</style></head><body>
   <div class="header"><h2 style="margin:0;color:#1F3864">ORDINE DI SERVIZIO</h2>
   <div style="font-size:16px;margin-top:4px">${esc(o.numero)}</div><div style="font-size:12px;color:#6C757D">Data: ${fmt(o.data)}</div></div>
@@ -5908,7 +5908,7 @@ async function generaReportSA(cantiereId){
   .firma-row{display:flex;gap:0;margin:14px 28px 0;border:1px solid #dee2e6;border-radius:3px;overflow:hidden}
   .firma-box{flex:1;padding:8px 10px;border-right:1px solid #dee2e6;text-align:center}
   .firma-box:last-child{border-right:none}
-  .firma-box .flabel{font-size:8px;color:#95A8B0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:28px}
+  .firma-box .flabel{font-size:8px;color:#95A8B0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:56px}
   .firma-box .fname{font-size:9px;font-weight:600;border-top:1px solid #dee2e6;padding-top:4px;margin-top:4px}
   .footer-doc{margin:12px 28px 0;padding-top:8px;border-top:1px solid #dee2e6;display:flex;justify-content:space-between;font-size:8px;color:#95A8B0}
   @page{margin:12mm;size:A4}
@@ -6827,10 +6827,10 @@ body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12.5px;co
 .firme-wrap{margin-top:20px}
 .firma-block{border:1px solid #DEE2E6;border-radius:6px;padding:10px;margin-bottom:14px;page-break-inside:avoid;background:#fff}
 .firma-label{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#6C757D;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:8px}
-canvas.sig-canvas{border:1px dashed #ADB5BD;border-radius:4px;width:100%;height:110px;touch-action:none;background:#fff;display:block;margin-top:6px}
-img.sig-img{display:block;width:100%;max-height:110px;object-fit:contain;object-position:left bottom;border-bottom:1px solid #999;margin-top:6px}
-.sig-vuota{border-bottom:1px solid #999;height:110px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;color:#ADB5BD;font-size:11px;font-style:italic;margin-top:6px}
-.sig-attestata{border-bottom:1px solid #999;height:110px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:6px;color:#1F3864;font-size:12px;font-weight:700;margin-top:6px}
+canvas.sig-canvas{border:1px dashed #ADB5BD;border-radius:4px;width:100%;height:220px;touch-action:none;background:#fff;display:block;margin-top:6px}
+img.sig-img{display:block;width:100%;max-height:220px;object-fit:contain;object-position:left bottom;border-bottom:1px solid #999;margin-top:6px}
+.sig-vuota{border-bottom:1px solid #999;height:220px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;color:#ADB5BD;font-size:11px;font-style:italic;margin-top:6px}
+.sig-attestata{border-bottom:1px solid #999;height:220px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:6px;color:#1F3864;font-size:12px;font-weight:700;margin-top:6px}
 .sig-nota{display:block;font-weight:400;font-size:9.5px;color:#6C757D;font-style:italic;margin-top:2px}
 .sig-nome{font-weight:700;font-size:12px;color:#212529}
 .sig-ruolo{font-size:11px;color:#6C757D}
@@ -6849,10 +6849,10 @@ img.sig-img{display:block;width:100%;max-height:110px;object-fit:contain;object-
   .doc-wrap{padding:0;max-width:none}
   .sig-name-inputs input{border:none!important;border-bottom:1px solid #999!important;background:transparent!important;padding:2px 0}
   .firma-block{border:none;padding:0;page-break-inside:avoid}
-  canvas.sig-canvas{border:none;border-bottom:1px solid #999;height:90px}
-  img.sig-img{max-height:90px}
-  .sig-vuota{height:90px}
-  .sig-attestata{height:90px}
+  canvas.sig-canvas{border:none;border-bottom:1px solid #999;height:180px}
+  img.sig-img{max-height:180px}
+  .sig-vuota{height:180px}
+  .sig-attestata{height:180px}
 }
 `;
 
