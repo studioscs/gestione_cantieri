@@ -291,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.03a';
+const APP_VERSIONE = '2026.10.07a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -2671,7 +2671,7 @@ async function renderVerbali(){
       </div>
       ${(()=>{ const nf=(v.firmatari||[]).filter(f=>f.firmato).length;
         if(!nf) return v.pdf_generato_at?`<div style="margin-bottom:8px"><span class="badge-firmato pending">Generato il ${fmt(String(v.pdf_generato_at).slice(0,10))} &mdash; nessuna firma registrata</span></div>`:'';
-        return `<div style="margin-bottom:8px"><span class="badge-firmato">&#10003; FIRMATO${v.pdf_generato_at?' il '+fmt(String(v.pdf_generato_at).slice(0,10)):''} &mdash; ${nf} firm${nf===1?'a':'e'}</span>
+        return `<div style="margin-bottom:8px"><span class="badge-firmato">&#10003; FIRMATO${v.data?' il '+fmt(v.data):''} &mdash; ${nf} firm${nf===1?'a':'e'}</span>
           <span style="font-size:10px;color:var(--muted);margin-left:6px">PDF conservato agli atti</span></div>`; })()}
       ${v.firmatari&&v.firmatari.length?`<div style="margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap">${v.firmatari.map(f=>`<span class="firma-chip ${f.firmato?'signed':'pending'}">${f.firmato?'✅':'⏳'} ${esc(f.nome||f.ruolo||'—')}</span>`).join('')}</div>`:''}
       ${v.testo?`<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;background:var(--surface);padding:12px;border-radius:4px;border-left:3px solid var(--accent)">${esc(v.testo)}</div>`:''}
@@ -6554,6 +6554,7 @@ function apriDocumentoFirmabile(opts){
        +  ';window.RECORD_ID='+JSON.stringify(opts.recordId||null)
        +  ';window.FILE_NAME='+JSON.stringify(opts.fileName||opts.titolo||'Verbale')
        +  ';window.DOC_TITOLO='+JSON.stringify(opts.titolo||'Verbale')
+       +  ';window.DOC_DATA='+JSON.stringify(opts.dataDoc||null)
        +  ';window.SOLA_LETTURA='+(opts.solaLettura?'true':'false')+';<\/script>';
   html += '<div class="no-print toolbar">';
   html += '<button class="tb-ghost" onclick="window.close()">&#10005; Chiudi</button>';
@@ -6827,10 +6828,10 @@ body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:12.5px;co
 .firme-wrap{margin-top:20px}
 .firma-block{border:1px solid #DEE2E6;border-radius:6px;padding:10px;margin-bottom:14px;page-break-inside:avoid;background:#fff}
 .firma-label{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#6C757D;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:8px}
-canvas.sig-canvas{border:1px dashed #ADB5BD;border-radius:4px;width:100%;height:220px;touch-action:none;background:#fff;display:block;margin-top:6px}
-img.sig-img{display:block;width:100%;max-height:220px;object-fit:contain;object-position:left bottom;border-bottom:1px solid #999;margin-top:6px}
-.sig-vuota{border-bottom:1px solid #999;height:220px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;color:#ADB5BD;font-size:11px;font-style:italic;margin-top:6px}
-.sig-attestata{border-bottom:1px solid #999;height:220px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:6px;color:#1F3864;font-size:12px;font-weight:700;margin-top:6px}
+canvas.sig-canvas{border:1px dashed #ADB5BD;border-radius:4px;width:100%;height:300px;touch-action:none;background:#fff;display:block;margin-top:6px}
+img.sig-img{display:block;width:100%;max-height:300px;object-fit:contain;object-position:left bottom;border-bottom:1px solid #999;margin-top:6px}
+.sig-vuota{border-bottom:1px solid #999;height:300px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;color:#ADB5BD;font-size:11px;font-style:italic;margin-top:6px}
+.sig-attestata{border-bottom:1px solid #999;height:300px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:6px;color:#1F3864;font-size:12px;font-weight:700;margin-top:6px}
 .sig-nota{display:block;font-weight:400;font-size:9.5px;color:#6C757D;font-style:italic;margin-top:2px}
 .sig-nome{font-weight:700;font-size:12px;color:#212529}
 .sig-ruolo{font-size:11px;color:#6C757D}
@@ -6849,10 +6850,10 @@ img.sig-img{display:block;width:100%;max-height:220px;object-fit:contain;object-
   .doc-wrap{padding:0;max-width:none}
   .sig-name-inputs input{border:none!important;border-bottom:1px solid #999!important;background:transparent!important;padding:2px 0}
   .firma-block{border:none;padding:0;page-break-inside:avoid}
-  canvas.sig-canvas{border:none;border-bottom:1px solid #999;height:180px}
-  img.sig-img{max-height:180px}
-  .sig-vuota{height:180px}
-  .sig-attestata{height:180px}
+  canvas.sig-canvas{border:none;border-bottom:1px solid #999;height:250px}
+  img.sig-img{max-height:250px}
+  .sig-vuota{height:250px}
+  .sig-attestata{height:250px}
 }
 `;
 
@@ -6956,7 +6957,8 @@ function PDF_ENGINE_JS(firmatariIniziali){
         blocco = '<img class="sig-img" src="'+f.firma_png+'" alt="firma">';
       } else if(f.firmato){
         var d = '';
-        if(f.data){ var p=String(f.data).slice(0,10).split('-'); if(p.length===3) d=p[2]+'/'+p[1]+'/'+p[0]; }
+        var dataRif = window.DOC_DATA || f.data;
+        if(dataRif){ var p=String(dataRif).slice(0,10).split('-'); if(p.length===3) d=p[2]+'/'+p[1]+'/'+p[0]; }
         blocco = '<div class="sig-attestata">&#10003; Firmato'+(d?' il '+d:'')
                + '<span class="sig-nota">originale firmato: PDF conservato agli atti</span></div>';
       } else {
@@ -6987,7 +6989,8 @@ function PDF_ENGINE_JS(firmatariIniziali){
           nome: inputs[0].value.trim(),
           ruolo: inputs[1].value.trim(),
           firmato: signed,
-          data: new Date().toISOString()
+          // data del verbale: le firme si intendono apposte in quella data
+          data: window.DOC_DATA || new Date().toISOString()
         });
       });
       if(!window.opener || !window.opener.sb || !window.RECORD_TABLE || !window.RECORD_ID){
@@ -8643,7 +8646,7 @@ async function renderPrelievi(){
     const nFirme = (p.firmatari||[]).filter(f=>f.firmato).length;
     const firmato = p.pdf_generato_at
       ? (nFirme
-          ? ` <span class="badge-firmato">&#10003; FIRMATO il ${fmt(String(p.pdf_generato_at).slice(0,10))} &mdash; ${nFirme} firm${nFirme===1?'a':'e'}</span>`
+          ? ` <span class="badge-firmato">&#10003; FIRMATO il ${fmt(p.data)} &mdash; ${nFirme} firm${nFirme===1?'a':'e'}</span>`
           : ` <span class="badge-firmato pending">Generato il ${fmt(String(p.pdf_generato_at).slice(0,10))}</span>`)
       : '';
     const inviata = !!p.richiesta_prove_inviata;
