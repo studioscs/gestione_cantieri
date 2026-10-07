@@ -291,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.07a';
+const APP_VERSIONE = '2026.10.07b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -2666,6 +2666,7 @@ async function renderVerbali(){
           <button class="btn btn-secondary btn-sm" title="Visualizza il verbale generato (sola lettura)" onclick="apriVerbaleFirmabile('${v.id}', true)">👁️ Visualizza</button>
           ${can('write')?`
           <button class="btn btn-secondary btn-sm" onclick="openModalEditVerbale('${v.id}')">✏️</button>
+          <button class="btn btn-secondary btn-sm" title="Duplica: crea un nuovo verbale partendo da questo" onclick="openModalEditVerbale('${v.id}', true)">📋 Duplica</button>
           <button class="btn btn-danger btn-sm" onclick="eliminaVerbale('${v.id}')">🗑️</button>`:''}
         </div>
       </div>
@@ -2827,32 +2828,38 @@ async function openModalNuovoVerbale(){
   toggleVerbaleExtra('nv2');
 }
 
-async function salvaVerbale(){
-  const tipo = document.getElementById('nv2_tipo').value;
-  const data = document.getElementById('nv2_data').value;
+// prefix 'nv2' = nuovo verbale; 'ev2' = duplicazione dal modulo di modifica
+async function salvaVerbale(prefix){
+  prefix = prefix || 'nv2';
+  const g = id => document.getElementById(prefix+'_'+id);
+  const tipo = g('tipo').value;
+  const data = g('data').value;
   if(!data){ alert('Data obbligatoria'); return; }
-  const datiExtra = raccogliDatiExtraVerbale('nv2', tipo);
+  const datiExtra = raccogliDatiExtraVerbale(prefix, tipo);
   const {error} = await sb.from('verbali').insert({
     cantiere_id: currentCantiere,
     tipo, data,
-    numero: document.getElementById('nv2_num').value.trim()||null,
-    redattore: document.getElementById('nv2_red').value.trim()||null,
-    oggetto: document.getElementById('nv2_ogg').value.trim()||null,
-    testo: document.getElementById('nv2_testo').value.trim()||null,
-    presenti: document.getElementById('nv2_pres').value.trim()||null,
+    numero: g('num').value.trim()||null,
+    redattore: g('red').value.trim()||null,
+    oggetto: g('ogg').value.trim()||null,
+    testo: g('testo').value.trim()||null,
+    presenti: g('pres').value.trim()||null,
     dati_extra: datiExtra,
     created_by: currentUser.id
   });
   if(error){ alert(error.message); return; }
   // Annotazione automatica sul giornale
   const tipoL = {consegna_lavori:'Consegna lavori',consegna_parziale:'Consegna parziale lavori',sopralluogo:'Sopralluogo',sopralluogo_periodico:'Sopralluogo periodico',verifica_ods:'Verifica adempimento OdS',constatazione:'Constatazione',constatazione_stato_luoghi:'Constatazione stato dei luoghi',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',certificato_ultimazione:'Certificato di ultimazione lavori',certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare',riconsegna_anticipata:'Presa in consegna anticipata delle opere',collaudo_statico:'Verbale di visita di collaudo statico',certificato_collaudo_statico:'Certificato di collaudo statico',relazione_struttura_ultimata:'Relazione a struttura ultimata',altro:'Verbale'};
-  const ogg = document.getElementById('nv2_ogg').value.trim();
+  const ogg = g('ogg').value.trim();
   await annotaGiornale(data, `[VERBALE ${(tipoL[tipo]||tipo).toUpperCase()}]${ogg?' — '+ogg:''}`);
   closeModal();
   showView('verbali');
 }
 
-async function openModalEditVerbale(id){
+// duplica=true: stesso modulo precompilato con tutti i dati del verbale di
+// partenza (campi strutturati compresi), ma data di oggi, numero da
+// assegnare, nessuna firma, e il salvataggio crea un nuovo verbale.
+async function openModalEditVerbale(id, duplica){
   const {data:v} = await sb.from('verbali').select('*').eq('id',id).single();
   if(!v) return;
   const dx = v.dati_extra || {};
@@ -2865,7 +2872,8 @@ async function openModalEditVerbale(id){
     legale_rappresentante: dx.legale_rappresentante || (team.dt_impresa && team.dt_impresa.nome) || ''
   });
   const presentiValue = v.presenti || formatPresentiFromTeam(team);
-  openModal('Modifica Verbale', `
+  openModal(duplica ? 'Duplica Verbale' : 'Modifica Verbale', `
+    ${duplica ? `<div class="alert alert-info" style="font-size:12px">Copia del verbale${v.numero?' n. '+esc(v.numero):''} del ${fmt(v.data)}: modifica ciò che cambia e salva. Verrà creato un <strong>nuovo</strong> verbale; quello originale e le sue firme restano invariati.</div>` : ''}
     <div class="form-grid">
       <div class="form-group">
         <label class="form-label">Tipo verbale</label>
@@ -2890,11 +2898,11 @@ async function openModalEditVerbale(id){
       </div>
       <div class="form-group">
         <label class="form-label">Data</label>
-        <input class="form-control" type="date" id="ev2_data" value="${v.data||''}">
+        <input class="form-control" type="date" id="ev2_data" value="${duplica ? today() : (v.data||'')}">
       </div>
       <div class="form-group">
         <label class="form-label">N. verbale</label>
-        <input class="form-control" id="ev2_num" value="${esc(v.numero||'')}">
+        <input class="form-control" id="ev2_num" value="${duplica ? '' : esc(v.numero||'')}"${duplica && v.numero ? ` placeholder="precedente: ${esc(v.numero)}"` : ''}>
       </div>
       <div class="form-group">
         <label class="form-label">Redattore</label>
@@ -2927,7 +2935,9 @@ async function openModalEditVerbale(id){
     ${extraFieldsRSUHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
-      <button class="btn btn-primary" onclick="salvaEditVerbale('${id}')">Salva</button>
+      ${duplica
+        ? `<button class="btn btn-primary" onclick="salvaVerbale('ev2')">Salva come nuovo verbale</button>`
+        : `<button class="btn btn-primary" onclick="salvaEditVerbale('${id}')">Salva</button>`}
     </div>`);
   toggleVerbaleExtra('ev2');
 }
