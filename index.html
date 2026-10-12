@@ -291,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.07b';
+const APP_VERSIONE = '2026.10.12a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -1378,7 +1378,10 @@ async function renderSospensioni(){
   html += riepilogoCalcoloFine(c, sosp||[], varSosp||[]);
 
   // Verifica se c'è una sospensione aperta (senza ripresa)
-  const sospAperta = (sosp||[]).find(s=>s.tipo==='sospensione' && !s.data_ripresa);
+  // Le proroghe hanno ancora il campo legacy tipo='sospensione' e nessuna data
+  // di ripresa: va guardato tipo_evento, altrimenti una proroga risulterebbe
+  // una sospensione aperta (lavori fermi) mentre il cantiere prosegue.
+  const sospAperta = (sosp||[]).find(s=>(s.tipo_evento||'sospensione')==='sospensione' && !s.data_ripresa);
 
   if(sospAperta && can('write')){
     html += `<div class="alert alert-warning" style="margin-bottom:16px">
@@ -1749,9 +1752,11 @@ async function salvaSospensione(){
   if(!data||!motivo){ alert('Data e motivo obbligatori'); return; }
 
   // Verifica che non ci sia già una sospensione aperta
-  const {data:aperta} = await sb.from('sospensioni')
-    .select('id').eq('cantiere_id',currentCantiere).eq('tipo','sospensione').is('data_ripresa',null);
-  if(aperta&&aperta.length){ alert('Esiste già una sospensione aperta. Registra prima la ripresa lavori.'); return; }
+  const {data:senzaRipresa} = await sb.from('sospensioni')
+    .select('id,tipo_evento').eq('cantiere_id',currentCantiere).is('data_ripresa',null);
+  // le proroghe non hanno mai una ripresa: non contano come sospensioni aperte
+  const aperta = (senzaRipresa||[]).filter(x=>(x.tipo_evento||'sospensione')==='sospensione');
+  if(aperta.length){ alert('Esiste già una sospensione aperta. Registra prima la ripresa lavori.'); return; }
 
   const impSospeso = tipoSosp==='parziale' ? parseFloat(document.getElementById('ns_imp_sospeso')?.value)||null : null;
   const impTotale  = tipoSosp==='parziale' ? parseFloat(document.getElementById('ns_imp_totale')?.value)||null  : null;
@@ -10925,8 +10930,9 @@ async function visualizzaVerbaleSospensione(sospId, tipoVerbale){
 
     let progressivo = '';
     try{
-      const {data:tutte} = await sb.from('sospensioni').select('id,data').eq('cantiere_id',s.cantiere_id).order('data',{ascending:true});
-      const idx = (tutte||[]).findIndex(x=>x.id===s.id);
+      const {data:tutte} = await sb.from('sospensioni').select('id,data,tipo_evento').eq('cantiere_id',s.cantiere_id).order('data',{ascending:true});
+      // numerazione dei soli verbali di sospensione: le proroghe non ne fanno parte
+      const idx = (tutte||[]).filter(x=>(x.tipo_evento||'sospensione')==='sospensione').findIndex(x=>x.id===s.id);
       if(idx>=0) progressivo = String(idx+1).padStart(2,'0');
     }catch(eP){ console.error('progressivo', eP); }
     const dataDoc = isRipresa ? (s.data_ripresa||s.data) : s.data;
@@ -11146,8 +11152,9 @@ async function generaVerbaleSospensionePDF(sospId, tipoVerbale){
     // progressivo nn per VSLnn/VRLnn: posizione cronologica della sospensione nel cantiere
     let progressivo = '';
     try{
-      const {data:tutte} = await sb.from('sospensioni').select('id,data').eq('cantiere_id',s.cantiere_id).order('data',{ascending:true});
-      const idx = (tutte||[]).findIndex(x=>x.id===s.id);
+      const {data:tutte} = await sb.from('sospensioni').select('id,data,tipo_evento').eq('cantiere_id',s.cantiere_id).order('data',{ascending:true});
+      // numerazione dei soli verbali di sospensione: le proroghe non ne fanno parte
+      const idx = (tutte||[]).filter(x=>(x.tipo_evento||'sospensione')==='sospensione').findIndex(x=>x.id===s.id);
       if(idx>=0) progressivo = String(idx+1).padStart(2,'0');
     }catch(eProg){ console.error('progressivo sospensione', eProg); }
     const dataDocSosp = isRipresa ? (s.data_ripresa||today()) : s.data;
