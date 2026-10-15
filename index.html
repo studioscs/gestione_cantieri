@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.17a';
+const APP_VERSIONE = '2026.10.17b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -2692,8 +2692,13 @@ const MAT_STATI = {
   richiesta:     {l:'Richiesta presentata',cls:'badge-yellow'},
   accettata:     {l:'Accettata',           cls:'badge-green'},
   rifiutata:     {l:'Rifiutata',           cls:'badge-red'},
+  integrazione:  {l:'Respinta con integrazioni', cls:'badge-red'},
   non_pertinente:{l:'Non pertinente',      cls:'badge-grey'}
 };
+// Stati che chiudono una richiesta con un esito (data esito, verbale)
+const MAT_STATI_ESITO = ['accettata','rifiutata','integrazione'];
+// Esiti negativi: generano in automatico la richiesta successiva
+const MAT_STATI_RESPINTI = ['rifiutata','integrazione'];
 const MAT_DOCUMENTI = ['Scheda di richiesta','DoP','Marcatura CE','Scheda tecnica','Scheda di sicurezza','EPD','Conformità CAM','Certificati / attestati','Campione'];
 
 let MAT_NASCONDI_NP = true; // nasconde le voci "Non pertinente"
@@ -2746,7 +2751,8 @@ async function renderMateriali(){
   <div class="alert alert-info" style="font-size:12px">
     Imposta lo stato di ogni materiale dal menu a tendina: le date compaiono in base allo stato e si salvano subito.
     Per lo stesso materiale usato in più versioni (es. tre calcestruzzi diversi) usa <strong>📋 Duplica</strong> e indica le specifiche di ciascuno.
-    Se un materiale viene <strong>rifiutato</strong>, sotto compare in automatico la voce per la richiesta successiva.
+    Se un materiale viene <strong>rifiutato</strong> o <strong>respinto con richiesta di integrazioni</strong>, sotto compare in automatico la voce per la richiesta successiva.
+    Con <strong>📄 Verbale</strong> generi il verbale di esame della documentazione da firmare.
   </div>`;
   // selezione: si scartano gli id non piu' presenti (voci eliminate)
   [...MAT_SELEZIONE].forEach(id=>{ if(!righe.some(r=>r.id===id)) MAT_SELEZIONE.delete(id); });
@@ -2786,8 +2792,8 @@ async function renderMateriali(){
 function materialeRigaHtml(r){
   const st = r.stato || 'da_richiedere';
   const ro = can('write') ? '' : 'disabled';
-  const mostraRich = ['richiesta','accettata','rifiutata'].includes(st);
-  const mostraEsito = ['accettata','rifiutata'].includes(st);
+  const mostraRich = ['richiesta'].concat(MAT_STATI_ESITO).includes(st);
+  const mostraEsito = MAT_STATI_ESITO.includes(st);
   const docs = (r.documenti||[]);
   const n = r.tentativo || 1;
   const stileRiga = [st==='non_pertinente'?'opacity:.55':'', n>1?'background:#FAFBFD':''].filter(Boolean).join(';');
@@ -2808,6 +2814,7 @@ function materialeRigaHtml(r){
     <td>${mostraRich?`<input type="date" class="form-control" style="font-size:12px;padding:3px 4px" ${ro} value="${esc(r.data_richiesta||'')}" onchange="materialeSalvaCampo('${r.id}','data_richiesta',this.value)">`:'<span style="color:var(--muted)">—</span>'}</td>
     <td>${mostraEsito?`<input type="date" class="form-control" style="font-size:12px;padding:3px 4px" ${ro} value="${esc(r.data_esito||'')}" onchange="materialeSalvaCampo('${r.id}','data_esito',this.value)">`:'<span style="color:var(--muted)">—</span>'}</td>
     <td style="text-align:right;white-space:nowrap">
+      ${mostraEsito?`<button class="btn btn-secondary btn-sm" title="Verbale di esame della documentazione" onclick="apriVerbaleMateriale('${r.id}', ${can('write')?'false':'true'})">📄 Verbale${r.pdf_generato_at?' ✓':''}</button>`:''}
       ${can('write')?`<button class="btn btn-secondary btn-sm" title="Specifiche, documenti e note" onclick="openModalMateriale('${r.id}')">✏️</button>
       <button class="btn btn-secondary btn-sm" title="Duplica (es. un altro calcestruzzo)" onclick="duplicaMateriale('${r.id}')">📋</button>
       <button class="btn btn-danger btn-sm" title="Elimina" onclick="eliminaMateriale('${r.id}')">🗑️</button>`:''}
@@ -2822,13 +2829,13 @@ async function impostaStatoMateriale(id, stato){
   const {data:r, error:e0} = await sb.from('accettazione_materiali').select('*').eq('id',id).single();
   if(e0 || !r) return e0 || new Error('Voce non trovata');
   const upd = {stato};
-  if(['richiesta','accettata','rifiutata'].includes(stato) && !r.data_richiesta) upd.data_richiesta = today();
-  if(['accettata','rifiutata'].includes(stato) && !r.data_esito) upd.data_esito = today();
+  if(['richiesta'].concat(MAT_STATI_ESITO).includes(stato) && !r.data_richiesta) upd.data_richiesta = today();
+  if(MAT_STATI_ESITO.includes(stato) && !r.data_esito) upd.data_esito = today();
   if(stato==='richiesta') upd.data_esito = null;
   if(stato==='da_richiedere' || stato==='non_pertinente'){ upd.data_richiesta = null; upd.data_esito = null; }
   const {error} = await sb.from('accettazione_materiali').update(upd).eq('id',id);
   if(error) return error;
-  if(stato==='rifiutata'){
+  if(MAT_STATI_RESPINTI.includes(stato)){
     const {data:succ} = await sb.from('accettazione_materiali').select('id').eq('origine_id', id);
     if(!succ || !succ.length){
       const ins = await sb.from('accettazione_materiali').insert({
@@ -2919,7 +2926,7 @@ async function openModalMateriale(id){
         <input class="form-control" type="date" id="mt_drich" value="${esc(r.data_richiesta||'')}">
       </div>
       <div class="form-group">
-        <label class="form-label">Esito (accettazione / rifiuto) il</label>
+        <label class="form-label">Esito (accettazione / rifiuto / integrazioni) il</label>
         <input class="form-control" type="date" id="mt_desito" value="${esc(r.data_esito||'')}">
       </div>
       <div class="form-group span-2">
@@ -2930,6 +2937,7 @@ async function openModalMateriale(id){
       </div>
       <div class="form-group span-2">
         <label class="form-label">Note</label>
+        <div class="form-hint" style="font-size:11px">Riportate nel verbale: motivi del rifiuto, integrazioni richieste o prescrizioni per l'impiego</div>
         <textarea class="form-control" id="mt_note" rows="3" placeholder="Es. motivi del rifiuto, prescrizioni, integrazioni richieste…">${esc(r.note||'')}</textarea>
       </div>
     </div>
@@ -2978,6 +2986,86 @@ async function eliminaMateriale(id){
   const {error} = await sb.from('accettazione_materiali').delete().eq('id',id);
   if(error){ alert(error.message); return; }
   showView('materiali');
+}
+
+// ---- Verbale di esame della documentazione e accettazione del materiale ----
+// Esiti: accettata / rifiutata / respinta con richiesta di integrazioni.
+// Si firma come gli altri verbali; le firme si registrano sulla voce del registro.
+async function apriVerbaleMateriale(id, solaLettura){
+  const w = window.open('about:blank', '_blank');
+  if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per generare il documento.'); return; }
+  try{
+    const {data:r, error} = await sb.from('accettazione_materiali').select('*').eq('id',id).single();
+    if(error) throw error;
+    if(!r){ w.close(); return; }
+    const c = getCantiereObj(r.cantiere_id);
+    const team = await getTeamRoster(r.cantiere_id);
+    const dlNome = (team.dl && team.dl.nome) || '';
+    const imprNome = (team.dt_impresa && team.dt_impresa.nome) || '';
+    const docs = r.documenti || [];
+    const n = r.tentativo || 1;
+    const esito = r.stato;
+
+    let h = '<p>L&rsquo;impresa esecutrice'+(c?.impresa ? ' <strong>'+esc(c.impresa)+'</strong>' : '')
+      + (r.data_richiesta ? ', in data <strong>'+fmt(r.data_richiesta)+'</strong>,' : '')
+      + ' ha presentato '+(n>1 ? 'la '+n+'&ordf; richiesta' : 'richiesta')+' di accettazione del seguente materiale:</p>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 10px">'
+      + '<tr><td style="border:1px solid #999;padding:5px;width:28%;font-weight:700">Categoria</td><td style="border:1px solid #999;padding:5px">'+esc(r.categoria||'')+'</td></tr>'
+      + '<tr><td style="border:1px solid #999;padding:5px;font-weight:700">Materiale</td><td style="border:1px solid #999;padding:5px">'+esc(r.materiale||'')+'</td></tr>'
+      + (r.specifiche ? '<tr><td style="border:1px solid #999;padding:5px;font-weight:700">Specifiche (produttore, prodotto, prestazioni, impiego)</td><td style="border:1px solid #999;padding:5px;white-space:pre-wrap">'+esc(r.specifiche)+'</td></tr>' : '')
+      + '</table>';
+    h += '<p>corredata della seguente documentazione:</p>';
+    h += docs.length ? '<ul>'+docs.map(d=>'<li>'+esc(d)+'</li>').join('')+'</ul>' : '<p><em>Documentazione non specificata.</em></p>';
+
+    h += '<p>Il sottoscritto Direttore dei Lavori'+(dlNome?' <strong>'+esc(dlNome)+'</strong>':'')
+      + ', esaminata la documentazione presentata e verificatane la rispondenza alle prescrizioni del progetto, del capitolato speciale d&rsquo;appalto '
+      + 'e della normativa vigente (D.Lgs. 36/2023, Allegato II.14; D.M. 17/01/2018, cap. 11, per i materiali e prodotti per uso strutturale'
+      + (docs.includes('EPD')||docs.includes('Conformità CAM') ? '; Criteri Ambientali Minimi, D.M. 23/06/2022' : '')
+      + '),</p>';
+
+    if(esito==='accettata'){
+      h += '<h3 style="text-align:center">ACCETTA</h3>';
+      h += '<p>il materiale sopra descritto per l&rsquo;impiego nell&rsquo;opera in epigrafe.</p>';
+      if(r.note) h += '<p>Con le seguenti prescrizioni:</p>'+paraP(r.note);
+      h += '<p>L&rsquo;accettazione non esonera l&rsquo;impresa dalla responsabilit&agrave; per la qualit&agrave; dei materiali forniti e posti in opera; '
+        + 'restano fermi i controlli di accettazione in cantiere previsti dalla normativa e la facolt&agrave; della Direzione dei Lavori di rifiutare '
+        + 'in qualunque momento i materiali che risultassero deperiti o non conformi, anche dopo la loro introduzione in cantiere.</p>';
+    } else if(esito==='integrazione'){
+      h += '<h3 style="text-align:center">NON ACCETTA ALLO STATO DEGLI ATTI</h3>';
+      h += '<p>il materiale sopra descritto e <strong>richiede all&rsquo;impresa le seguenti integrazioni</strong> alla documentazione presentata:</p>';
+      h += r.note ? paraP(r.note) : '<p>______________________________________________</p>';
+      h += '<p>Il materiale non potr&agrave; essere posto in opera fino alla presentazione delle integrazioni richieste e alla conseguente accettazione da parte della Direzione dei Lavori.</p>';
+    } else {
+      h += '<h3 style="text-align:center">RIFIUTA</h3>';
+      h += '<p>il materiale sopra descritto per i seguenti motivi:</p>';
+      h += r.note ? paraP(r.note) : '<p>______________________________________________</p>';
+      h += '<p>L&rsquo;impresa dovr&agrave; sottoporre all&rsquo;accettazione della Direzione dei Lavori un materiale conforme alle prescrizioni contrattuali. '
+        + 'Il materiale rifiutato non potr&agrave; essere impiegato nell&rsquo;opera e, se gi&agrave; presente in cantiere, dovr&agrave; esserne allontanato a cura e spese dell&rsquo;impresa.</p>';
+    }
+
+    const firmeDefault = [{nome:dlNome, ruolo:'Il Direttore dei Lavori'},{nome:imprNome, ruolo:"Per l'Impresa, per presa visione"}];
+    const dataDoc = r.data_esito || today();
+    apriDocumentoFirmabile({
+      titolo: 'Verbale di esame della documentazione e accettazione del materiale',
+      normativa: 'D.Lgs. 36/2023 All. II.14 &mdash; D.M. 17/01/2018 cap. 11',
+      comune: comuneCantiere(c), provincia: '',
+      metaRows: [['LAVORI', esc(c?.descrizione||c?.nome||'')],['COMMITTENTE', esc(c?.stazione_appaltante||'')],['IMPRESA', esc(c?.impresa||'')], rigaContratto(c)],
+      corpoHtml: h,
+      luogo: comuneCantiere(c) || c?.nome || '',
+      dataDoc: dataDoc,
+      fileName: nomeFileVerbale(c, dataDoc, 'VER_ACC_MAT', n>1 ? 'R'+n : null) + '_' + sanitizzaNomeFile((r.materiale||'').slice(0,40)),
+      firmatari: (solaLettura && r.firmatari && r.firmatari.length) ? r.firmatari : (r.firmatari && r.firmatari.length ? r.firmatari : firmeDefault),
+      solaLettura: !!solaLettura,
+      dataGenerazione: r.pdf_generato_at || null,
+      recordTable: 'accettazione_materiali',
+      recordId: r.id,
+      existingWindow: w
+    });
+  }catch(e){
+    console.error('apriVerbaleMateriale', e);
+    try{ w.close(); }catch(e2){}
+    alert('Errore nella generazione del verbale: '+(e?.message||e));
+  }
 }
 
 // Registro stampabile/firmabile con tutte le voci pertinenti
