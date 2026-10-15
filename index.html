@@ -292,7 +292,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.16a';
+const APP_VERSIONE = '2026.10.16b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -2887,15 +2887,19 @@ async function openModalMateriale(id){
     if(!data) return;
     r = data;
   }
+  // categorie standard + quelle create a mano in questo cantiere
   const cats = MATERIALI_STANDARD.map(g=>g.cat);
-  if(r.categoria && !cats.includes(r.categoria)) cats.push(r.categoria);
+  const {data:esist} = await sb.from('accettazione_materiali').select('categoria').eq('cantiere_id',currentCantiere);
+  (esist||[]).map(x=>x.categoria).concat([r.categoria]).forEach(c=>{ if(c && !cats.includes(c)) cats.push(c); });
   openModal(id ? 'Materiale — specifiche e note' : 'Aggiungi materiale', `
     <div class="form-grid">
       <div class="form-group">
         <label class="form-label">Categoria</label>
-        <input class="form-control" id="mt_cat" list="mt_cat_list" value="${esc(r.categoria||'')}">
-        <datalist id="mt_cat_list">${cats.map(c=>`<option value="${esc(c)}">`).join('')}<option value="Altro"></datalist>
-        <div class="form-hint" style="font-size:11px">Scegli dall'elenco o scrivi una categoria nuova</div>
+        <select class="form-control" id="mt_cat_sel" onchange="document.getElementById('mt_cat_altra').style.display=this.value==='__altra__'?'block':'none'">
+          ${cats.map(c=>`<option value="${esc(c)}"${r.categoria===c?' selected':''}>${esc(c)}</option>`).join('')}
+          <option value="__altra__">Altra categoria…</option>
+        </select>
+        <input class="form-control" id="mt_cat_altra" style="display:none;margin-top:6px" placeholder="Nome della nuova categoria">
       </div>
       <div class="form-group">
         <label class="form-label">Materiale *</label>
@@ -2939,7 +2943,7 @@ async function salvaMateriale(id){
   const materiale = g('mt_nome');
   if(!materiale){ alert('Indica il materiale'); return; }
   const rec = {
-    categoria: g('mt_cat') || 'Altro',
+    categoria: (g('mt_cat_sel')==='__altra__' ? g('mt_cat_altra') : g('mt_cat_sel')) || 'Altro',
     materiale,
     specifiche: g('mt_spec') || null,
     stato: g('mt_stato') || 'da_richiedere',
