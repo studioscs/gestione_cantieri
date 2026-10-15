@@ -260,6 +260,7 @@ textarea.form-control{resize:vertical;min-height:80px}
         <div class="nav-item" onclick="showView('liste')" data-view="liste"><span class="nav-icon">📅</span> Liste settimanali</div>
         <div class="nav-item" onclick="showView('verbali')" data-view="verbali"><span class="nav-icon">📋</span> Verbali / RSU / Collaudo</div>
         <div class="nav-item" onclick="showView('prelievi')" data-view="prelievi"><span class="nav-icon">🧪</span> Verbali prelievo strutture</div>
+        <div class="nav-item" onclick="showView('materiali')" data-view="materiali"><span class="nav-icon">🧱</span> Accettazione materiali</div>
         <div class="nav-item" onclick="showView('sal')" data-view="sal"><span class="nav-icon">💶</span> SAL</div>
         <div class="nav-item" onclick="showView('sospensioni')" data-view="sospensioni"><span class="nav-icon">⏸️</span> Sosp. e Proroghe</div>
         <div class="nav-item" onclick="showView('varianti')" data-view="varianti"><span class="nav-icon">📝</span> Varianti</div>
@@ -291,7 +292,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.15a';
+const APP_VERSIONE = '2026.10.15b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -588,7 +589,7 @@ async function showView(view){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active', el.dataset.view===view));
   const main = document.getElementById('mainContent');
   main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  const views = {dashboard:renderDashboard,cantieri:renderCantieri,fasi:renderFasi,sospensioni:renderSospensioni,varianti:renderVarianti,giornale:renderGiornale,ods:renderODS,comunicazioni:renderComunicazioni,verbali:renderVerbali,prelievi:renderPrelievi,liste:renderListe,sal:renderSAL,ditte:renderDitte,team:renderTeam,report:renderReport,studio:renderStudio};
+  const views = {dashboard:renderDashboard,cantieri:renderCantieri,fasi:renderFasi,sospensioni:renderSospensioni,varianti:renderVarianti,giornale:renderGiornale,ods:renderODS,comunicazioni:renderComunicazioni,verbali:renderVerbali,prelievi:renderPrelievi,materiali:renderMateriali,liste:renderListe,sal:renderSAL,ditte:renderDitte,team:renderTeam,report:renderReport,studio:renderStudio};
   try {
     const out = await views[view]();
     if(myToken !== _viewToken) return; // nel frattempo e' partita una navigazione piu' recente: non sovrascrivere
@@ -2638,6 +2639,316 @@ async function salvaStudiIntestazione(){
 
 
 // ============================================================
+// ACCETTAZIONE MATERIALI
+// ------------------------------------------------------------
+// Registro delle richieste di accettazione materiali presentate
+// dall'impresa (scheda + DoP, marcatura CE, schede tecniche, EPD/CAM...)
+// e dell'esito dato dalla Direzione Lavori. Al primo accesso il
+// registro del cantiere viene precompilato con l'elenco standard dei
+// materiali da costruzione; ogni voce si può completare, duplicare
+// (es. tre calcestruzzi diversi), eliminare, o aggiungere liberamente.
+// ============================================================
+const MATERIALI_STANDARD = [
+  {cat:'Strutture', voci:[
+    'Calcestruzzo preconfezionato per strutture','Calcestruzzo per magroni e sottofondazioni',
+    'Acciaio per c.a. in barre (B450C)','Reti e tralicci elettrosaldati',
+    'Acciaio per carpenteria metallica (profilati, lamiere)','Bulloneria strutturale',
+    'Elementi prefabbricati in c.a. / c.a.p.','Solai (travetti, pignatte, predalles, lastre)',
+    'Legno strutturale (massiccio, lamellare, X-lam)','Ancoranti strutturali chimici e meccanici',
+    'Malte strutturali e da ripristino (R3/R4)','Compositi FRP',
+    'Compositi FRCM / CRM','Blocchi per murature portanti (laterizio, cls)',
+    'Malte per muratura','Pali, micropali e tiranti',
+    'Appoggi strutturali e dispositivi antisismici']},
+  {cat:'Scavi, fondazioni e impermeabilizzazioni', voci:[
+    'Misto granulare e stabilizzato','Inerti per riempimenti e drenaggi',
+    'Geotessili e geomembrane','Membrane bituminose impermeabilizzanti',
+    'Impermeabilizzanti cementizi e liquidi','Barriere al vapore e membrane traspiranti']},
+  {cat:'Involucro, coperture e finiture', voci:[
+    'Isolanti termici (EPS, XPS, lana minerale, fibra di legno)','Sistema a cappotto (ETICS)',
+    'Isolanti acustici','Intonaci e rasanti','Massetti e sottofondi',
+    'Pavimenti (ceramica, gres, resilienti, legno)','Rivestimenti',
+    'Adesivi e sigillanti','Pitture e vernici','Controsoffitti',
+    'Pareti e contropareti a secco (cartongesso)','Manti di copertura (tegole, coppi, lamiere, pannelli)',
+    'Lattonerie e pluviali','Serramenti esterni','Vetri e vetrate',
+    'Porte interne','Porte e chiusure tagliafuoco (REI/EI)','Opere in ferro (ringhiere, parapetti, grigliati)',
+    'Pietre naturali, soglie e davanzali','Protezione passiva al fuoco (intumescenti, sigillature)']},
+  {cat:'Impianti', voci:[
+    'Tubazioni idriche e di scarico','Apparecchi sanitari e rubinetterie',
+    'Generatori di calore e pompe di calore','Terminali di impianto (radiatori, pannelli radianti, fan-coil)',
+    'Ventilazione meccanica e canalizzazioni','Isolanti per tubazioni e canali',
+    'Impianto solare termico e fotovoltaico','Quadri elettrici e componenti',
+    'Cavi e conduttori elettrici','Corpi illuminanti',
+    'Impianti speciali (rivelazione incendi, antintrusione, dati)','Impianto antincendio (idranti, estintori, sprinkler)',
+    'Ascensori e piattaforme elevatrici']},
+  {cat:'Opere esterne', voci:[
+    'Conglomerati bituminosi','Cordoli, pozzetti e chiusini',
+    'Pavimentazioni esterne (masselli, autobloccanti)','Tubazioni fognarie',
+    'Recinzioni e cancelli','Segnaletica']}
+];
+
+const MAT_STATI = {
+  da_richiedere: {l:'Da richiedere',       cls:'badge-grey'},
+  richiesta:     {l:'Richiesta presentata',cls:'badge-yellow'},
+  accettata:     {l:'Accettata',           cls:'badge-green'},
+  rifiutata:     {l:'Rifiutata',           cls:'badge-red'},
+  non_pertinente:{l:'Non pertinente',      cls:'badge-grey'}
+};
+const MAT_DOCUMENTI = ['Scheda di richiesta','DoP','Marcatura CE','Scheda tecnica','Scheda di sicurezza','EPD','Conformità CAM','Certificati / attestati','Campione'];
+
+let MAT_NASCONDI_NP = true; // nasconde le voci "Non pertinente"
+
+async function renderMateriali(){
+  if(!currentCantiere) return noCantiere();
+  const c = getCantiereObj();
+  let html = `<div class="section-header">
+    <div>
+      <div class="page-title">Accettazione materiali</div>
+      <div class="page-subtitle">${esc(c?.nome||'')} — richieste di accettazione dell'impresa ed esito della Direzione Lavori</div>
+    </div>
+    <div class="btn-group">
+      ${can('write')?`<button class="btn btn-primary" onclick="openModalMateriale()">+ Aggiungi materiale</button>`:''}
+      <button class="btn btn-secondary" onclick="stampaRegistroMateriali()">🖨️ Stampa registro</button>
+    </div>
+  </div>`;
+
+  let {data:righe, error} = await sb.from('accettazione_materiali').select('*').eq('cantiere_id',currentCantiere)
+    .order('categoria').order('ordine').order('created_at');
+  if(error){
+    return html + `<div class="alert alert-error">Impossibile caricare il registro: ${esc(error.message)}.<br>
+      Se la tabella non esiste ancora, esegui la migrazione <code>sql/2026-10-15-accettazione-materiali.sql</code> su Supabase.</div>`;
+  }
+
+  // Primo accesso: si precompila il registro con l'elenco standard
+  if(!righe.length && can('write')){
+    const nuove = [];
+    MATERIALI_STANDARD.forEach(g=>g.voci.forEach((m,i)=>nuove.push({
+      cantiere_id: currentCantiere, categoria: g.cat, materiale: m, ordine: (i+1)*10,
+      stato: 'da_richiedere', created_by: currentUser.id
+    })));
+    const ins = await sb.from('accettazione_materiali').insert(nuove).select('*');
+    if(ins.error) return html + `<div class="alert alert-error">Errore nella creazione dell'elenco materiali: ${esc(ins.error.message)}</div>`;
+    righe = ins.data || [];
+  }
+  if(!righe.length){
+    return html + `<div class="empty"><div class="empty-icon">🧱</div><h3>Registro non ancora avviato</h3><p>Il registro viene creato dalla Direzione Lavori.</p></div>`;
+  }
+
+  // riepilogo
+  const conta = {}; Object.keys(MAT_STATI).forEach(k=>conta[k]=0);
+  righe.forEach(r=>{ conta[r.stato||'da_richiedere'] = (conta[r.stato||'da_richiedere']||0)+1; });
+  html += `<div class="card" style="padding:12px 16px;margin-bottom:14px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+    ${Object.keys(MAT_STATI).map(k=>`<span class="badge ${MAT_STATI[k].cls}">${MAT_STATI[k].l}: ${conta[k]||0}</span>`).join('')}
+    <label style="margin-left:auto;font-size:12px;cursor:pointer"><input type="checkbox" ${MAT_NASCONDI_NP?'checked':''}
+      onchange="MAT_NASCONDI_NP=this.checked;showView('materiali')"> Nascondi i non pertinenti</label>
+  </div>
+  <div class="alert alert-info" style="font-size:12px">
+    Imposta lo stato di ogni materiale dal menu a tendina: le date compaiono in base allo stato e si salvano subito.
+    Per lo stesso materiale usato in più versioni (es. tre calcestruzzi diversi) usa <strong>📋 Duplica</strong> e indica le specifiche di ciascuno.
+  </div>`;
+
+  const perCat = {};
+  righe.forEach(r=>{ (perCat[r.categoria||'Altro'] = perCat[r.categoria||'Altro'] || []).push(r); });
+  const ordineCat = MATERIALI_STANDARD.map(g=>g.cat).concat(Object.keys(perCat).filter(k=>!MATERIALI_STANDARD.some(g=>g.cat===k)));
+
+  ordineCat.forEach(cat=>{
+    const lista = (perCat[cat]||[]).filter(r=>!(MAT_NASCONDI_NP && r.stato==='non_pertinente'));
+    if(!lista.length) return;
+    html += `<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+      <div style="padding:9px 14px;background:var(--surface);font-size:12px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em">${esc(cat)}</div>
+      <table><thead><tr>
+        <th>Materiale e specifiche</th><th style="width:190px">Stato</th><th style="width:150px">Richiesta il</th><th style="width:150px">Esito il</th><th style="width:150px;text-align:right">Azioni</th>
+      </tr></thead><tbody>`;
+    lista.forEach(r=>{ html += materialeRigaHtml(r); });
+    html += `</tbody></table></div>`;
+  });
+  return html;
+}
+
+function materialeRigaHtml(r){
+  const st = r.stato || 'da_richiedere';
+  const ro = can('write') ? '' : 'disabled';
+  const mostraRich = ['richiesta','accettata','rifiutata'].includes(st);
+  const mostraEsito = ['accettata','rifiutata'].includes(st);
+  const docs = (r.documenti||[]);
+  return `<tr${st==='non_pertinente'?' style="opacity:.55"':''}>
+    <td style="font-size:12px">
+      <strong>${esc(r.materiale||'')}</strong>
+      ${r.specifiche?`<div style="color:var(--muted);margin-top:2px;white-space:pre-wrap">${esc(r.specifiche)}</div>`:''}
+      ${docs.length?`<div style="margin-top:4px;font-size:10.5px;color:var(--primary)">📎 ${docs.map(esc).join(' · ')}</div>`:''}
+      ${r.note?`<div style="margin-top:4px;padding:4px 7px;background:#FFF8E1;border-left:2px solid #FFC107;font-size:11px;white-space:pre-wrap">${esc(r.note)}</div>`:''}
+    </td>
+    <td>
+      <select class="form-control" style="font-size:12px;padding:4px" ${ro} onchange="materialeCambiaStato('${r.id}', this.value)">
+        ${Object.keys(MAT_STATI).map(k=>`<option value="${k}"${st===k?' selected':''}>${MAT_STATI[k].l}</option>`).join('')}
+      </select>
+    </td>
+    <td>${mostraRich?`<input type="date" class="form-control" style="font-size:12px;padding:3px 4px" ${ro} value="${esc(r.data_richiesta||'')}" onchange="materialeSalvaCampo('${r.id}','data_richiesta',this.value)">`:'<span style="color:var(--muted)">—</span>'}</td>
+    <td>${mostraEsito?`<input type="date" class="form-control" style="font-size:12px;padding:3px 4px" ${ro} value="${esc(r.data_esito||'')}" onchange="materialeSalvaCampo('${r.id}','data_esito',this.value)">`:'<span style="color:var(--muted)">—</span>'}</td>
+    <td style="text-align:right;white-space:nowrap">
+      ${can('write')?`<button class="btn btn-secondary btn-sm" title="Specifiche, documenti e note" onclick="openModalMateriale('${r.id}')">✏️</button>
+      <button class="btn btn-secondary btn-sm" title="Duplica (es. un altro calcestruzzo)" onclick="duplicaMateriale('${r.id}')">📋</button>
+      <button class="btn btn-danger btn-sm" title="Elimina" onclick="eliminaMateriale('${r.id}')">🗑️</button>`:''}
+    </td>
+  </tr>`;
+}
+
+// Cambio stato dal menu a tendina: alla prima impostazione propone la data di oggi
+async function materialeCambiaStato(id, stato){
+  const {data:r} = await sb.from('accettazione_materiali').select('data_richiesta,data_esito').eq('id',id).single();
+  const upd = {stato};
+  if(['richiesta','accettata','rifiutata'].includes(stato) && !r?.data_richiesta) upd.data_richiesta = today();
+  if(['accettata','rifiutata'].includes(stato) && !r?.data_esito) upd.data_esito = today();
+  if(stato==='richiesta') upd.data_esito = null;
+  if(stato==='da_richiedere' || stato==='non_pertinente'){ upd.data_richiesta = null; upd.data_esito = null; }
+  const {error} = await sb.from('accettazione_materiali').update(upd).eq('id',id);
+  if(error){ alert(error.message); }
+  showView('materiali');
+}
+
+async function materialeSalvaCampo(id, campo, valore){
+  const {error} = await sb.from('accettazione_materiali').update({[campo]: valore||null}).eq('id',id);
+  if(error){ alert(error.message); showView('materiali'); }
+}
+
+async function openModalMateriale(id){
+  let r = {categoria: MATERIALI_STANDARD[0].cat, stato:'da_richiedere', documenti:[]};
+  if(id){
+    const {data} = await sb.from('accettazione_materiali').select('*').eq('id',id).single();
+    if(!data) return;
+    r = data;
+  }
+  const cats = MATERIALI_STANDARD.map(g=>g.cat);
+  if(r.categoria && !cats.includes(r.categoria)) cats.push(r.categoria);
+  openModal(id ? 'Materiale — specifiche e note' : 'Aggiungi materiale', `
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Categoria</label>
+        <input class="form-control" id="mt_cat" list="mt_cat_list" value="${esc(r.categoria||'')}">
+        <datalist id="mt_cat_list">${cats.map(c=>`<option value="${esc(c)}">`).join('')}<option value="Altro"></datalist>
+        <div class="form-hint" style="font-size:11px">Scegli dall'elenco o scrivi una categoria nuova</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Materiale *</label>
+        <input class="form-control" id="mt_nome" value="${esc(r.materiale||'')}" placeholder="Es. Calcestruzzo C30/37 XC2 per fondazioni">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Specifiche</label>
+        <textarea class="form-control" id="mt_spec" rows="3" placeholder="Produttore, prodotto, classe/prestazioni, impiego in cantiere…">${esc(r.specifiche||'')}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Stato</label>
+        <select class="form-control" id="mt_stato">${Object.keys(MAT_STATI).map(k=>`<option value="${k}"${(r.stato||'da_richiedere')===k?' selected':''}>${MAT_STATI[k].l}</option>`).join('')}</select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Richiesta presentata il</label>
+        <input class="form-control" type="date" id="mt_drich" value="${esc(r.data_richiesta||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Esito (accettazione / rifiuto) il</label>
+        <input class="form-control" type="date" id="mt_desito" value="${esc(r.data_esito||'')}">
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Documentazione presentata dall'impresa</label>
+        <div style="display:flex;flex-wrap:wrap;gap:4px 14px">
+          ${MAT_DOCUMENTI.map(d=>`<label style="font-size:12px;cursor:pointer"><input type="checkbox" class="mt_doc" value="${esc(d)}"${(r.documenti||[]).includes(d)?' checked':''}> ${esc(d)}</label>`).join('')}
+        </div>
+      </div>
+      <div class="form-group span-2">
+        <label class="form-label">Note</label>
+        <textarea class="form-control" id="mt_note" rows="3" placeholder="Es. motivi del rifiuto, prescrizioni, integrazioni richieste…">${esc(r.note||'')}</textarea>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaMateriale(${id?`'${id}'`:'null'})">Salva</button>
+    </div>`);
+}
+
+async function salvaMateriale(id){
+  const g = k => (document.getElementById(k)?.value||'').trim();
+  const materiale = g('mt_nome');
+  if(!materiale){ alert('Indica il materiale'); return; }
+  const rec = {
+    categoria: g('mt_cat') || 'Altro',
+    materiale,
+    specifiche: g('mt_spec') || null,
+    stato: g('mt_stato') || 'da_richiedere',
+    data_richiesta: g('mt_drich') || null,
+    data_esito: g('mt_desito') || null,
+    documenti: [...document.querySelectorAll('.mt_doc')].filter(x=>x.checked).map(x=>x.value),
+    note: g('mt_note') || null
+  };
+  let res;
+  if(id) res = await sb.from('accettazione_materiali').update(rec).eq('id',id);
+  else res = await sb.from('accettazione_materiali').insert(Object.assign(rec,{cantiere_id:currentCantiere, ordine:9999, created_by:currentUser.id}));
+  if(res.error){ alert(res.error.message); return; }
+  closeModal(); showView('materiali');
+}
+
+// Duplica una voce subito sotto all'originale, senza stato ne' date:
+// la copia rappresenta un altro prodotto da sottoporre ad accettazione
+async function duplicaMateriale(id){
+  const {data:r} = await sb.from('accettazione_materiali').select('*').eq('id',id).single();
+  if(!r) return;
+  const {error} = await sb.from('accettazione_materiali').insert({
+    cantiere_id: r.cantiere_id, categoria: r.categoria, materiale: r.materiale + ' (2)',
+    specifiche: r.specifiche, ordine: (r.ordine||0)+1, stato:'da_richiedere', created_by: currentUser.id
+  });
+  if(error){ alert(error.message); return; }
+  showView('materiali');
+}
+
+async function eliminaMateriale(id){
+  if(!confirm('Eliminare questa voce dal registro?\nSe il materiale semplicemente non è usato in questo cantiere, puoi invece impostarlo come "Non pertinente".')) return;
+  const {error} = await sb.from('accettazione_materiali').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  showView('materiali');
+}
+
+// Registro stampabile/firmabile con tutte le voci pertinenti
+async function stampaRegistroMateriali(){
+  const c = getCantiereObj();
+  const {data:righe, error} = await sb.from('accettazione_materiali').select('*').eq('cantiere_id',currentCantiere)
+    .order('categoria').order('ordine').order('created_at');
+  if(error){ alert(error.message); return; }
+  const pert = (righe||[]).filter(r=>r.stato!=='non_pertinente');
+  const b = 'border:1px solid #999;padding:4px 5px;vertical-align:top';
+  let corpo = '<p>Registro delle richieste di accettazione dei materiali presentate dall&rsquo;impresa esecutrice e del relativo esito disposto dalla Direzione dei Lavori.</p>';
+  const ordineCat = MATERIALI_STANDARD.map(g=>g.cat).concat([...new Set(pert.map(r=>r.categoria))].filter(k=>!MATERIALI_STANDARD.some(g=>g.cat===k)));
+  ordineCat.forEach(cat=>{
+    const lista = pert.filter(r=>(r.categoria||'Altro')===cat);
+    if(!lista.length) return;
+    corpo += '<h3>'+esc(cat).toUpperCase()+'</h3>';
+    corpo += '<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr>'
+      + '<th style="'+b+';text-align:left">Materiale e specifiche</th><th style="'+b+'">Documentazione</th>'
+      + '<th style="'+b+'">Richiesta</th><th style="'+b+'">Esito</th><th style="'+b+'">Data esito</th><th style="'+b+';text-align:left">Note</th></tr></thead><tbody>';
+    lista.forEach(r=>{
+      corpo += '<tr><td style="'+b+'"><strong>'+esc(r.materiale||'')+'</strong>'+(r.specifiche?'<br>'+esc(r.specifiche):'')+'</td>'
+        + '<td style="'+b+'">'+esc((r.documenti||[]).join(', '))+'</td>'
+        + '<td style="'+b+';text-align:center">'+(r.data_richiesta?fmt(r.data_richiesta):'')+'</td>'
+        + '<td style="'+b+';text-align:center">'+esc((MAT_STATI[r.stato]||MAT_STATI.da_richiedere).l)+'</td>'
+        + '<td style="'+b+';text-align:center">'+(r.data_esito?fmt(r.data_esito):'')+'</td>'
+        + '<td style="'+b+'">'+esc(r.note||'')+'</td></tr>';
+    });
+    corpo += '</tbody></table>';
+  });
+  const team = await getTeamRoster(currentCantiere);
+  apriDocumentoFirmabile({
+    titolo: 'Registro di accettazione dei materiali',
+    normativa: 'D.M. 17/01/2018 cap. 11 &mdash; D.Lgs. 36/2023 All. II.14',
+    comune: comuneCantiere(c), provincia: '',
+    metaRows: [['LAVORI', esc(c?.descrizione||c?.nome||'')],['COMMITTENTE', esc(c?.stazione_appaltante||'')],['IMPRESA', esc(c?.impresa||'')], rigaContratto(c)],
+    corpoHtml: corpo,
+    luogo: comuneCantiere(c) || c?.nome || '',
+    dataDoc: today(),
+    fileName: nomeFileVerbale(c, today(), 'REG_ACC_MAT'),
+    firmatari: [{nome:(team.dl&&team.dl.nome)||'', ruolo:'Il Direttore dei Lavori'}],
+    solaLettura: false,
+    recordTable: null, recordId: null
+  });
+}
+
+// ============================================================
 // VERBALI
 // ============================================================
 async function renderVerbali(){
@@ -4199,6 +4510,7 @@ function closeModalOverlay(e){
 // (le figlie prima delle madri).
 const TABELLE_CANTIERE = [
   {t:'verbali_prelievo',   label:'verbali di prelievo strutture'},
+  {t:'accettazione_materiali', label:'voci del registro accettazione materiali'},
   {t:'verbali',            label:'verbali'},
   {t:'ods',                label:'ordini di servizio'},
   {t:'comunicazioni',      label:'comunicazioni'},
