@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.17b';
+const APP_VERSIONE = '2026.10.17c';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -3001,7 +3001,6 @@ async function apriVerbaleMateriale(id, solaLettura){
     const c = getCantiereObj(r.cantiere_id);
     const team = await getTeamRoster(r.cantiere_id);
     const dlNome = (team.dl && team.dl.nome) || '';
-    const imprNome = (team.dt_impresa && team.dt_impresa.nome) || '';
     const docs = r.documenti || [];
     const n = r.tentativo || 1;
     const esito = r.stato;
@@ -3043,7 +3042,10 @@ async function apriVerbaleMateriale(id, solaLettura){
         + 'Il materiale rifiutato non potr&agrave; essere impiegato nell&rsquo;opera e, se gi&agrave; presente in cantiere, dovr&agrave; esserne allontanato a cura e spese dell&rsquo;impresa.</p>';
     }
 
-    const firmeDefault = [{nome:dlNome, ruolo:'Il Direttore dei Lavori'},{nome:imprNome, ruolo:"Per l'Impresa, per presa visione"}];
+    // Atto del solo Direttore dei Lavori: non e' prevista la firma dell'impresa
+    const firmeDefault = [{nome:dlNome, ruolo:'Il Direttore dei Lavori'}];
+    // eventuali firme salvate prima di questa regola: si mostra solo quella del DL
+    const firmeSalvate = (r.firmatari||[]).filter(f=>!/impresa/i.test(f.ruolo||''));
     const dataDoc = r.data_esito || today();
     apriDocumentoFirmabile({
       titolo: 'Verbale di esame della documentazione e accettazione del materiale',
@@ -3054,7 +3056,7 @@ async function apriVerbaleMateriale(id, solaLettura){
       luogo: comuneCantiere(c) || c?.nome || '',
       dataDoc: dataDoc,
       fileName: nomeFileVerbale(c, dataDoc, 'VER_ACC_MAT', n>1 ? 'R'+n : null) + '_' + sanitizzaNomeFile((r.materiale||'').slice(0,40)),
-      firmatari: (solaLettura && r.firmatari && r.firmatari.length) ? r.firmatari : (r.firmatari && r.firmatari.length ? r.firmatari : firmeDefault),
+      firmatari: firmeSalvate.length ? firmeSalvate : firmeDefault,
       solaLettura: !!solaLettura,
       dataGenerazione: r.pdf_generato_at || null,
       recordTable: 'accettazione_materiali',
