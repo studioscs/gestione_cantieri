@@ -261,6 +261,7 @@ textarea.form-control{resize:vertical;min-height:80px}
         <div class="nav-item" onclick="showView('verbali')" data-view="verbali"><span class="nav-icon">📋</span> Verbali / RSU / Collaudo</div>
         <div class="nav-item" onclick="showView('prelievi')" data-view="prelievi"><span class="nav-icon">🧪</span> Verbali prelievo strutture</div>
         <div class="nav-item" onclick="showView('materiali')" data-view="materiali"><span class="nav-icon">🧱</span> Accettazione materiali</div>
+        <div class="nav-item" onclick="showView('provecollaudo')" data-view="provecollaudo"><span class="nav-icon">🧪</span> Programma prove di collaudo</div>
         <div class="nav-item" onclick="showView('sal')" data-view="sal"><span class="nav-icon">💶</span> SAL</div>
         <div class="nav-item" onclick="showView('sospensioni')" data-view="sospensioni"><span class="nav-icon">⏸️</span> Sosp. e Proroghe</div>
         <div class="nav-item" onclick="showView('varianti')" data-view="varianti"><span class="nav-icon">📝</span> Varianti</div>
@@ -292,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.16b';
+const APP_VERSIONE = '2026.10.17a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -589,7 +590,7 @@ async function showView(view){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active', el.dataset.view===view));
   const main = document.getElementById('mainContent');
   main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  const views = {dashboard:renderDashboard,cantieri:renderCantieri,fasi:renderFasi,sospensioni:renderSospensioni,varianti:renderVarianti,giornale:renderGiornale,ods:renderODS,comunicazioni:renderComunicazioni,verbali:renderVerbali,prelievi:renderPrelievi,materiali:renderMateriali,liste:renderListe,sal:renderSAL,ditte:renderDitte,team:renderTeam,report:renderReport,studio:renderStudio};
+  const views = {dashboard:renderDashboard,cantieri:renderCantieri,fasi:renderFasi,sospensioni:renderSospensioni,varianti:renderVarianti,giornale:renderGiornale,ods:renderODS,comunicazioni:renderComunicazioni,verbali:renderVerbali,prelievi:renderPrelievi,materiali:renderMateriali,provecollaudo:()=>renderVerbali('programma_prove_collaudo'),liste:renderListe,sal:renderSAL,ditte:renderDitte,team:renderTeam,report:renderReport,studio:renderStudio};
   try {
     const out = await views[view]();
     if(myToken !== _viewToken) return; // nel frattempo e' partita una navigazione piu' recente: non sovrascrivere
@@ -3025,11 +3026,33 @@ async function stampaRegistroMateriali(){
 // ============================================================
 // VERBALI
 // ============================================================
-async function renderVerbali(){
+// Vista da cui si e' aperto un verbale: dopo salvataggi ed eliminazioni si
+// torna li' (elenco generale dei verbali o sezione dedicata a un tipo)
+let VISTA_VERBALI = 'verbali';
+function tornaAiVerbali(){ showView(VISTA_VERBALI); }
+
+// soloTipo: sezione dedicata a un solo tipo (es. programma prove di collaudo)
+async function renderVerbali(soloTipo){
   if(!currentCantiere) return noCantiere();
   const c = getCantiereObj();
+  VISTA_VERBALI = soloTipo==='programma_prove_collaudo' ? 'provecollaudo' : 'verbali';
 
-  let html = `<div class="section-header">
+  let html;
+  if(soloTipo==='programma_prove_collaudo'){
+    html = `<div class="section-header">
+      <div>
+        <div class="page-title">Programma delle prove di collaudo</div>
+        <div class="page-subtitle">${esc(c?.nome||'')} — prove di collaudo e messa in servizio degli impianti, da approvare con l'organo di collaudo</div>
+      </div>
+      ${puoGestireVerbale('programma_prove_collaudo')?`<button class="btn btn-primary" onclick="openModalNuovoVerbale('programma_prove_collaudo')">+ Nuovo programma prove</button>`:''}
+    </div>
+    <div class="alert alert-info" style="font-size:12px">
+      D.Lgs. 36/2023, Allegato II.14, art. 1: il direttore dei lavori approva, previo esame, il programma delle prove di collaudo e messa in servizio
+      degli impianti e lo sottopone all'organo di collaudo. Scegli le prove dall'elenco predisposto, completa ubicazione, estensione, data prevista
+      ed esecutore, poi genera il PDF da firmare da DL, collaudatore statico e collaudatore tecnico-amministrativo.
+    </div>`;
+  } else {
+    html = `<div class="section-header">
     <div>
       <div class="page-title">Verbali / RSU / Collaudo statico</div>
       <div class="page-subtitle">${esc(c?.nome||'')} — verbali, relazione a struttura ultimata e collaudo statico</div>
@@ -3039,23 +3062,29 @@ async function renderVerbali(){
   <div class="alert alert-info" style="font-size:12px">
     I verbali registrati sono visibili a tutti i membri del cantiere. Per comunicazioni riservate usa la sezione <strong>Comunicazioni</strong> con visibilità impostata su "Riservata".
   </div>`;
+  }
 
-  const {data:verbali, error} = await sb.from('verbali').select('*').eq('cantiere_id',currentCantiere).order('data',{ascending:false});
+  let q = sb.from('verbali').select('*').eq('cantiere_id',currentCantiere);
+  if(soloTipo) q = q.eq('tipo', soloTipo);
+  const {data:verbali, error} = await q.order('data',{ascending:false});
   if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
 
   if(!verbali||!verbali.length){
-    return html + `<div class="empty"><div class="empty-icon">📋</div><h3>Nessun verbale registrato</h3>
-      <p>Registra verbali di sopralluogo, consegna lavori, constatazione, riunione di cantiere, ecc.</p></div>`;
+    return html + (soloTipo==='programma_prove_collaudo'
+      ? `<div class="empty"><div class="empty-icon">🧪</div><h3>Nessun programma prove</h3>
+         <p>Crea il programma delle prove di collaudo scegliendo dall'elenco delle prove previste dalle norme tecniche.</p></div>`
+      : `<div class="empty"><div class="empty-icon">📋</div><h3>Nessun verbale registrato</h3>
+      <p>Registra verbali di sopralluogo, consegna lavori, constatazione, riunione di cantiere, ecc.</p></div>`);
   }
 
   const tipoIcon = {
     consegna_lavori:'🏗️', consegna_parziale:'🏗️', sopralluogo:'👁️', sopralluogo_periodico:'🔎', verifica_ods:'📐', constatazione:'📝', constatazione_stato_luoghi:'🔍',
-    riunione:'👥', fine_lavori:'✅', certificato_ultimazione:'✅', certificato_ultimazione_con_opere:'✅', riconsegna_anticipata:'🔑', collaudo_statico:'🏛️', certificato_collaudo_statico:'🏅', relazione_struttura_ultimata:'📑', altro:'📋'
+    riunione:'👥', fine_lavori:'✅', certificato_ultimazione:'✅', certificato_ultimazione_con_opere:'✅', riconsegna_anticipata:'🔑', collaudo_statico:'🏛️', certificato_collaudo_statico:'🏅', programma_prove_collaudo:'🧪', relazione_struttura_ultimata:'📑', altro:'📋'
   };
   const tipoLabel = {
     consegna_lavori:'Consegna lavori', consegna_parziale:'Consegna parziale lavori', sopralluogo:'Sopralluogo', sopralluogo_periodico:'Sopralluogo periodico', verifica_ods:'Verifica adempimento OdS',
     constatazione:'Constatazione', constatazione_stato_luoghi:'Constatazione stato dei luoghi', riunione:'Riunione di cantiere',
-    fine_lavori:'Fine lavori (dismesso)', certificato_ultimazione:'Certificato di ultimazione lavori', certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare', riconsegna_anticipata:'Presa in consegna anticipata delle opere', collaudo_statico:'Verbale di visita di collaudo statico', certificato_collaudo_statico:'Certificato di collaudo statico (art. 67 D.P.R. 380/2001)', relazione_struttura_ultimata:'Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)', altro:'Altro verbale'
+    fine_lavori:'Fine lavori (dismesso)', certificato_ultimazione:'Certificato di ultimazione lavori', certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare', riconsegna_anticipata:'Presa in consegna anticipata delle opere', collaudo_statico:'Verbale di visita di collaudo statico', certificato_collaudo_statico:'Certificato di collaudo statico (art. 67 D.P.R. 380/2001)', programma_prove_collaudo:'Programma delle prove di collaudo (All. II.14 art. 1)', relazione_struttura_ultimata:'Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)', altro:'Altro verbale'
   };
 
   verbali.forEach(v=>{
@@ -3158,7 +3187,7 @@ function comuneCantiere(c){
   return (c && (c.comune || c.stazione_appaltante)) || '';
 }
 
-async function openModalNuovoVerbale(){
+async function openModalNuovoVerbale(tipoIniziale){
   const team = await getTeamRoster(currentCantiere);
   const redattoreDefault = (team.dl && team.dl.nome) || ((currentUser.nome||'')+' '+(currentUser.cognome||'')+' ('+(ROLE_LABELS[currentRole]||'')+')');
   const presentiDefault = formatPresentiFromTeam(team);
@@ -3166,7 +3195,8 @@ async function openModalNuovoVerbale(){
     rup_nome: (team.rup && team.rup.nome) || '',
     dt_impresa_nome: (team.dt_impresa && team.dt_impresa.nome) || '',
     legale_rappresentante: (team.dt_impresa && team.dt_impresa.nome) || '',
-    collaudatore_nome: (team.collaudatore && team.collaudatore.nome) || ''
+    collaudatore_nome: (team.collaudatore && team.collaudatore.nome) || '',
+    dl_nome: (team.dl && team.dl.nome) || ''
   };
   // Ordini di servizio del cantiere: servono al verbale di verifica adempimento
   // per far scegliere quale OdS citare e copiarne il testo.
@@ -3190,6 +3220,7 @@ async function openModalNuovoVerbale(){
           <option value="riconsegna_anticipata">🔑 Presa in consegna anticipata (riconsegna anticipata) delle opere</option>
           <option value="collaudo_statico">🏛️ Verbale di visita di collaudo statico</option>
           <option value="certificato_collaudo_statico">🏅 Certificato di collaudo statico (art. 67 D.P.R. 380/2001)</option>
+          <option value="programma_prove_collaudo">🧪 Programma delle prove di collaudo (All. II.14 art. 1)</option>
           <option value="relazione_struttura_ultimata">📑 Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)</option>
           <option value="altro">📋 Altro verbale</option>
         </select>
@@ -3231,11 +3262,13 @@ async function openModalNuovoVerbale(){
     ${extraFieldsRiconsegnaAnticipataHtml('nv2', teamDx)}
     ${extraFieldsCollaudoStaticoHtml('nv2', null, teamDx, getCantiereObj())}
     ${extraFieldsCollaudoCertHtml('nv2', null, teamDx, getCantiereObj())}
+    ${extraFieldsProgrammaProveHtml('nv2', null, teamDx, getCantiereObj())}
     ${extraFieldsRSUHtml('nv2', null, teamDx, getCantiereObj())}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaVerbale()">Salva verbale</button>
     </div>`);
+  if(tipoIniziale){ const sel = document.getElementById('nv2_tipo'); if(sel) sel.value = tipoIniziale; }
   toggleVerbaleExtra('nv2');
   limitaTipiVerbale('nv2');
 }
@@ -3262,13 +3295,13 @@ async function salvaVerbale(prefix){
   });
   if(error){ alert(error.message); return; }
   // Annotazione automatica sul giornale
-  const tipoL = {consegna_lavori:'Consegna lavori',consegna_parziale:'Consegna parziale lavori',sopralluogo:'Sopralluogo',sopralluogo_periodico:'Sopralluogo periodico',verifica_ods:'Verifica adempimento OdS',constatazione:'Constatazione',constatazione_stato_luoghi:'Constatazione stato dei luoghi',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',certificato_ultimazione:'Certificato di ultimazione lavori',certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare',riconsegna_anticipata:'Presa in consegna anticipata delle opere',collaudo_statico:'Verbale di visita di collaudo statico',certificato_collaudo_statico:'Certificato di collaudo statico',relazione_struttura_ultimata:'Relazione a struttura ultimata',altro:'Verbale'};
+  const tipoL = {consegna_lavori:'Consegna lavori',consegna_parziale:'Consegna parziale lavori',sopralluogo:'Sopralluogo',sopralluogo_periodico:'Sopralluogo periodico',verifica_ods:'Verifica adempimento OdS',constatazione:'Constatazione',constatazione_stato_luoghi:'Constatazione stato dei luoghi',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',certificato_ultimazione:'Certificato di ultimazione lavori',certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare',riconsegna_anticipata:'Presa in consegna anticipata delle opere',collaudo_statico:'Verbale di visita di collaudo statico',certificato_collaudo_statico:'Certificato di collaudo statico',programma_prove_collaudo:'Programma delle prove di collaudo',relazione_struttura_ultimata:'Relazione a struttura ultimata',altro:'Verbale'};
   const ogg = g('ogg').value.trim();
   // Il giornale e' compilato dalla direzione lavori: per chi non ha accesso
   // in scrittura (es. collaudatore) l'annotazione non si fa
   if(can('write')) await annotaGiornale(data, `[VERBALE ${(tipoL[tipo]||tipo).toUpperCase()}]${ogg?' — '+ogg:''}`);
   closeModal();
-  showView('verbali');
+  tornaAiVerbali();
 }
 
 // duplica=true: stesso modulo precompilato con tutti i dati del verbale di
@@ -3286,7 +3319,8 @@ async function openModalEditVerbale(id, duplica){
     rup_nome: dx.rup_nome || (team.rup && team.rup.nome) || '',
     dt_impresa_nome: dx.dt_impresa_nome || (team.dt_impresa && team.dt_impresa.nome) || '',
     legale_rappresentante: dx.legale_rappresentante || (team.dt_impresa && team.dt_impresa.nome) || '',
-    collaudatore_nome: dx.collaudatore_nome || (team.collaudatore && team.collaudatore.nome) || ''
+    collaudatore_nome: dx.collaudatore_nome || (team.collaudatore && team.collaudatore.nome) || '',
+    dl_nome: dx.dl_nome || (team.dl && team.dl.nome) || ''
   });
   const presentiValue = v.presenti || formatPresentiFromTeam(team);
   openModal(duplica ? 'Duplica Verbale' : 'Modifica Verbale', `
@@ -3308,6 +3342,7 @@ async function openModalEditVerbale(id, duplica){
           <option value="riconsegna_anticipata"${v.tipo==='riconsegna_anticipata'?' selected':''}>🔑 Presa in consegna anticipata (riconsegna anticipata) delle opere</option>
           <option value="collaudo_statico"${v.tipo==='collaudo_statico'?' selected':''}>🏛️ Verbale di visita di collaudo statico</option>
           <option value="certificato_collaudo_statico"${v.tipo==='certificato_collaudo_statico'?' selected':''}>🏅 Certificato di collaudo statico (art. 67 D.P.R. 380/2001)</option>
+          <option value="programma_prove_collaudo"${v.tipo==='programma_prove_collaudo'?' selected':''}>🧪 Programma delle prove di collaudo (All. II.14 art. 1)</option>
           <option value="relazione_struttura_ultimata"${v.tipo==='relazione_struttura_ultimata'?' selected':''}>📑 Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)</option>
           ${v.tipo==='fine_lavori'?'<option value="fine_lavori" selected>✅ Fine lavori (tipo dismesso — cambia in uno dei nuovi tipi sopra)</option>':''}
           <option value="altro"${v.tipo==='altro'?' selected':''}>📋 Altro verbale</option>
@@ -3349,6 +3384,7 @@ async function openModalEditVerbale(id, duplica){
     ${extraFieldsRiconsegnaAnticipataHtml('ev2', dxWithTeam)}
     ${extraFieldsCollaudoStaticoHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
     ${extraFieldsCollaudoCertHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
+    ${extraFieldsProgrammaProveHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
     ${extraFieldsRSUHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
@@ -3376,7 +3412,7 @@ async function salvaEditVerbale(id){
   }).eq('id',id);
   if(error){ alert(error.message); return; }
   closeModal();
-  showView('verbali');
+  tornaAiVerbali();
 }
 
 async function eliminaVerbale(id){
@@ -3384,7 +3420,7 @@ async function eliminaVerbale(id){
   if(!confirm('Eliminare questo verbale?')) return;
   const {error} = await sb.from('verbali').delete().eq('id',id);
   if(error){ alert(error.message); return; }
-  showView('verbali');
+  tornaAiVerbali();
 }
 
 async function openModalAnnotaRUP(id){
@@ -3407,7 +3443,7 @@ async function salvaAnnotaRUP(id){
   }).eq('id',id);
   if(error){ alert(error.message); return; }
   closeModal();
-  showView('verbali');
+  tornaAiVerbali();
 }
 
 
@@ -7066,7 +7102,7 @@ const VERBALE_FILE_CODE = {
   constatazione:'VER_CON', constatazione_stato_luoghi:'VER_STALUO',
   certificato_ultimazione:'VER_UL', certificato_ultimazione_con_opere:'VER_ULCO',
   riconsegna_anticipata:'VER_PCA', riunione:'VER_RIU',
-  verifica_ods:'VER_ODS', collaudo_statico:'VER_COL', certificato_collaudo_statico:'CERT_COL', relazione_struttura_ultimata:'REL_RSU', fine_lavori:'VER_GEN', altro:'VER_GEN'
+  verifica_ods:'VER_ODS', collaudo_statico:'VER_COL', certificato_collaudo_statico:'CERT_COL', programma_prove_collaudo:'PROG_PROVE_COL', relazione_struttura_ultimata:'REL_RSU', fine_lavori:'VER_GEN', altro:'VER_GEN'
 };
 const PRELIEVO_FILE_CODE = {
   acciaio_carpenteria:'ACC', barre_ca:'AC-CA', reti_tralicci:'RT-CA',
@@ -9795,6 +9831,17 @@ async function apriVerbaleFirmabile(id, solaLettura){
         ['IMPRESA', esc(c?.impresa||'')],
         rigaContratto(c)
       ].filter(Boolean);
+    } else if(v.tipo==='programma_prove_collaudo'){
+      titolo = 'Programma delle prove di collaudo e di messa in servizio degli impianti';
+      normativa = 'D.Lgs. 36/2023, Allegato II.14, art. 1';
+      comune = comuneCantiere(c);
+      corpoHtml = bodyProgrammaProve(c, v, dx);
+      metaRows = [
+        ['LAVORI', esc(c?.descrizione||c?.nome||'')],
+        ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
+        ['IMPRESA', esc(c?.impresa||'')],
+        rigaContratto(c)
+      ];
     } else if(v.tipo==='relazione_struttura_ultimata'){
       titolo = 'Relazione a struttura ultimata';
       normativa = 'D.P.R. 6/06/2001 n. 380, art. 65';
@@ -9829,12 +9876,16 @@ async function apriVerbaleFirmabile(id, solaLettura){
       collaudo_statico: [{nome:dx.collaudatore_nome||'',ruolo:'Il Collaudatore Statico'},{nome:dx.dt_impresa_nome||'',ruolo:"L'Impresa"},{nome:dx.dl_nome||redattoreDefault,ruolo:'Il Direttore dei Lavori'}],
       // Il certificato di collaudo e' sottoscritto dal solo collaudatore statico
       certificato_collaudo_statico: [{nome:dx.collaudatore_nome||'', ruolo:'Il Collaudatore Statico'}],
+      programma_prove_collaudo: [
+        {nome:dx.dl_nome||redattoreDefault, ruolo:'Il Direttore dei Lavori'},
+        {nome:dx.collaudatore_statico||'', ruolo:'Il Collaudatore Statico'},
+        {nome:dx.collaudatore_ta||'', ruolo:'Il Collaudatore Tecnico-Amministrativo'}],
       // La RSU e' sottoscritta dai professionisti della direzione lavori strutturali
       relazione_struttura_ultimata: ((dx.professionisti||[]).filter(p=>p.nome).length
         ? dx.professionisti.filter(p=>p.nome).map(p=>({nome:p.nome, ruolo:'Il Direttore dei Lavori strutturali'}))
         : [{nome:redattoreDefault, ruolo:'Il Direttore dei Lavori strutturali'}])
     };
-    const FIRMATARI_DA_DOCUMENTO = ['certificato_collaudo_statico','relazione_struttura_ultimata'];
+    const FIRMATARI_DA_DOCUMENTO = ['certificato_collaudo_statico','programma_prove_collaudo','relazione_struttura_ultimata'];
     const firmatariDefault = firmatariDefaultMap[v.tipo] || [{nome:'',ruolo:'Il Direttore dei Lavori'},{nome:'',ruolo:"L'Impresa"}];
 
     apriDocumentoFirmabile({
@@ -9867,7 +9918,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
 
 function toggleVerbaleExtra(prefix){
   const tipo = document.getElementById(prefix+'_tipo').value;
-  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata','collaudo_statico','certificato_collaudo_statico','relazione_struttura_ultimata'];
+  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata','collaudo_statico','certificato_collaudo_statico','programma_prove_collaudo','relazione_struttura_ultimata'];
   TIPI_STRUTTURATI.forEach(function(t){
     const el = document.getElementById(prefix+'_extra_'+t);
     if(el) el.style.display = (tipo===t) ? 'block' : 'none';
@@ -11076,7 +11127,235 @@ function bodyCollaudoCertificato(c, v, dx){
   return h;
 }
 
+// ============================================================
+// PROGRAMMA DELLE PROVE DI COLLAUDO (D.Lgs. 36/2023, All. II.14, art. 1)
+// ------------------------------------------------------------
+// Il DL approva, previo esame, il programma delle prove di collaudo e di
+// messa in servizio degli impianti e lo sottopone all'organo di collaudo.
+// Catalogo delle prove previste dalle norme tecniche: si selezionano
+// quelle pertinenti, si completano ubicazione, estensione, data prevista
+// ed esecutore, si aggiungono prove libere, e si genera il verbale da
+// firmare da DL, collaudatore statico e collaudatore tecnico-amministrativo.
+// ============================================================
+const PROVE_COLLAUDO = [
+  {cat:'Strutture e materiali', voci:[
+    {n:'Prove di carico su solai e impalcati', norma:'D.M. 17/01/2018 § 9.2.2'},
+    {n:'Prove di carico su travi, sbalzi e scale', norma:'D.M. 17/01/2018 § 9.2.2'},
+    {n:'Prove di carico su pali di fondazione', norma:'D.M. 17/01/2018 § 6.4.3.7'},
+    {n:'Prove di tiro su tiranti e ancoraggi', norma:'D.M. 17/01/2018 § 6.6'},
+    {n:'Prove di estrazione (pull-out) su ancoranti', norma:'EAD 330232 / EAD 330499'},
+    {n:'Carotaggi su calcestruzzo in opera', norma:'UNI EN 12504-1 — NTC § 11.2.6'},
+    {n:'Prove sclerometriche', norma:'UNI EN 12504-2'},
+    {n:'Prove ultrasoniche e SonReb', norma:'UNI EN 12504-4'},
+    {n:'Indagini pacometriche sulle armature', norma:'BS 1881-204'},
+    {n:'Prove su acciaio da armatura prelevato in opera', norma:'UNI EN ISO 15630-1 — NTC § 11.3.2'},
+    {n:'Controlli non distruttivi sulle saldature (VT/MT/PT/UT/RT)', norma:'UNI EN 1090-2 § 12.4 — UNI EN ISO 5817'},
+    {n:'Verifica del serraggio dei bulloni', norma:'UNI EN 1090-2 § 12.5'},
+    {n:'Prove di adesione (pull-off) su rinforzi FRP/FRCM', norma:'Linee guida C.S.LL.PP. FRP/FRCM'},
+    {n:'Identificazione dinamica della struttura', norma:'D.M. 17/01/2018 § 9.2.1'},
+    {n:'Rilievo geometrico e verifica delle tolleranze', norma:'D.M. 17/01/2018 cap. 9'}
+  ]},
+  {cat:'Opere edili e involucro', voci:[
+    {n:'Prova di tenuta all’acqua di coperture e impermeabilizzazioni (allagamento)', norma:'UNI 11442'},
+    {n:'Prove di tenuta dei serramenti in opera (aria, acqua, vento)', norma:'UNI EN 1026 / 1027 / 12211'},
+    {n:'Prova di tenuta all’aria dell’involucro (blower door)', norma:'UNI EN ISO 9972'},
+    {n:'Indagine termografica dell’involucro', norma:'UNI EN 13187'},
+    {n:'Collaudo acustico in opera (facciata, divisori, calpestio, impianti)', norma:'UNI EN ISO 16283 — D.P.C.M. 5/12/1997'},
+    {n:'Prove di aderenza di intonaci e rivestimenti (pull-off)', norma:'UNI EN 1542'},
+    {n:'Verifica di planarità di pavimenti e massetti', norma:'UNI 11493'},
+    {n:'Verifica di porte e chiusure tagliafuoco', norma:'UNI 11473'},
+    {n:'Prova di spinta su parapetti e ringhiere', norma:'D.M. 17/01/2018 § 3.1.4'},
+    {n:'Collaudo dei dispositivi di ancoraggio anticaduta (linee vita)', norma:'UNI EN 795 — UNI 11578'}
+  ]},
+  {cat:'Impianti idrico-sanitari e di scarico', voci:[
+    {n:'Prova di tenuta a pressione della rete idrica', norma:'UNI EN 806-4'},
+    {n:'Lavaggio e disinfezione della rete idrica', norma:'UNI EN 806-4'},
+    {n:'Analisi di potabilità dell’acqua', norma:'D.Lgs. 18/2023'},
+    {n:'Prove di portata e funzionamento degli apparecchi', norma:'UNI 9182'},
+    {n:'Prova di tenuta della rete di scarico', norma:'UNI EN 12056'},
+    {n:'Prove di tenuta e videoispezione delle fognature', norma:'UNI EN 1610'}
+  ]},
+  {cat:'Impianti termici, meccanici e fonti rinnovabili', voci:[
+    {n:'Prova di tenuta della rete di riscaldamento/raffrescamento', norma:'UNI EN 14336'},
+    {n:'Prova di tenuta dell’impianto gas', norma:'UNI 7129 — UNI 11137'},
+    {n:'Messa in servizio dei generatori e analisi di combustione', norma:'UNI 10389-1'},
+    {n:'Collaudo delle pompe di calore', norma:'UNI EN 378 — UNI EN 14511'},
+    {n:'Bilanciamento idronico dei circuiti', norma:'UNI EN 14336'},
+    {n:'Collaudo della ventilazione meccanica (portate e bilanciamento)', norma:'UNI EN 12599'},
+    {n:'Prove funzionali della regolazione e del sistema BMS', norma:'UNI EN 15232'},
+    {n:'Verifiche dell’impianto fotovoltaico', norma:'CEI EN 62446-1'},
+    {n:'Collaudo dell’impianto solare termico', norma:'UNI EN 12976 / 12977'}
+  ]},
+  {cat:'Impianti elettrici e speciali', voci:[
+    {n:'Verifiche iniziali dell’impianto elettrico (esame a vista, continuità, isolamento, differenziali, anello di guasto)', norma:'CEI 64-8/6'},
+    {n:'Misura della resistenza di terra', norma:'CEI 64-8 — D.P.R. 462/2001'},
+    {n:'Verifica della protezione contro le scariche atmosferiche', norma:'CEI EN 62305'},
+    {n:'Prove dell’illuminazione di sicurezza', norma:'UNI EN 1838 — UNI 11222'},
+    {n:'Collaudo dell’impianto di rivelazione e allarme incendio', norma:'UNI 9795 — UNI 11224'},
+    {n:'Prove del sistema di evacuazione vocale (EVAC)', norma:'UNI ISO 7240-19'},
+    {n:'Certificazione del cablaggio strutturato', norma:'ISO/IEC 11801 — CEI EN 50346'},
+    {n:'Prove degli impianti antintrusione e videosorveglianza', norma:'CEI 79-3 — CEI EN 62676'}
+  ]},
+  {cat:'Antincendio e sollevamento', voci:[
+    {n:'Prova idraulica della rete idranti (portata e pressione)', norma:'UNI 10779'},
+    {n:'Prove dell’impianto sprinkler', norma:'UNI EN 12845'},
+    {n:'Verifica di estintori e segnaletica di sicurezza', norma:'UNI 9994-1 — UNI EN ISO 7010'},
+    {n:'Verifica e messa in esercizio di ascensori e piattaforme elevatrici', norma:'D.P.R. 162/1999 — UNI EN 81-20'}
+  ]},
+  {cat:'Opere esterne e stradali', voci:[
+    {n:'Prove di carico su piastra (modulo Md)', norma:'CNR B.U. 146'},
+    {n:'Prove di densità in sito', norma:'CNR B.U. 22 — UNI EN 13286-2'},
+    {n:'Controlli sui conglomerati bituminosi (carote, spessori, densità)', norma:'UNI EN 12697'},
+    {n:'Prove su pavimentazioni esterne e cordoli', norma:'UNI EN 1338 / 1340'}
+  ]}
+];
+
+function ppCampiHtml(p){
+  p = p || {};
+  return `<div class="form-group" style="margin:0"><input class="form-control pp-ubic" style="font-size:12px" placeholder="Parti d'opera / ubicazione" value="${esc(p.ubicazione||'')}"></div>
+    <div class="form-group" style="margin:0"><input class="form-control pp-est" style="font-size:12px" placeholder="Numero / estensione (es. 3 campate)" value="${esc(p.estensione||'')}"></div>
+    <div class="form-group" style="margin:0"><input class="form-control pp-data" type="date" style="font-size:12px" title="Data prevista" value="${esc(p.data_prevista||'')}"></div>
+    <div class="form-group" style="margin:0"><input class="form-control pp-esec" style="font-size:12px" placeholder="Esecutore (impresa / laboratorio)" value="${esc(p.esecutore||'')}"></div>`;
+}
+function ppLiberaRigaHtml(p){
+  p = p || {};
+  return `<div class="pp-libera" style="border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:6px;background:white">
+    <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;margin-bottom:6px">
+      <input class="form-control pp-nome" style="font-size:12px" placeholder="Descrizione della prova" value="${esc(p.nome||'')}">
+      <input class="form-control pp-norma" style="font-size:12px" placeholder="Norma di riferimento" value="${esc(p.norma||'')}">
+      <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.pp-libera').remove()">&#10005;</button>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 1.3fr 140px 1.5fr;gap:6px">${ppCampiHtml(p)}</div>
+  </div>`;
+}
+function ppAggiungiLibera(prefix){
+  const c = document.getElementById(prefix+'_pp_libere');
+  if(c) c.insertAdjacentHTML('beforeend', ppLiberaRigaHtml());
+}
+function ppToggle(chk){
+  const det = chk.closest('.pp-row').querySelector('.pp-det');
+  if(det) det.style.display = chk.checked ? 'grid' : 'none';
+  const det2 = chk.closest('details'); const cnt = det2 && det2.querySelector('.pp-cnt');
+  if(cnt) cnt.textContent = det2.querySelectorAll('.pp-chk:checked').length;
+}
+
+function extraFieldsProgrammaProveHtml(prefix, dx, team, cantiere){
+  dx = dx || {}; team = team || {};
+  const sel = {};
+  (dx.prove||[]).filter(p=>!p.libera).forEach(p=>{ sel[p.cat+'|'+p.nome] = p; });
+  const libere = (dx.prove||[]).filter(p=>p.libera);
+  let h = `<div id="${prefix}_extra_programma_prove_collaudo" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:4px">Programma delle prove di collaudo e di messa in servizio degli impianti</div>
+    <div class="alert alert-info" style="font-size:11px;margin-bottom:12px">
+      D.Lgs. 36/2023, All. II.14, art. 1: il direttore dei lavori fornisce chiarimenti, spiegazioni e documenti all'organo di collaudo,
+      assistendolo nell'espletamento delle operazioni e approvando, previo esame, il programma delle prove di collaudo e messa in servizio degli impianti.
+      Spunta le prove previste e completa i dettagli; le prove non presenti si aggiungono in fondo.
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Direttore dei Lavori</label>
+        <input class="form-control" id="${prefix}_pp_dl" value="${esc(dx.dl_nome||team.dl_nome||'')}"></div>
+      <div class="form-group"><label class="form-label">Impresa esecutrice (referente)</label>
+        <input class="form-control" id="${prefix}_pp_impresa" value="${esc(dx.impresa_nome||team.dt_impresa_nome||'')}"></div>
+      <div class="form-group"><label class="form-label">Collaudatore statico</label>
+        <input class="form-control" id="${prefix}_pp_cs" value="${esc(dx.collaudatore_statico||team.collaudatore_nome||'')}"></div>
+      <div class="form-group"><label class="form-label">Collaudatore tecnico-amministrativo</label>
+        <input class="form-control" id="${prefix}_pp_cta" value="${esc(dx.collaudatore_ta||team.collaudatore_nome||'')}"></div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:12px 0 6px">Prove previste</div>`;
+  PROVE_COLLAUDO.forEach((g,ci)=>{
+    const nSel = g.voci.filter(v=>sel[g.cat+'|'+v.n]).length;
+    h += `<details${nSel?' open':''} style="border:1px solid var(--border);border-radius:5px;margin-bottom:6px;background:white">
+      <summary style="padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer">${esc(g.cat)} <span style="font-weight:400;color:var(--muted)">— selezionate: <span class="pp-cnt">${nSel}</span></span></summary>
+      <div style="padding:4px 10px 8px">`;
+    g.voci.forEach((v,vi)=>{
+      const p = sel[g.cat+'|'+v.n];
+      h += `<div class="pp-row" data-ci="${ci}" data-vi="${vi}" style="padding:5px 0;border-bottom:1px dashed var(--border)">
+        <label style="font-size:12px;cursor:pointer;display:flex;gap:6px;align-items:flex-start">
+          <input type="checkbox" class="pp-chk"${p?' checked':''} onchange="ppToggle(this)" style="margin-top:2px">
+          <span>${esc(v.n)} <span style="color:var(--muted);font-size:11px">— ${esc(v.norma)}</span></span>
+        </label>
+        <div class="pp-det" style="display:${p?'grid':'none'};grid-template-columns:2fr 1.3fr 140px 1.5fr;gap:6px;margin:6px 0 2px 22px">${ppCampiHtml(p)}</div>
+      </div>`;
+    });
+    h += `</div></details>`;
+  });
+  h += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:12px 0 6px">Altre prove</div>
+    <div id="${prefix}_pp_libere">${libere.map(p=>ppLiberaRigaHtml(p)).join('')}</div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="ppAggiungiLibera('${prefix}')">+ Aggiungi prova</button>
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Note e modalità di esecuzione</label>
+      <textarea class="form-control" id="${prefix}_pp_note" rows="3" placeholder="Es. le prove di carico saranno eseguite a cura dell'impresa con il laboratorio ..., alla presenza del collaudatore">${esc(dx.note||'')}</textarea></div>
+  </div>`;
+  return h;
+}
+
+function raccogliDatiProgrammaProve(prefix){
+  const root = document.getElementById(prefix+'_extra_programma_prove_collaudo');
+  const val = id => (document.getElementById(prefix+'_pp_'+id)?.value||'').trim()||null;
+  const campi = r => ({
+    ubicazione: (r.querySelector('.pp-ubic')?.value||'').trim()||null,
+    estensione: (r.querySelector('.pp-est')?.value||'').trim()||null,
+    data_prevista: r.querySelector('.pp-data')?.value||null,
+    esecutore: (r.querySelector('.pp-esec')?.value||'').trim()||null
+  });
+  const prove = [];
+  root.querySelectorAll('.pp-row').forEach(r=>{
+    if(!r.querySelector('.pp-chk').checked) return;
+    const g = PROVE_COLLAUDO[+r.dataset.ci], v = g.voci[+r.dataset.vi];
+    prove.push(Object.assign({cat:g.cat, nome:v.n, norma:v.norma}, campi(r)));
+  });
+  root.querySelectorAll('.pp-libera').forEach(r=>{
+    const nome = (r.querySelector('.pp-nome')?.value||'').trim();
+    if(!nome) return;
+    prove.push(Object.assign({libera:true, cat:'Altre prove', nome, norma:(r.querySelector('.pp-norma')?.value||'').trim()||null}, campi(r)));
+  });
+  return {
+    dl_nome: val('dl'), impresa_nome: val('impresa'),
+    collaudatore_statico: val('cs'), collaudatore_ta: val('cta'),
+    note: val('note'), prove
+  };
+}
+
+function bodyProgrammaProve(c, v, dx){
+  dx = dx || {};
+  const prove = dx.prove || [];
+  const b = 'border:1px solid #999;padding:4px 5px;vertical-align:top';
+  let h = '<p>Ai sensi dell&rsquo;art. 1 dell&rsquo;Allegato II.14 al D.Lgs. 36/2023, il Direttore dei Lavori'
+    + (dx.dl_nome?' <strong>'+esc(dx.dl_nome)+'</strong>':'')
+    + ' sottopone all&rsquo;organo di collaudo'
+    + (dx.collaudatore_statico||dx.collaudatore_ta ? ' (' + [dx.collaudatore_statico?'collaudatore statico <strong>'+esc(dx.collaudatore_statico)+'</strong>':'', dx.collaudatore_ta?'collaudatore tecnico-amministrativo <strong>'+esc(dx.collaudatore_ta)+'</strong>':''].filter(Boolean).join(', ')+')' : '')
+    + ' il seguente programma delle prove di collaudo e di messa in servizio degli impianti, relativo ai lavori in epigrafe'
+    + (dx.impresa_nome?', da eseguirsi con l&rsquo;assistenza dell&rsquo;impresa esecutrice (referente: <strong>'+esc(dx.impresa_nome)+'</strong>)':'')+'.</p>';
+  if(!prove.length){
+    h += '<p><em>Nessuna prova selezionata.</em></p>';
+  }
+  const cats = PROVE_COLLAUDO.map(g=>g.cat).concat(['Altre prove']);
+  let n = 0;
+  cats.forEach(cat=>{
+    const lista = prove.filter(p=>p.cat===cat);
+    if(!lista.length) return;
+    h += '<h3>'+esc(cat).toUpperCase()+'</h3>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr>'
+      + '<th style="'+b+'">N.</th><th style="'+b+';text-align:left">Prova</th><th style="'+b+';text-align:left">Norma di riferimento</th>'
+      + '<th style="'+b+';text-align:left">Parti d&rsquo;opera / ubicazione</th><th style="'+b+'">Numero / estensione</th>'
+      + '<th style="'+b+'">Data prevista</th><th style="'+b+';text-align:left">Esecutore</th></tr></thead><tbody>';
+    lista.forEach(p=>{
+      n++;
+      h += '<tr><td style="'+b+';text-align:center">'+n+'</td><td style="'+b+'">'+esc(p.nome||'')+'</td><td style="'+b+'">'+esc(p.norma||'')+'</td>'
+        + '<td style="'+b+'">'+esc(p.ubicazione||'')+'</td><td style="'+b+';text-align:center">'+esc(p.estensione||'')+'</td>'
+        + '<td style="'+b+';text-align:center">'+(p.data_prevista?fmt(p.data_prevista):'')+'</td><td style="'+b+'">'+esc(p.esecutore||'')+'</td></tr>';
+    });
+    h += '</tbody></table>';
+  });
+  if(dx.note){ h += '<h3>NOTE E MODALIT&Agrave; DI ESECUZIONE</h3>'+paraP(dx.note); }
+  h += '<p>Le date indicate sono previsionali e potranno essere aggiornate in accordo fra le parti; l&rsquo;esito delle prove sar&agrave; '
+    + 'documentato con i relativi verbali e certificati.</p>';
+  h += '<p>Il Direttore dei Lavori e l&rsquo;organo di collaudo, previo esame, <strong>approvano</strong> il presente programma delle prove '
+    + 'di collaudo e di messa in servizio degli impianti.</p>';
+  return h;
+}
+
 function raccogliDatiExtraVerbale(prefix, tipo){
+  if(tipo==='programma_prove_collaudo') return raccogliDatiProgrammaProve(prefix);
   if(tipo==='certificato_collaudo_statico'){
     return raccogliDatiCollaudoCert(prefix);
   }
