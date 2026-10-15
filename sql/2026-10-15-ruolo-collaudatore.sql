@@ -49,7 +49,9 @@ as $$
     select 1 from public.cantiere_utenti
     where cantiere_id::text = p_cantiere
       and utente_id = auth.uid()
-      and ruolo = 'collaudatore'
+      -- confronto come testo: se ruolo e' un enum, il valore appena aggiunto
+      -- non e' utilizzabile come enum nella stessa transazione (errore 55P04)
+      and ruolo::text = 'collaudatore'
   );
 $$;
 
