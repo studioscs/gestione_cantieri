@@ -292,7 +292,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.15b';
+const APP_VERSIONE = '2026.10.16a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -2696,6 +2696,7 @@ const MAT_STATI = {
 const MAT_DOCUMENTI = ['Scheda di richiesta','DoP','Marcatura CE','Scheda tecnica','Scheda di sicurezza','EPD','Conformità CAM','Certificati / attestati','Campione'];
 
 let MAT_NASCONDI_NP = true; // nasconde le voci "Non pertinente"
+const MAT_SELEZIONE = new Set(); // voci selezionate per il cambio di stato multiplo
 
 async function renderMateriali(){
   if(!currentCantiere) return noCantiere();
@@ -2744,7 +2745,21 @@ async function renderMateriali(){
   <div class="alert alert-info" style="font-size:12px">
     Imposta lo stato di ogni materiale dal menu a tendina: le date compaiono in base allo stato e si salvano subito.
     Per lo stesso materiale usato in più versioni (es. tre calcestruzzi diversi) usa <strong>📋 Duplica</strong> e indica le specifiche di ciascuno.
+    Se un materiale viene <strong>rifiutato</strong>, sotto compare in automatico la voce per la richiesta successiva.
   </div>`;
+  // selezione: si scartano gli id non piu' presenti (voci eliminate)
+  [...MAT_SELEZIONE].forEach(id=>{ if(!righe.some(r=>r.id===id)) MAT_SELEZIONE.delete(id); });
+  if(can('write')){
+    html += `<div id="mat_bulk" class="card" style="padding:10px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:5">
+      <strong style="font-size:12px"><span id="mat_nsel">${MAT_SELEZIONE.size}</span> selezionati</strong>
+      <select class="form-control" id="mat_bulk_stato" style="width:auto;font-size:12px;padding:4px">
+        ${Object.keys(MAT_STATI).map(k=>`<option value="${k}">${MAT_STATI[k].l}</option>`).join('')}
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="applicaStatoSelezionati()">Assegna stato</button>
+      <button class="btn btn-secondary btn-sm" onclick="MAT_SELEZIONE.clear();showView('materiali')">Deseleziona tutto</button>
+      <span style="font-size:11px;color:var(--muted)">Spunta i materiali (o un'intera categoria) e assegna lo stato in un colpo solo</span>
+    </div>`;
+  }
 
   const perCat = {};
   righe.forEach(r=>{ (perCat[r.categoria||'Altro'] = perCat[r.categoria||'Altro'] || []).push(r); });
@@ -2756,6 +2771,9 @@ async function renderMateriali(){
     html += `<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
       <div style="padding:9px 14px;background:var(--surface);font-size:12px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em">${esc(cat)}</div>
       <table><thead><tr>
+        ${can('write')?`<th style="width:30px"><input type="checkbox" title="Seleziona tutta la categoria"
+          ${lista.every(r=>MAT_SELEZIONE.has(r.id))?'checked':''}
+          onchange="materialeSelezionaCategoria(this, [${lista.map(r=>`'${r.id}'`).join(',')}])"></th>`:''}
         <th>Materiale e specifiche</th><th style="width:190px">Stato</th><th style="width:150px">Richiesta il</th><th style="width:150px">Esito il</th><th style="width:150px;text-align:right">Azioni</th>
       </tr></thead><tbody>`;
     lista.forEach(r=>{ html += materialeRigaHtml(r); });
@@ -2770,8 +2788,12 @@ function materialeRigaHtml(r){
   const mostraRich = ['richiesta','accettata','rifiutata'].includes(st);
   const mostraEsito = ['accettata','rifiutata'].includes(st);
   const docs = (r.documenti||[]);
-  return `<tr${st==='non_pertinente'?' style="opacity:.55"':''}>
-    <td style="font-size:12px">
+  const n = r.tentativo || 1;
+  const stileRiga = [st==='non_pertinente'?'opacity:.55':'', n>1?'background:#FAFBFD':''].filter(Boolean).join(';');
+  return `<tr${stileRiga?` style="${stileRiga}"`:''}>
+    ${can('write')?`<td><input type="checkbox" class="mat-sel" data-id="${r.id}" ${MAT_SELEZIONE.has(r.id)?'checked':''} onchange="materialeSeleziona('${r.id}', this.checked)"></td>`:''}
+    <td style="font-size:12px${n>1?`;padding-left:${10+18*(n-1)}px;border-left:3px solid #ADB5BD`:''}">
+      ${n>1?`<div style="font-size:10.5px;font-weight:700;color:var(--primary);margin-bottom:2px">↳ ${n}ª richiesta di accettazione</div>`:''}
       <strong>${esc(r.materiale||'')}</strong>
       ${r.specifiche?`<div style="color:var(--muted);margin-top:2px;white-space:pre-wrap">${esc(r.specifiche)}</div>`:''}
       ${docs.length?`<div style="margin-top:4px;font-size:10.5px;color:var(--primary)">📎 ${docs.map(esc).join(' · ')}</div>`:''}
@@ -2792,16 +2814,64 @@ function materialeRigaHtml(r){
   </tr>`;
 }
 
-// Cambio stato dal menu a tendina: alla prima impostazione propone la data di oggi
-async function materialeCambiaStato(id, stato){
-  const {data:r} = await sb.from('accettazione_materiali').select('data_richiesta,data_esito').eq('id',id).single();
+// Imposta lo stato di una voce: alla prima impostazione propone la data di
+// oggi. Se la voce viene rifiutata crea la richiesta successiva, una sola
+// volta, subito sotto la precedente, cosi' la storia resta ripercorribile.
+async function impostaStatoMateriale(id, stato){
+  const {data:r, error:e0} = await sb.from('accettazione_materiali').select('*').eq('id',id).single();
+  if(e0 || !r) return e0 || new Error('Voce non trovata');
   const upd = {stato};
-  if(['richiesta','accettata','rifiutata'].includes(stato) && !r?.data_richiesta) upd.data_richiesta = today();
-  if(['accettata','rifiutata'].includes(stato) && !r?.data_esito) upd.data_esito = today();
+  if(['richiesta','accettata','rifiutata'].includes(stato) && !r.data_richiesta) upd.data_richiesta = today();
+  if(['accettata','rifiutata'].includes(stato) && !r.data_esito) upd.data_esito = today();
   if(stato==='richiesta') upd.data_esito = null;
   if(stato==='da_richiedere' || stato==='non_pertinente'){ upd.data_richiesta = null; upd.data_esito = null; }
   const {error} = await sb.from('accettazione_materiali').update(upd).eq('id',id);
-  if(error){ alert(error.message); }
+  if(error) return error;
+  if(stato==='rifiutata'){
+    const {data:succ} = await sb.from('accettazione_materiali').select('id').eq('origine_id', id);
+    if(!succ || !succ.length){
+      const ins = await sb.from('accettazione_materiali').insert({
+        cantiere_id: r.cantiere_id, categoria: r.categoria, materiale: r.materiale,
+        specifiche: r.specifiche, ordine: r.ordine||0, stato: 'da_richiedere',
+        tentativo: (r.tentativo||1)+1, origine_id: r.id, created_by: currentUser.id
+      });
+      if(ins.error){
+        return /tentativo|origine_id/.test(ins.error.message||'')
+          ? new Error('Per creare la richiesta successiva esegui su Supabase la migrazione sql/2026-10-16-materiali-richieste-successive.sql')
+          : ins.error;
+      }
+    }
+  }
+  return null;
+}
+
+async function materialeCambiaStato(id, stato){
+  const err = await impostaStatoMateriale(id, stato);
+  if(err) alert(err.message);
+  showView('materiali');
+}
+
+// ---- selezione multipla ----
+function materialeSeleziona(id, sel){
+  if(sel) MAT_SELEZIONE.add(id); else MAT_SELEZIONE.delete(id);
+  const n = document.getElementById('mat_nsel'); if(n) n.textContent = MAT_SELEZIONE.size;
+}
+function materialeSelezionaCategoria(chk, ids){
+  ids.forEach(id=>materialeSeleziona(id, chk.checked));
+  document.querySelectorAll('.mat-sel').forEach(c=>{ if(ids.includes(c.dataset.id)) c.checked = chk.checked; });
+}
+async function applicaStatoSelezionati(){
+  const ids = [...MAT_SELEZIONE];
+  if(!ids.length){ alert('Seleziona almeno un materiale.'); return; }
+  const stato = document.getElementById('mat_bulk_stato').value;
+  if(!confirm(`Assegnare lo stato "${MAT_STATI[stato].l}" a ${ids.length} material${ids.length===1?'e':'i'}?`)) return;
+  const errori = [];
+  for(const id of ids){
+    const err = await impostaStatoMateriale(id, stato);
+    if(err) errori.push(err.message);
+  }
+  MAT_SELEZIONE.clear();
+  if(errori.length) alert('Alcune voci non sono state aggiornate:\n' + [...new Set(errori)].join('\n'));
   showView('materiali');
 }
 
@@ -2923,7 +2993,7 @@ async function stampaRegistroMateriali(){
       + '<th style="'+b+';text-align:left">Materiale e specifiche</th><th style="'+b+'">Documentazione</th>'
       + '<th style="'+b+'">Richiesta</th><th style="'+b+'">Esito</th><th style="'+b+'">Data esito</th><th style="'+b+';text-align:left">Note</th></tr></thead><tbody>';
     lista.forEach(r=>{
-      corpo += '<tr><td style="'+b+'"><strong>'+esc(r.materiale||'')+'</strong>'+(r.specifiche?'<br>'+esc(r.specifiche):'')+'</td>'
+      corpo += '<tr><td style="'+b+'">'+((r.tentativo||1)>1?'<em>'+r.tentativo+'&ordf; richiesta</em><br>':'')+'<strong>'+esc(r.materiale||'')+'</strong>'+(r.specifiche?'<br>'+esc(r.specifiche):'')+'</td>'
         + '<td style="'+b+'">'+esc((r.documenti||[]).join(', '))+'</td>'
         + '<td style="'+b+';text-align:center">'+(r.data_richiesta?fmt(r.data_richiesta):'')+'</td>'
         + '<td style="'+b+';text-align:center">'+esc((MAT_STATI[r.stato]||MAT_STATI.da_richiedere).l)+'</td>'
