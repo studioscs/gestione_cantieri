@@ -291,7 +291,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.12a';
+const APP_VERSIONE = '2026.10.15a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -309,7 +309,7 @@ let currentRole = null;       // ruolo nel cantiere selezionato
 let myCantieri = [];          // [{cantiere, ruolo}]
 let authMode = 'login';
 
-const ROLE_LABELS = {dl:'Direttore Lavori',rup:'RUP / Committente',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato',cse:'CSE - Coordinatore Sicurezza'};
+const ROLE_LABELS = {dl:'Direttore Lavori',rup:'RUP / Committente',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato',cse:'CSE - Coordinatore Sicurezza',collaudatore:'Collaudatore statico / tecnico-amministrativo'};
 
 // permessi: cosa può fare un ruolo (la sicurezza VERA è lato DB/RLS; qui è solo UI)
 const ROLE_PERMS = {
@@ -318,9 +318,29 @@ const ROLE_PERMS = {
   dt_impresa:  {write:false,giornale:'read',ods:false,report:false},
   do:          {write:true, giornale:true, ods:true, report:false},
   committente: {write:false,giornale:'read',ods:false,report:true},
-  cse:         {write:false,giornale:'read',ods:false,report:true,liste:'annotate'}
+  cse:         {write:false,giornale:'read',ods:false,report:true,liste:'annotate'},
+  // stessa visibilita' del RUP; in piu' solo i verbali di collaudo
+  collaudatore:{write:false,giornale:'read',ods:false,report:true,collaudo:true}
 };
 function can(p){ if(!currentRole) return false; return !!ROLE_PERMS[currentRole]?.[p]; }
+
+// Verbali che il collaudatore puo' creare, modificare e generare.
+// Gli altri verbali per lui restano in sola lettura, come per il RUP.
+const TIPI_VERBALE_COLLAUDO = ['collaudo_statico','certificato_collaudo_statico'];
+function puoCreareVerbali(){ return can('write') || can('collaudo'); }
+function puoGestireVerbale(tipo){
+  if(can('write')) return true;
+  return can('collaudo') && TIPI_VERBALE_COLLAUDO.includes(tipo);
+}
+// Nei moduli verbale lascia selezionabili solo i tipi che il ruolo puo' gestire
+function limitaTipiVerbale(prefix){
+  if(can('write')) return;
+  const sel = document.getElementById(prefix+'_tipo');
+  if(!sel) return;
+  [...sel.options].forEach(o=>{ if(!puoGestireVerbale(o.value)) o.remove(); });
+  if(!puoGestireVerbale(sel.value) && sel.options.length) sel.value = sel.options[0].value;
+  toggleVerbaleExtra(prefix);
+}
 function giornaleAccess(){ return ROLE_PERMS[currentRole]?.giornale; } // true|false|'read'
 
 // ============================================================
@@ -591,7 +611,7 @@ function esc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</
 function statoFaseBadge(s){const m={attesa:['badge-grey','In attesa'],in_corso:['badge-yellow','In corso'],completata:['badge-blue','Completata'],verificata_dl:['badge-green','Verificata DL']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function odsStatoBadge(s){const m={bozza:['badge-grey','Bozza'],emessa:['badge-blue','Emessa'],ricevuta:['badge-yellow','Ricevuta'],accettata:['badge-green','Accettata'],contestata:['badge-red','Contestata']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function commTipoBadge(t){const m={nota:['badge-blue','📋 Nota'],richiesta:['badge-yellow','❓ Richiesta'],diffida:['badge-red','⚠️ Diffida']};const[c,l]=m[t]||['badge-grey',t];return`<span class="badge ${c}">${l}</span>`;}
-function roleBadge(r){const m={dl:['badge-blue','DL'],rup:['badge-green','RUP / Committente'],dt_impresa:['badge-yellow','DT Impresa'],do:['badge-grey','DO'],committente:['badge-blue','Committente'],cse:['badge-red','CSE']};const[c,l]=m[r]||['badge-grey',r];return`<span class="badge ${c}">${l}</span>`;}
+function roleBadge(r){const m={dl:['badge-blue','DL'],rup:['badge-green','RUP / Committente'],dt_impresa:['badge-yellow','DT Impresa'],do:['badge-grey','DO'],committente:['badge-blue','Committente'],cse:['badge-red','CSE'],collaudatore:['badge-green','Collaudatore']};const[c,l]=m[r]||['badge-grey',r];return`<span class="badge ${c}">${l}</span>`;}
 function getCantiereObj(id){return myCantieri.find(x=>x.cantiere.id===(id||currentCantiere))?.cantiere;}
 
 // ============================================================
@@ -1318,7 +1338,7 @@ async function renderComunicazioni(){
   const icons={nota:'📋',richiesta:'❓',diffida:'⚠️'};
   const bg={nota:'#D1ECF1',richiesta:'#FFF3CD',diffida:'#F8D7DA'};
   let html = `<div class="section-header"><div><div class="page-title">Comunicazioni</div><div class="page-subtitle">${esc(c?.nome||'')}</div></div>
-    <button class="btn btn-primary" onclick="openModalNuovaComunicazione()">+ Nuova comunicazione</button></div>
+    ${currentRole!=='collaudatore'?`<button class="btn btn-primary" onclick="openModalNuovaComunicazione()">+ Nuova comunicazione</button>`:''}</div>
   <div class="alert alert-warning">⚠️ <strong>Registro interno:</strong> le comunicazioni registrate in questa piattaforma hanno valore di archivio e coordinamento interno. La trasmissione ufficiale tra le parti avviene esclusivamente <strong>via PEC</strong>. Il portale non sostituisce la comunicazione formale.</div>
   <div class="card" style="padding:0">`;
   const {data:comms} = await sb.from('comunicazioni').select('*').eq('cantiere_id',currentCantiere).order('data',{ascending:false});
@@ -2629,7 +2649,7 @@ async function renderVerbali(){
       <div class="page-title">Verbali / RSU / Collaudo statico</div>
       <div class="page-subtitle">${esc(c?.nome||'')} — verbali, relazione a struttura ultimata e collaudo statico</div>
     </div>
-    ${can('write')?`<button class="btn btn-primary" onclick="openModalNuovoVerbale()">+ Nuovo verbale</button>`:''}
+    ${puoCreareVerbali()?`<button class="btn btn-primary" onclick="openModalNuovoVerbale()">+ Nuovo ${can('write')?'verbale':'verbale di collaudo'}</button>`:''}
   </div>
   <div class="alert alert-info" style="font-size:12px">
     I verbali registrati sono visibili a tutti i membri del cantiere. Per comunicazioni riservate usa la sezione <strong>Comunicazioni</strong> con visibilità impostata su "Riservata".
@@ -2667,12 +2687,12 @@ async function renderVerbali(){
           ${v.oggetto?`<div style="font-size:13px;font-weight:600;margin-top:6px">${esc(v.oggetto)}</div>`:''}
         </div>
         <div class="btn-group">
-          <button class="btn btn-secondary btn-sm" onclick="apriVerbaleFirmabile('${v.id}')">🖨️ Genera PDF firmabile</button>
+          ${(currentRole!=='collaudatore'||puoGestireVerbale(v.tipo))?`<button class="btn btn-secondary btn-sm" onclick="apriVerbaleFirmabile('${v.id}')">🖨️ Genera PDF firmabile</button>`:''}
           <button class="btn btn-secondary btn-sm" title="Visualizza il verbale generato (sola lettura)" onclick="apriVerbaleFirmabile('${v.id}', true)">👁️ Visualizza</button>
-          ${can('write')?`
+          ${puoGestireVerbale(v.tipo)?`
           <button class="btn btn-secondary btn-sm" onclick="openModalEditVerbale('${v.id}')">✏️</button>
-          <button class="btn btn-secondary btn-sm" title="Duplica: crea un nuovo verbale partendo da questo" onclick="openModalEditVerbale('${v.id}', true)">📋 Duplica</button>
-          <button class="btn btn-danger btn-sm" onclick="eliminaVerbale('${v.id}')">🗑️</button>`:''}
+          <button class="btn btn-secondary btn-sm" title="Duplica: crea un nuovo verbale partendo da questo" onclick="openModalEditVerbale('${v.id}', true)">📋 Duplica</button>`:''}
+          ${can('write')?`<button class="btn btn-danger btn-sm" onclick="eliminaVerbale('${v.id}')">🗑️</button>`:''}
         </div>
       </div>
       ${(()=>{ const nf=(v.firmatari||[]).filter(f=>f.firmato).length;
@@ -2760,7 +2780,8 @@ async function openModalNuovoVerbale(){
   const teamDx = {
     rup_nome: (team.rup && team.rup.nome) || '',
     dt_impresa_nome: (team.dt_impresa && team.dt_impresa.nome) || '',
-    legale_rappresentante: (team.dt_impresa && team.dt_impresa.nome) || ''
+    legale_rappresentante: (team.dt_impresa && team.dt_impresa.nome) || '',
+    collaudatore_nome: (team.collaudatore && team.collaudatore.nome) || ''
   };
   // Ordini di servizio del cantiere: servono al verbale di verifica adempimento
   // per far scegliere quale OdS citare e copiarne il testo.
@@ -2831,6 +2852,7 @@ async function openModalNuovoVerbale(){
       <button class="btn btn-primary" onclick="salvaVerbale()">Salva verbale</button>
     </div>`);
   toggleVerbaleExtra('nv2');
+  limitaTipiVerbale('nv2');
 }
 
 // prefix 'nv2' = nuovo verbale; 'ev2' = duplicazione dal modulo di modifica
@@ -2839,6 +2861,7 @@ async function salvaVerbale(prefix){
   const g = id => document.getElementById(prefix+'_'+id);
   const tipo = g('tipo').value;
   const data = g('data').value;
+  if(!puoGestireVerbale(tipo)){ alert('Il tuo ruolo non consente di creare questo tipo di verbale.'); return; }
   if(!data){ alert('Data obbligatoria'); return; }
   const datiExtra = raccogliDatiExtraVerbale(prefix, tipo);
   const {error} = await sb.from('verbali').insert({
@@ -2856,7 +2879,9 @@ async function salvaVerbale(prefix){
   // Annotazione automatica sul giornale
   const tipoL = {consegna_lavori:'Consegna lavori',consegna_parziale:'Consegna parziale lavori',sopralluogo:'Sopralluogo',sopralluogo_periodico:'Sopralluogo periodico',verifica_ods:'Verifica adempimento OdS',constatazione:'Constatazione',constatazione_stato_luoghi:'Constatazione stato dei luoghi',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',certificato_ultimazione:'Certificato di ultimazione lavori',certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare',riconsegna_anticipata:'Presa in consegna anticipata delle opere',collaudo_statico:'Verbale di visita di collaudo statico',certificato_collaudo_statico:'Certificato di collaudo statico',relazione_struttura_ultimata:'Relazione a struttura ultimata',altro:'Verbale'};
   const ogg = g('ogg').value.trim();
-  await annotaGiornale(data, `[VERBALE ${(tipoL[tipo]||tipo).toUpperCase()}]${ogg?' — '+ogg:''}`);
+  // Il giornale e' compilato dalla direzione lavori: per chi non ha accesso
+  // in scrittura (es. collaudatore) l'annotazione non si fa
+  if(can('write')) await annotaGiornale(data, `[VERBALE ${(tipoL[tipo]||tipo).toUpperCase()}]${ogg?' — '+ogg:''}`);
   closeModal();
   showView('verbali');
 }
@@ -2867,6 +2892,7 @@ async function salvaVerbale(prefix){
 async function openModalEditVerbale(id, duplica){
   const {data:v} = await sb.from('verbali').select('*').eq('id',id).single();
   if(!v) return;
+  if(!puoGestireVerbale(v.tipo)){ alert('Il tuo ruolo non consente di modificare questo verbale.'); return; }
   const dx = v.dati_extra || {};
   const team = await getTeamRoster(v.cantiere_id);
   const {data:odsListEdit} = await sb.from('ods').select('*').eq('cantiere_id',v.cantiere_id).order('numero');
@@ -2874,7 +2900,8 @@ async function openModalEditVerbale(id, duplica){
   const dxWithTeam = Object.assign({}, dx, {
     rup_nome: dx.rup_nome || (team.rup && team.rup.nome) || '',
     dt_impresa_nome: dx.dt_impresa_nome || (team.dt_impresa && team.dt_impresa.nome) || '',
-    legale_rappresentante: dx.legale_rappresentante || (team.dt_impresa && team.dt_impresa.nome) || ''
+    legale_rappresentante: dx.legale_rappresentante || (team.dt_impresa && team.dt_impresa.nome) || '',
+    collaudatore_nome: dx.collaudatore_nome || (team.collaudatore && team.collaudatore.nome) || ''
   });
   const presentiValue = v.presenti || formatPresentiFromTeam(team);
   openModal(duplica ? 'Duplica Verbale' : 'Modifica Verbale', `
@@ -2945,10 +2972,12 @@ async function openModalEditVerbale(id, duplica){
         : `<button class="btn btn-primary" onclick="salvaEditVerbale('${id}')">Salva</button>`}
     </div>`);
   toggleVerbaleExtra('ev2');
+  limitaTipiVerbale('ev2');
 }
 
 async function salvaEditVerbale(id){
   const tipo = document.getElementById('ev2_tipo').value;
+  if(!puoGestireVerbale(tipo)){ alert('Il tuo ruolo non consente di salvare questo tipo di verbale.'); return; }
   const datiExtra = raccogliDatiExtraVerbale('ev2', tipo);
   const {error} = await sb.from('verbali').update({
     tipo,
@@ -2966,6 +2995,7 @@ async function salvaEditVerbale(id){
 }
 
 async function eliminaVerbale(id){
+  if(!can('write')){ alert('Il tuo ruolo non consente di eliminare verbali.'); return; }
   if(!confirm('Eliminare questo verbale?')) return;
   const {error} = await sb.from('verbali').delete().eq('id',id);
   if(error){ alert(error.message); return; }
@@ -4874,6 +4904,7 @@ async function firmaRupODS(id){
 }
 
 function openModalNuovaComunicazione(){
+  if(currentRole==='collaudatore'){ alert('Il collaudatore ha accesso in sola lettura alle comunicazioni.'); return; }
   openModal('Nuova Comunicazione',`<div class="form-grid">
     <div class="form-group"><label class="form-label">Tipo</label>
       <select class="form-control" id="comm_tipo">
@@ -5253,6 +5284,7 @@ function openModalNuovoMembro(){
           <option value="do">Direttore Operativo</option>
           <option value="committente">Committente Privato</option>
           <option value="cse">CSE - Coordinatore Sicurezza in Esecuzione</option>
+          <option value="collaudatore">Collaudatore statico / tecnico-amministrativo</option>
         </select>
       </div>
       <div class="form-group">
@@ -5395,6 +5427,7 @@ async function openModalEditMembro(membroId, utenteId){
           <option value="do"${t.ruolo==='do'?' selected':''}>Direttore Operativo</option>
           <option value="committente"${t.ruolo==='committente'?' selected':''}>Committente Privato</option>
           <option value="cse"${t.ruolo==='cse'?' selected':''}>CSE - Coordinatore Sicurezza</option>
+          <option value="collaudatore"${t.ruolo==='collaudatore'?' selected':''}>Collaudatore statico / tecnico-amministrativo</option>
         </select>
       </div>
       <div class="form-group">
@@ -5876,7 +5909,7 @@ async function generaReportSA(cantiereId){
   const team=(teamRaw||[]).map(t=>({...t,profilo:profMap[t.utente_id]||{}}));
   const tipoDittaLabel={appaltatrice:'Appaltatrice',subappaltatrice:'Subappaltatrice',subaffidataria:'Subaffidataria'};
   const {lista:variantiLista, vigente:variantiVigente} = variantiRiepilogoDati(varianti);
-  const roleLabel={dl:'Direttore dei Lavori',rup:'RUP / Committente',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato',cse:'CSE'};
+  const roleLabel={dl:'Direttore dei Lavori',rup:'RUP / Committente',dt_impresa:'DT Impresa',do:'Direttore Operativo',committente:'Committente Privato',cse:'CSE',collaudatore:'Collaudatore'};
   const totOpGiornale=(giornale||[]).reduce((a,g)=>{const mae=g.maestranze||[];return a+mae.reduce((b,m)=>b+(m.num||0),0);},0);
   const giorniRegistrati=(giornale||[]).length;
   const giorniAnomalie=(giornale||[]).filter(g=>g.anomalie&&g.anomalie.trim()).length;
@@ -6549,6 +6582,10 @@ function parseNomeRuolo(s){
 //   recordTable, recordId  // per salvataggio firme opzionale
 // }
 function apriDocumentoFirmabile(opts){
+  // Il collaudatore firma e salva solo i verbali di collaudo (gli altri verbali
+  // sono gia' bloccati a monte): ODS, prelievi e sospensioni per lui si aprono
+  // in sola lettura, senza firme ne' salvataggi nel gestionale.
+  if(currentRole==='collaudatore' && opts.recordTable!=='verbali') opts.solaLettura = true;
   const w = opts.existingWindow || window.open('about:blank', '_blank');
   if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per generare il documento.'); return; }
 
@@ -9259,6 +9296,9 @@ async function apriVerbaleFirmabile(id, solaLettura){
     const {data:v, error:errV} = await sb.from('verbali').select('*').eq('id',id).single();
     if(errV) throw errV;
     if(!v){ w.close(); return; }
+    if(!solaLettura && currentRole==='collaudatore' && !puoGestireVerbale(v.tipo)){
+      w.close(); alert('Il collaudatore può generare solo i verbali di collaudo. Usa "Visualizza" per gli altri.'); return;
+    }
     const c = getCantiereObj(v.cantiere_id);
     const dx = v.dati_extra || {};
     let corpoHtml, titolo, normativa, metaRows, comune='', provincia='';
@@ -9773,7 +9813,7 @@ function extraFieldsCollaudoStaticoHtml(prefix, dx, team, cantiere){
     <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">Dettagli verbale di visita di collaudo statico</div>
     <div class="form-grid">
       <div class="form-group"><label class="form-label">Collaudatore *</label>
-        <input class="form-control" id="${prefix}_col_collaudatore" value="${esc(dx.collaudatore_nome||'')}" placeholder="Ing. Nome Cognome"></div>
+        <input class="form-control" id="${prefix}_col_collaudatore" value="${esc(dx.collaudatore_nome||team.collaudatore_nome||'')}" placeholder="Ing. Nome Cognome"></div>
       <div class="form-group"><label class="form-label">Direttore dei Lavori</label>
         <input class="form-control" id="${prefix}_col_dl" value="${esc(dlNome)}" placeholder="Ing. Nome Cognome"></div>
       <div class="form-group"><label class="form-label">DT Impresa / Legale Rappresentante</label>
@@ -10505,7 +10545,7 @@ function extraFieldsCollaudoCertHtml(prefix, dx, team, cantiere){
     <div class="form-grid">
       <div class="form-group span-2">
         <label class="form-label">Nome e cognome</label>
-        <input class="form-control" id="${prefix}_ccs_nome" value="${esc(dx.collaudatore_nome||'')}">
+        <input class="form-control" id="${prefix}_ccs_nome" value="${esc(dx.collaudatore_nome||team.collaudatore_nome||'')}">
       </div>
       <div class="form-group">
         <label class="form-label">Codice fiscale</label>
@@ -10967,6 +11007,8 @@ async function visualizzaVerbaleSospensione(sospId, tipoVerbale){
 }
 
 async function openModalGeneraVerbaleSospensione(sospId, tipoVerbale){
+  // la generazione salva i dati del verbale: per il collaudatore solo visualizzazione
+  if(currentRole==='collaudatore'){ visualizzaVerbaleSospensione(sospId, tipoVerbale); return; }
   const {data:s} = await sb.from('sospensioni').select('*').eq('id',sospId).single();
   if(!s) return;
   const c = getCantiereObj(s.cantiere_id);
