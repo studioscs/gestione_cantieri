@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.18a';
+const APP_VERSIONE = '2026.10.18b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -11344,10 +11344,12 @@ function ppCampiHtml(p){
     <div class="form-group" style="margin:0"><input class="form-control pp-data" type="date" style="font-size:12px" title="Data prevista" value="${esc(p.data_prevista||'')}"></div>
     <div class="form-group" style="margin:0"><input class="form-control pp-esec" style="font-size:12px" placeholder="Esecutore (impresa / laboratorio)" value="${esc(p.esecutore||'')}"></div>`;
 }
+// campi che vanno a capo da soli: non allargano mai la finestra
+const PP_GRID = 'flex:1;min-width:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px';
 function ppIstanzaHtml(p){
-  return `<div class="pp-ist" style="display:grid;grid-template-columns:2fr 1.3fr 140px 1.5fr auto;gap:6px;margin-bottom:5px;align-items:center">
-    ${ppCampiHtml(p)}
-    <div style="white-space:nowrap">
+  return `<div class="pp-ist" style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px;padding:6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);min-width:0">
+    <div style="${PP_GRID}">${ppCampiHtml(p)}</div>
+    <div style="display:flex;gap:4px;flex-shrink:0">
       <button type="button" class="btn btn-secondary btn-sm" title="Duplica (es. altro blocco o altra data)" onclick="ppDuplicaIstanza(this)">📋</button>
       <button type="button" class="btn btn-danger btn-sm" title="Rimuovi" onclick="ppRimuoviIstanza(this)">&#10005;</button>
     </div>
@@ -11396,15 +11398,15 @@ function ppToggle(chk){
 function ppLiberaRigaHtml(p){
   p = p || {};
   return `<div class="pp-libera" style="border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:6px;background:white">
-    <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;margin-bottom:6px">
+    <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:6px;margin-bottom:6px">
       <input class="form-control pp-nome" style="font-size:12px" placeholder="Descrizione della prova" value="${esc(p.nome||'')}">
       <input class="form-control pp-norma" style="font-size:12px" placeholder="Norma di riferimento" value="${esc(p.norma||'')}">
-      <div style="white-space:nowrap">
+      <div style="display:flex;gap:4px">
         <button type="button" class="btn btn-secondary btn-sm" title="Duplica" onclick="ppDuplicaLibera(this)">📋</button>
         <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.pp-libera').remove()">&#10005;</button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:2fr 1.3fr 140px 1.5fr;gap:6px">${ppCampiHtml(p)}</div>
+    <div style="${PP_GRID}">${ppCampiHtml(p)}</div>
   </div>`;
 }
 function ppDuplicaLibera(btn){
