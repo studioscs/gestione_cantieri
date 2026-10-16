@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.17c';
+const APP_VERSIONE = '2026.10.18a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -11228,6 +11228,40 @@ function bodyCollaudoCertificato(c, v, dx){
 // firmare da DL, collaudatore statico e collaudatore tecnico-amministrativo.
 // ============================================================
 const PROVE_COLLAUDO = [
+  {cat:'Controlli di accettazione dei materiali strutturali', parte:'accettazione', voci:[
+    {n:'Calcestruzzo — controllo di accettazione (resistenza a compressione)', norma:'NTC § 11.2.5 — UNI EN 12390-3',
+     freq:'tipo A: 1 controllo (3 prelievi da 2 provini) ogni ≤ 300 m³, almeno 1 prelievo per giorno di getto; tipo B oltre 1500 m³'},
+    {n:'Calcestruzzo fibrorinforzato (FRC)', norma:'NTC § 11.2.12 — Linee guida C.S.LL.PP. FRC',
+     freq:'secondo Linee guida: compressione e flessione (UNI EN 14651) per lotto'},
+    {n:'Acciaio per c.a. in barre e rotoli (B450C)', norma:'NTC § 11.3.2.12 — UNI EN ISO 15630-1',
+     freq:'3 spezzoni dello stesso diametro per ogni lotto di spedizione (≤ 30 t): trazione e piegamento'},
+    {n:'Reti e tralicci elettrosaldati', norma:'NTC § 11.3.2.12 — UNI EN ISO 15630-2',
+     freq:'3 saggi per ogni lotto di spedizione: trazione, piegamento e distacco del nodo'},
+    {n:'Acciaio per c.a.p. (fili, trecce, trefoli, barre)', norma:'NTC § 11.3.3.5.4 — UNI EN ISO 15630-3',
+     freq:'3 saggi per ogni lotto di spedizione'},
+    {n:'Acciaio per carpenteria — piatti, lamiere e profilati', norma:'NTC § 11.3.4.11.3 — UNI EN ISO 6892-1 / 148-1',
+     freq:'3 saggi per ogni lotto di spedizione (≤ 30 t): trazione e resilienza'},
+    {n:'Saldature delle strutture metalliche', norma:'NTC § 11.3.4.5 — UNI EN 1090-2 § 12.4 — UNI EN ISO 5817',
+     freq:'esame visivo 100%; NDT supplementari secondo la classe di esecuzione (Tab. 24)'},
+    {n:'Bulloni e dadi strutturali', norma:'NTC § 11.3.4.6 — UNI EN ISO 898-1 / 898-2',
+     freq:'3 assiemi per tipo (diametro e classe): trazione; verifica del serraggio sui precaricati'},
+    {n:'Legno strutturale (massiccio, lamellare, X-lam)', norma:'NTC § 11.7.10 — UNI EN 14081 / 14080 / 16351',
+     freq:'verifica documentale e controlli di accettazione in cantiere per lotto di fornitura'},
+    {n:'Elementi resistenti per muratura', norma:'NTC § 11.10.1.1 — UNI EN 772-1',
+     freq:'prove di compressione su campioni prelevati per ogni fornitura'},
+    {n:'Malta per muratura', norma:'NTC § 11.10.2 — UNI EN 1015-11',
+     freq:'provini prismatici per prelievo: flessione e compressione'},
+    {n:'Malte strutturali e da ripristino (R3/R4)', norma:'UNI EN 1504-3 — UNI EN 12190',
+     freq:'provini prismatici 40×40×160 mm per lotto: compressione e flessione'},
+    {n:'Compositi FRP', norma:'NTC § 11.1 — Linee guida C.S.LL.PP. FRP (2019)',
+     freq:'prove di trazione su provini per ogni lotto di fornitura'},
+    {n:'Compositi FRCM', norma:'NTC § 11.1 — Linee guida C.S.LL.PP. FRCM',
+     freq:'prove di trazione su provini per ogni lotto di fornitura'},
+    {n:'Sistemi CRM (intonaco armato con rete in composito)', norma:'NTC § 11.1 — Linee guida C.S.LL.PP. CRM',
+     freq:'prove sulla rete e sulla malta per ogni lotto di fornitura'},
+    {n:'Dispositivi antisismici e appoggi strutturali', norma:'NTC § 11.9 / § 11.6 — UNI EN 15129 / 1337',
+     freq:'prove di accettazione sui dispositivi secondo NTC § 11.9'}
+  ]},
   {cat:'Strutture e materiali', voci:[
     {n:'Prove di carico su solai e impalcati', norma:'D.M. 17/01/2018 § 9.2.2'},
     {n:'Prove di carico su travi, sbalzi e scale', norma:'D.M. 17/01/2018 § 9.2.2'},
@@ -11300,6 +11334,9 @@ const PROVE_COLLAUDO = [
   ]}
 ];
 
+// Ogni prova spuntata ha una o piu' "istanze" (righe di dettaglio): si
+// duplica una prova per ripeterla su piu' blocchi o in date diverse,
+// restando nella sua categoria.
 function ppCampiHtml(p){
   p = p || {};
   return `<div class="form-group" style="margin:0"><input class="form-control pp-ubic" style="font-size:12px" placeholder="Parti d'opera / ubicazione" value="${esc(p.ubicazione||'')}"></div>
@@ -11307,39 +11344,97 @@ function ppCampiHtml(p){
     <div class="form-group" style="margin:0"><input class="form-control pp-data" type="date" style="font-size:12px" title="Data prevista" value="${esc(p.data_prevista||'')}"></div>
     <div class="form-group" style="margin:0"><input class="form-control pp-esec" style="font-size:12px" placeholder="Esecutore (impresa / laboratorio)" value="${esc(p.esecutore||'')}"></div>`;
 }
+function ppIstanzaHtml(p){
+  return `<div class="pp-ist" style="display:grid;grid-template-columns:2fr 1.3fr 140px 1.5fr auto;gap:6px;margin-bottom:5px;align-items:center">
+    ${ppCampiHtml(p)}
+    <div style="white-space:nowrap">
+      <button type="button" class="btn btn-secondary btn-sm" title="Duplica (es. altro blocco o altra data)" onclick="ppDuplicaIstanza(this)">📋</button>
+      <button type="button" class="btn btn-danger btn-sm" title="Rimuovi" onclick="ppRimuoviIstanza(this)">&#10005;</button>
+    </div>
+  </div>`;
+}
+// copia i valori correnti della riga (anche quelli digitati e non salvati)
+function ppValoriRiga(el){
+  return {
+    ubicazione: el.querySelector('.pp-ubic')?.value||'',
+    estensione: el.querySelector('.pp-est')?.value||'',
+    data_prevista: el.querySelector('.pp-data')?.value||'',
+    esecutore: el.querySelector('.pp-esec')?.value||''
+  };
+}
+function ppDuplicaIstanza(btn){
+  const ist = btn.closest('.pp-ist');
+  const v = ppValoriRiga(ist); v.data_prevista = '';
+  ist.insertAdjacentHTML('afterend', ppIstanzaHtml(v));
+  ppAggiornaContatori(ist);
+}
+function ppRimuoviIstanza(btn){
+  const ist = btn.closest('.pp-ist');
+  const cont = ist.parentElement;
+  const row = ist.closest('.pp-row');
+  ist.remove();
+  // tolta l'ultima istanza: la prova risulta non piu' prevista
+  if(row && !cont.querySelector('.pp-ist')){
+    const chk = row.querySelector('.pp-chk'); chk.checked = false; ppToggle(chk);
+  }
+  ppAggiornaContatori(cont);
+}
+function ppAggiornaContatori(el){
+  const det = el.closest && el.closest('details'); if(!det) return;
+  const cnt = det.querySelector('.pp-cnt'); if(!cnt) return;
+  let n = 0;
+  det.querySelectorAll('.pp-row').forEach(r=>{ if(r.querySelector('.pp-chk').checked) n += r.querySelectorAll('.pp-ist').length; });
+  cnt.textContent = n;
+}
+function ppToggle(chk){
+  const row = chk.closest('.pp-row');
+  const ists = row.querySelector('.pp-ists');
+  if(chk.checked && !ists.querySelector('.pp-ist')) ists.insertAdjacentHTML('beforeend', ppIstanzaHtml());
+  ists.style.display = chk.checked ? 'block' : 'none';
+  ppAggiornaContatori(chk);
+}
 function ppLiberaRigaHtml(p){
   p = p || {};
   return `<div class="pp-libera" style="border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:6px;background:white">
     <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;margin-bottom:6px">
       <input class="form-control pp-nome" style="font-size:12px" placeholder="Descrizione della prova" value="${esc(p.nome||'')}">
       <input class="form-control pp-norma" style="font-size:12px" placeholder="Norma di riferimento" value="${esc(p.norma||'')}">
-      <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.pp-libera').remove()">&#10005;</button>
+      <div style="white-space:nowrap">
+        <button type="button" class="btn btn-secondary btn-sm" title="Duplica" onclick="ppDuplicaLibera(this)">📋</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.pp-libera').remove()">&#10005;</button>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:2fr 1.3fr 140px 1.5fr;gap:6px">${ppCampiHtml(p)}</div>
   </div>`;
+}
+function ppDuplicaLibera(btn){
+  const r = btn.closest('.pp-libera');
+  const v = ppValoriRiga(r); v.data_prevista = '';
+  v.nome = r.querySelector('.pp-nome').value; v.norma = r.querySelector('.pp-norma').value;
+  r.insertAdjacentHTML('afterend', ppLiberaRigaHtml(v));
 }
 function ppAggiungiLibera(prefix){
   const c = document.getElementById(prefix+'_pp_libere');
   if(c) c.insertAdjacentHTML('beforeend', ppLiberaRigaHtml());
 }
-function ppToggle(chk){
-  const det = chk.closest('.pp-row').querySelector('.pp-det');
-  if(det) det.style.display = chk.checked ? 'grid' : 'none';
-  const det2 = chk.closest('details'); const cnt = det2 && det2.querySelector('.pp-cnt');
-  if(cnt) cnt.textContent = det2.querySelectorAll('.pp-chk:checked').length;
+
+function ppParte(cat){
+  const g = PROVE_COLLAUDO.find(x=>x.cat===cat);
+  return (g && g.parte) || 'collaudo';
 }
 
 function extraFieldsProgrammaProveHtml(prefix, dx, team, cantiere){
   dx = dx || {}; team = team || {};
+  // istanze salvate raggruppate per prova del catalogo
   const sel = {};
-  (dx.prove||[]).filter(p=>!p.libera).forEach(p=>{ sel[p.cat+'|'+p.nome] = p; });
+  (dx.prove||[]).filter(p=>!p.libera).forEach(p=>{ (sel[p.cat+'|'+p.nome] = sel[p.cat+'|'+p.nome] || []).push(p); });
   const libere = (dx.prove||[]).filter(p=>p.libera);
   let h = `<div id="${prefix}_extra_programma_prove_collaudo" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
     <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:4px">Programma delle prove di collaudo e di messa in servizio degli impianti</div>
     <div class="alert alert-info" style="font-size:11px;margin-bottom:12px">
       D.Lgs. 36/2023, All. II.14, art. 1: il direttore dei lavori fornisce chiarimenti, spiegazioni e documenti all'organo di collaudo,
       assistendolo nell'espletamento delle operazioni e approvando, previo esame, il programma delle prove di collaudo e messa in servizio degli impianti.
-      Spunta le prove previste e completa i dettagli; le prove non presenti si aggiungono in fondo.
+      Spunta le prove previste e completa i dettagli. Con 📋 duplichi una prova per ripeterla su altri blocchi o in altre date.
     </div>
     <div class="form-grid">
       <div class="form-group"><label class="form-label">Direttore dei Lavori</label>
@@ -11350,21 +11445,29 @@ function extraFieldsProgrammaProveHtml(prefix, dx, team, cantiere){
         <input class="form-control" id="${prefix}_pp_cs" value="${esc(dx.collaudatore_statico||team.collaudatore_nome||'')}"></div>
       <div class="form-group"><label class="form-label">Collaudatore tecnico-amministrativo</label>
         <input class="form-control" id="${prefix}_pp_cta" value="${esc(dx.collaudatore_ta||team.collaudatore_nome||'')}"></div>
-    </div>
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:12px 0 6px">Prove previste</div>`;
+    </div>`;
+  let parteCorrente = null;
   PROVE_COLLAUDO.forEach((g,ci)=>{
-    const nSel = g.voci.filter(v=>sel[g.cat+'|'+v.n]).length;
+    const parte = g.parte || 'collaudo';
+    if(parte !== parteCorrente){
+      parteCorrente = parte;
+      h += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin:14px 0 6px">${parte==='accettazione'
+        ? 'Parte A — Controlli di accettazione obbligatori dei materiali strutturali (NTC 2018, cap. 11)'
+        : 'Parte B — Prove di collaudo e messa in servizio degli impianti'}</div>`;
+    }
+    const nSel = g.voci.reduce((a,v)=>a+((sel[g.cat+'|'+v.n]||[]).length),0);
     h += `<details${nSel?' open':''} style="border:1px solid var(--border);border-radius:5px;margin-bottom:6px;background:white">
-      <summary style="padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer">${esc(g.cat)} <span style="font-weight:400;color:var(--muted)">— selezionate: <span class="pp-cnt">${nSel}</span></span></summary>
+      <summary style="padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer">${esc(g.cat)} <span style="font-weight:400;color:var(--muted)">— previste: <span class="pp-cnt">${nSel}</span></span></summary>
       <div style="padding:4px 10px 8px">`;
     g.voci.forEach((v,vi)=>{
-      const p = sel[g.cat+'|'+v.n];
+      const ist = sel[g.cat+'|'+v.n] || [];
       h += `<div class="pp-row" data-ci="${ci}" data-vi="${vi}" style="padding:5px 0;border-bottom:1px dashed var(--border)">
         <label style="font-size:12px;cursor:pointer;display:flex;gap:6px;align-items:flex-start">
-          <input type="checkbox" class="pp-chk"${p?' checked':''} onchange="ppToggle(this)" style="margin-top:2px">
-          <span>${esc(v.n)} <span style="color:var(--muted);font-size:11px">— ${esc(v.norma)}</span></span>
+          <input type="checkbox" class="pp-chk"${ist.length?' checked':''} onchange="ppToggle(this)" style="margin-top:2px">
+          <span>${esc(v.n)} <span style="color:var(--muted);font-size:11px">— ${esc(v.norma)}</span>
+            ${v.freq?`<span style="display:block;color:var(--muted);font-size:10.5px">Frequenza minima: ${esc(v.freq)}</span>`:''}</span>
         </label>
-        <div class="pp-det" style="display:${p?'grid':'none'};grid-template-columns:2fr 1.3fr 140px 1.5fr;gap:6px;margin:6px 0 2px 22px">${ppCampiHtml(p)}</div>
+        <div class="pp-ists" style="display:${ist.length?'block':'none'};margin:6px 0 2px 22px">${ist.map(p=>ppIstanzaHtml(p)).join('')}</div>
       </div>`;
     });
     h += `</div></details>`;
@@ -11391,12 +11494,14 @@ function raccogliDatiProgrammaProve(prefix){
   root.querySelectorAll('.pp-row').forEach(r=>{
     if(!r.querySelector('.pp-chk').checked) return;
     const g = PROVE_COLLAUDO[+r.dataset.ci], v = g.voci[+r.dataset.vi];
-    prove.push(Object.assign({cat:g.cat, nome:v.n, norma:v.norma}, campi(r)));
+    r.querySelectorAll('.pp-ist').forEach(ist=>{
+      prove.push(Object.assign({cat:g.cat, parte:g.parte||'collaudo', nome:v.n, norma:v.norma, freq:v.freq||null}, campi(ist)));
+    });
   });
   root.querySelectorAll('.pp-libera').forEach(r=>{
     const nome = (r.querySelector('.pp-nome')?.value||'').trim();
     if(!nome) return;
-    prove.push(Object.assign({libera:true, cat:'Altre prove', nome, norma:(r.querySelector('.pp-norma')?.value||'').trim()||null}, campi(r)));
+    prove.push(Object.assign({libera:true, cat:'Altre prove', parte:'collaudo', nome, norma:(r.querySelector('.pp-norma')?.value||'').trim()||null}, campi(r)));
   });
   return {
     dl_nome: val('dl'), impresa_nome: val('impresa'),
@@ -11407,40 +11512,60 @@ function raccogliDatiProgrammaProve(prefix){
 
 function bodyProgrammaProve(c, v, dx){
   dx = dx || {};
-  const prove = dx.prove || [];
+  const prove = (dx.prove || []).map(p=>Object.assign({}, p, {parte: p.parte || (p.libera ? 'collaudo' : ppParte(p.cat))}));
   const b = 'border:1px solid #999;padding:4px 5px;vertical-align:top';
+  const haA = prove.some(p=>p.parte==='accettazione');
   let h = '<p>Ai sensi dell&rsquo;art. 1 dell&rsquo;Allegato II.14 al D.Lgs. 36/2023, il Direttore dei Lavori'
     + (dx.dl_nome?' <strong>'+esc(dx.dl_nome)+'</strong>':'')
     + ' sottopone all&rsquo;organo di collaudo'
     + (dx.collaudatore_statico||dx.collaudatore_ta ? ' (' + [dx.collaudatore_statico?'collaudatore statico <strong>'+esc(dx.collaudatore_statico)+'</strong>':'', dx.collaudatore_ta?'collaudatore tecnico-amministrativo <strong>'+esc(dx.collaudatore_ta)+'</strong>':''].filter(Boolean).join(', ')+')' : '')
-    + ' il seguente programma delle prove di collaudo e di messa in servizio degli impianti, relativo ai lavori in epigrafe'
+    + ' il seguente programma'
+    + (haA ? ', comprendente i controlli di accettazione obbligatori dei materiali strutturali (Parte A) e le prove di collaudo e di messa in servizio degli impianti (Parte B)'
+           : ' delle prove di collaudo e di messa in servizio degli impianti')
+    + ', relativo ai lavori in epigrafe'
     + (dx.impresa_nome?', da eseguirsi con l&rsquo;assistenza dell&rsquo;impresa esecutrice (referente: <strong>'+esc(dx.impresa_nome)+'</strong>)':'')+'.</p>';
   if(!prove.length){
     h += '<p><em>Nessuna prova selezionata.</em></p>';
   }
-  const cats = PROVE_COLLAUDO.map(g=>g.cat).concat(['Altre prove']);
   let n = 0;
-  cats.forEach(cat=>{
-    const lista = prove.filter(p=>p.cat===cat);
-    if(!lista.length) return;
-    h += '<h3>'+esc(cat).toUpperCase()+'</h3>';
-    h += '<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr>'
-      + '<th style="'+b+'">N.</th><th style="'+b+';text-align:left">Prova</th><th style="'+b+';text-align:left">Norma di riferimento</th>'
+  const tabella = (lista, conFreq) => {
+    let t = '<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr>'
+      + '<th style="'+b+'">N.</th><th style="'+b+';text-align:left">'+(conFreq?'Controllo':'Prova')+'</th><th style="'+b+';text-align:left">Norma di riferimento</th>'
+      + (conFreq ? '<th style="'+b+';text-align:left">Frequenza minima</th>' : '')
       + '<th style="'+b+';text-align:left">Parti d&rsquo;opera / ubicazione</th><th style="'+b+'">Numero / estensione</th>'
       + '<th style="'+b+'">Data prevista</th><th style="'+b+';text-align:left">Esecutore</th></tr></thead><tbody>';
     lista.forEach(p=>{
       n++;
-      h += '<tr><td style="'+b+';text-align:center">'+n+'</td><td style="'+b+'">'+esc(p.nome||'')+'</td><td style="'+b+'">'+esc(p.norma||'')+'</td>'
+      t += '<tr><td style="'+b+';text-align:center">'+n+'</td><td style="'+b+'">'+esc(p.nome||'')+'</td><td style="'+b+'">'+esc(p.norma||'')+'</td>'
+        + (conFreq ? '<td style="'+b+'">'+esc(p.freq||'')+'</td>' : '')
         + '<td style="'+b+'">'+esc(p.ubicazione||'')+'</td><td style="'+b+';text-align:center">'+esc(p.estensione||'')+'</td>'
         + '<td style="'+b+';text-align:center">'+(p.data_prevista?fmt(p.data_prevista):'')+'</td><td style="'+b+'">'+esc(p.esecutore||'')+'</td></tr>';
     });
-    h += '</tbody></table>';
+    return t + '</tbody></table>';
+  };
+  const cats = PROVE_COLLAUDO.map(g=>g.cat).concat(['Altre prove']);
+  ['accettazione','collaudo'].forEach(parte=>{
+    const diParte = prove.filter(p=>p.parte===parte);
+    if(!diParte.length) return;
+    if(haA){
+      h += '<h3 style="margin-top:16px">'+(parte==='accettazione'
+        ? 'PARTE A &mdash; CONTROLLI DI ACCETTAZIONE OBBLIGATORI DEI MATERIALI STRUTTURALI (D.M. 17/01/2018, CAP. 11)'
+        : 'PARTE B &mdash; PROVE DI COLLAUDO E DI MESSA IN SERVIZIO DEGLI IMPIANTI')+'</h3>';
+    }
+    cats.forEach(cat=>{
+      const lista = diParte.filter(p=>p.cat===cat);
+      if(!lista.length) return;
+      if(parte!=='accettazione' || !haA) h += '<h3>'+esc(cat).toUpperCase()+'</h3>';
+      h += tabella(lista, parte==='accettazione');
+    });
   });
   if(dx.note){ h += '<h3>NOTE E MODALIT&Agrave; DI ESECUZIONE</h3>'+paraP(dx.note); }
   h += '<p>Le date indicate sono previsionali e potranno essere aggiornate in accordo fra le parti; l&rsquo;esito delle prove sar&agrave; '
-    + 'documentato con i relativi verbali e certificati.</p>';
-  h += '<p>Il Direttore dei Lavori e l&rsquo;organo di collaudo, previo esame, <strong>approvano</strong> il presente programma delle prove '
-    + 'di collaudo e di messa in servizio degli impianti.</p>';
+    + 'documentato con i relativi verbali e certificati'
+    + (haA ? '. I controlli di accettazione sui materiali strutturali sono eseguiti da laboratori di cui all&rsquo;art. 59 del D.P.R. 380/2001, su campioni prelevati in contraddittorio' : '')
+    + '.</p>';
+  h += '<p>Il Direttore dei Lavori e l&rsquo;organo di collaudo, previo esame, <strong>approvano</strong> il presente programma'
+    + (haA ? '' : ' delle prove di collaudo e di messa in servizio degli impianti') + '.</p>';
   return h;
 }
 
