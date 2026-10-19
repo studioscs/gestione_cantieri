@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.19a';
+const APP_VERSIONE = '2026.10.19b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -8807,25 +8807,34 @@ const PRELIEVO_TIPI = {
   bulloni: {
     label: 'Prelievo di bulloni',
     titolo: 'VERBALE DI PRELIEVO DI BULLONI',
-    normativa: 'NTC 2018 — Circ. n. 7/2019',
+    normativa: 'D.M. 17/01/2018 — Punto 11.3.4.6 — Circ. n. 7/2019',
     icon: '🔩',
     cols: [
       {key:'sigla', label:'Sigla campione'},
       {key:'diametro', label:'Diametro', type:'datalist',
        opts:['M8','M10','M12','M14','M16','M18','M20','M22','M24','M27','M30','M33','M36','M39','M42'],
        placeholder:'es. M16', hint:'Filettatura metrica ISO; ammessi anche valori non in elenco'},
-      {key:'classe', label:'Tipologia e classe di resistenza', type:'datalist',
+      {key:'classe', label:'Tipologia e classe di resistenza', th:'Classe', type:'datalist',
        opts:['4.6','5.6','6.8','8.8','10.9','12.9','HR 8.8','HR 10.9','HV 8.8','HV 10.9'],
        placeholder:'es. 10.9'},
-      {key:'lotto', label:'Lotto di produzione', placeholder:'N. lotto / colata',
+      {key:'lotto', label:'Lotto di produzione', th:'Lotto', placeholder:'N. lotto / colata',
        hint:'Riportato su imballo, DDT o certificato 3.1'},
       {key:'produttore', label:'Produttore'},
-      {key:'norma', label:'Normativa di riferimento', type:'datalist',
+      {key:'norma', label:'Normativa di riferimento', th:'Norma', type:'datalist',
        opts:['UNI EN 14399-1 (precaricati HR/HV)','UNI EN 15048-1 (non precaricati SB)','UNI EN ISO 898-1','UNI EN ISO 898-2'],
        placeholder:'es. UNI EN 14399-1'},
-      {key:'marchio_ce', label:'N. Marchio CE'},
+      // bulloneria strutturale coperta da norma armonizzata (UNI EN 15048-1,
+      // UNI EN 14399-1): si controllano marcatura CE e DoP dell'assieme
+      {key:'marchio_ce', label:'DoP e marcatura CE (n. DoP e data)', th:'DoP / marcatura CE',
+       placeholder:'es. DoP n. 45/2026 del 03/02/2026 — ente notificato 1234',
+       hint:'DoP dell\'assieme vite + dado + rondelle: UNI EN 15048-1 (non precaricati) o UNI EN 14399-1 (precaricati)'},
+      {key:'classe_k', label:'Classe funzionale k (solo precaricati)', type:'datalist', th:'Classe k',
+       opts:['K0','K1','K2'], placeholder:'es. K2',
+       hint:'UNI EN 14399-1: necessaria per il serraggio controllato; K1/K2 con fattore k dichiarato nel certificato'},
+      {key:'cert_31', label:'Certificato di controllo 3.1 UNI EN 10204', th:'Cert. 3.1 EN 10204',
+       placeholder:'es. cert. n. 7788 del 12/02/2026'},
       {key:'ddt', label:'D.D.T. o Fattura'},
-      {key:'dettaglio', label:'Dettaglio costruttivo di riferimento / strutture interessate dal prelievo', span2:true,
+      {key:'dettaglio', label:'Dettaglio costruttivo di riferimento / strutture interessate dal prelievo', th:'Dettaglio costruttivo / strutture', span2:true,
        placeholder:'es. Nodo trave-pilastro P3, tav. S-12 part. 4 — controventi di falda asse B',
        hint:'Elaborato o particolare di progetto e parti d\'opera da cui provengono i bulloni prelevati'}
     ],
