@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.19c';
+const APP_VERSIONE = '2026.10.19d';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -9009,9 +9009,11 @@ const PRELIEVO_TIPI = {
       {key:'sigla', label:'Sigla'},
       {key:'sistema', label:'Sistema (nome commerciale) e produttore', th:'Sistema'},
       // i compositi FRP si impiegano solo se qualificati con CVT del S.T.C.
-      {key:'cvt', label:'CVT del S.T.C. (n. e data)', th:'CVT',
-       placeholder:'es. CVT n. 123/2025 del 10/03/2025',
-       hint:'Certificato di Valutazione Tecnica del sistema: obbligatorio per l\'impiego'},
+      {key:'qualifica', label:'Qualificazione del sistema', th:'Qualifica', type:'datalist',
+       opts:['CVT — Servizio Tecnico Centrale','Marcatura CE — ETA e DoP'], placeholder:'CVT oppure marcatura CE'},
+      {key:'cvt', label:'Estremi CVT oppure ETA + DoP (n. e data)', th:'CVT / ETA-DoP',
+       placeholder:'es. CVT n. 123/2025 del 10/03/2025 — oppure ETA-24/0123 + DoP n. 7/2025',
+       hint:'Il sistema deve essere qualificato con CVT del S.T.C. oppure avere marcatura CE sulla base di una Valutazione Tecnica Europea (ETA) con relativa DoP'},
       {key:'tipo_campione', label:'Tipologia campione', th:'Tipologia', type:'datalist',
        opts:['Lamina preformata (trazione)','Pannello testimone impregnato in situ (trazione)','Tessuto secco','Resina / adesivo (Tg)'],
        placeholder:'es. pannello testimone'},
@@ -9033,9 +9035,11 @@ const PRELIEVO_TIPI = {
     cols: [
       {key:'sigla', label:'Sigla'},
       {key:'sistema', label:'Sistema (nome commerciale) e produttore', th:'Sistema'},
-      {key:'cvt', label:'CVT del S.T.C. (n. e data)', th:'CVT',
-       placeholder:'es. CVT n. 45/2024 del 02/05/2024',
-       hint:'Certificato di Valutazione Tecnica del sistema: obbligatorio per l\'impiego'},
+      {key:'qualifica', label:'Qualificazione del sistema', th:'Qualifica', type:'datalist',
+       opts:['CVT — Servizio Tecnico Centrale','Marcatura CE — ETA e DoP'], placeholder:'CVT oppure marcatura CE'},
+      {key:'cvt', label:'Estremi CVT oppure ETA + DoP (n. e data)', th:'CVT / ETA-DoP',
+       placeholder:'es. CVT n. 123/2025 del 10/03/2025 — oppure ETA-24/0123 + DoP n. 7/2025',
+       hint:'Il sistema deve essere qualificato con CVT del S.T.C. oppure avere marcatura CE sulla base di una Valutazione Tecnica Europea (ETA) con relativa DoP'},
       {key:'tipo_campione', label:'Tipologia campione', th:'Tipologia', type:'datalist',
        opts:['Rete / tessuto secco (trazione)','Provini di composito FRCM (trazione)','Prismi di matrice 40×40×160 (flessione e compressione)'],
        placeholder:'es. rete secca'},
@@ -9056,8 +9060,11 @@ const PRELIEVO_TIPI = {
     cols: [
       {key:'sigla', label:'Sigla'},
       {key:'sistema', label:'Nome sistema e produttore', th:'Sistema'},
-      {key:'cvt', label:'CVT del S.T.C. (n. e data)', th:'CVT',
-       hint:'Certificato di Valutazione Tecnica del sistema: obbligatorio per l\'impiego'},
+      {key:'qualifica', label:'Qualificazione del sistema', th:'Qualifica', type:'datalist',
+       opts:['CVT — Servizio Tecnico Centrale','Marcatura CE — ETA e DoP'], placeholder:'CVT oppure marcatura CE'},
+      {key:'cvt', label:'Estremi CVT oppure ETA + DoP (n. e data)', th:'CVT / ETA-DoP',
+       placeholder:'es. CVT n. 123/2025 del 10/03/2025 — oppure ETA-24/0123 + DoP n. 7/2025',
+       hint:'Il sistema deve essere qualificato con CVT del S.T.C. oppure avere marcatura CE sulla base di una Valutazione Tecnica Europea (ETA) con relativa DoP'},
       {key:'tipo_campione', label:'Tipologia campione', th:'Tipologia', type:'datalist',
        opts:['Rete preformata (trazione)','Connettori (trazione)','Angolari','Prismi di malta 40×40×160 (flessione e compressione)'],
        placeholder:'es. rete preformata'},
@@ -9205,9 +9212,10 @@ function bodyPrelievoStrutture(c, v, dp){
       + 'e min(f<sub>1</sub>, f<sub>2</sub>, f<sub>3</sub>) &ge; 0,90 f<sub>bk</sub>.</p>';
   }
   if(tipo==='frp'||tipo==='frcm'||tipo==='crm'){
-    html += '<p style="font-size:11px">I materiali sono impiegabili solo se il sistema è qualificato con Certificato di Valutazione Tecnica '
-      + 'rilasciato dal Servizio Tecnico Centrale; il Direttore dei Lavori ne ha verificato la corrispondenza con la fornitura. '
-      + 'Le prove di accettazione sono eseguite secondo la Linea Guida di riferimento e confrontate con i valori dichiarati nel CVT.</p>';
+    html += '<p style="font-size:11px">I materiali sono impiegabili solo se il sistema è qualificato con Certificato di Valutazione Tecnica (CVT) '
+      + 'rilasciato dal Servizio Tecnico Centrale, ovvero dotato di marcatura CE sulla base di una Valutazione Tecnica Europea (ETA) '
+      + 'con relativa Dichiarazione di Prestazione (DoP); il Direttore dei Lavori ne ha verificato la corrispondenza con la fornitura. '
+      + 'Le prove di accettazione sono eseguite secondo la Linea Guida di riferimento e confrontate con i valori dichiarati nel CVT o nella DoP.</p>';
   }
 
   // disposizioni custodia / laboratorio
