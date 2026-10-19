@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.19d';
+const APP_VERSIONE = '2026.10.19e';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -7058,7 +7058,8 @@ function metaBlockHtml(rows){
 
 function titleBlockHtml(comune, provincia, titolo, normativa){
   let html='<div class="doc-title-block">';
-  if(comune) html += '<h1>COMUNE DI '+esc(comune).toUpperCase()+'</h1>';
+  // evita "COMUNE DI COMUNE DI …" quando si ripiega sulla stazione appaltante
+  if(comune) html += '<h1>COMUNE DI '+esc(String(comune).replace(/^\s*comune\s+di\s+/i,'')).toUpperCase()+'</h1>';
   if(provincia) html += '<div style="font-size:11px;color:#6C757D;letter-spacing:.04em">PROVINCIA DI '+esc(provincia).toUpperCase()+'</div>';
   html += '<h2>'+esc(titolo).toUpperCase()+'</h2>';
   // la normativa proviene dai modelli interni e contiene entita' HTML
@@ -8322,6 +8323,8 @@ function prelievoPresentiBlocco(dp){
 // righe = dp.campioni (array di oggetti); cols = [{key,label,width?}]
 function prelievoTabellaCampioni(cols, righe){
   righe = righe || [];
+  // colonne alternative (es. attestato STC al posto della DoP): solo se compilate
+  cols = cols.filter(col=>!col.opzionale || righe.some(r=>String(r[col.key]||'').trim()));
   let html = '<table class="campioni-table"><thead><tr>';
   cols.forEach(col=>{ html += '<th'+(col.width?' style="width:'+col.width+'"':'')+'>'+(col.th||col.label)+'</th>'; });
   html += '</tr></thead><tbody>';
@@ -8903,11 +8906,15 @@ const PRELIEVO_TIPI = {
       {key:'fornitore', label:'Produttore (acciaieria) / Fornitore'},
       // laminati e profilati sono coperti da norma armonizzata (UNI EN 10025,
       // 10210, 10219): si controllano marcatura CE e DoP, non l'attestato STC
-      {key:'attestato_fornitore', label:'DoP e marcatura CE (n. DoP e data)', placeholder:'es. DoP n. 123/2026 del 10/01/2026 — UNI EN 10025-2',
-       hint:'Solo per prodotti senza marcatura CE indicare qui l\'attestato di qualificazione del S.T.C.'},
+      {key:'attestato_fornitore', label:'DoP e marcatura CE (n. DoP e data)', th:'DoP e marcatura CE',
+       placeholder:'es. DoP n. 123/2026 del 10/01/2026 — UNI EN 10025-2',
+       hint:'Prodotti con marcatura CE (caso normale). Se il prodotto non ha marcatura CE lasciare vuoto e compilare la casella seguente'},
+      {key:'attestato_stc', label:'Attestato di qualificazione S.T.C. (solo prodotti senza marcatura CE)', th:'Attestato qualificazione STC (senza CE)',
+       placeholder:'es. attestato n. 1234/22 del 05/04/2022', opzionale:true,
+       hint:'Da compilare solo in alternativa alla DoP; se vuota la colonna non compare nel PDF'},
       {key:'cert_31', label:'Certificato di controllo 3.1 UNI EN 10204 / n. colata', th:'Cert. 3.1 EN 10204 / colata', placeholder:'es. cert. n. 4567 — colata 89012'},
       {key:'centro_trasformazione', label:'Officina di carpenteria / Centro di trasformazione', th:'Officina / Centro trasf.'},
-      {key:'attestato_ct', label:'Attestato denuncia attività S.T.C. / certificato FPC UNI EN 1090-1 (n. e data)', th:'Denuncia attività STC / FPC EN 1090-1',
+      {key:'attestato_ct', label:'Officina / centro trasf.: attestato denuncia attività S.T.C. oppure certificato FPC UNI EN 1090-1 (n. e data)', th:'Officina: denuncia attività STC / FPC EN 1090-1',
        placeholder:'es. denuncia STC n. 789/CT — FPC 1090-1 EXC2 n. 0474-CPR-…',
        hint:'Centro di trasformazione: attestato di denuncia dell\'attività (NTC § 11.3.1.7). Officina che marca CE i componenti: certificato FPC UNI EN 1090-1 con classe di esecuzione'},
       {key:'destinazione', label:'Destinazione (parte strutturale)'},
@@ -9820,10 +9827,10 @@ async function apriODSFirmabile(id, solaLettura){
     apriDocumentoFirmabile({
       titolo: cfg.titolo + (o.numero ? ' n. '+o.numero : ''),
       normativa: cfg.normativa||'',
-      comune: dx.luogo||'', provincia: '',
+      comune: comuneCantiere(c), provincia: '',
       metaRows: metaRows,
       corpoHtml: corpoHtml,
-      luogo: dx.luogo || c?.nome || '',
+      luogo: dx.luogo || luogoCantiere(c) || c?.nome || '',
       dataDoc: o.data,
       fileName: nomeFileVerbale(c, o.data, 'ODS', o.numero),
       firmatari: (solaLettura && o.firmatari && o.firmatari.length) ? o.firmatari : [
@@ -9864,7 +9871,8 @@ async function apriPrelievoFirmabile(id, solaLettura){
       if(dlRow) dlRow.nome = redattore;
     }
 
-    const comune = dp.cantiere_luogo || luogoCantiere(c);
+    const luogoPrel = dp.cantiere_luogo || luogoCantiere(c);
+    const comune = comuneCantiere(c);
 
     apriDocumentoFirmabile({
       titolo: cfg.titolo,
@@ -9872,7 +9880,7 @@ async function apriPrelievoFirmabile(id, solaLettura){
       comune: comune, provincia: '',
       metaRows: [rigaContratto(c)].concat(await caricaRigheVarianti(p.cantiere_id)),
       corpoHtml: corpoHtml,
-      luogo: comune || c?.nome || '',
+      luogo: luogoPrel || comune || c?.nome || '',
       dataDoc: p.data,
       fileName: nomeFileVerbale(c, p.data, 'VERPREL_'+(PRELIEVO_FILE_CODE[p.tipo_prelievo]||'GEN-STR'), p.numero),
       firmatari: (solaLettura && p.firmatari && p.firmatari.length) ? p.firmatari
@@ -9993,7 +10001,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
       ];
     } else if(v.tipo==='collaudo_statico'){
       titolo = 'Verbale di visita di collaudo statico';
-      comune = dx.luogo || luogoCantiere(c);
+      comune = comuneCantiere(c);
       corpoHtml = bodyCollaudoStatico(c, v, dx);
       metaRows = [
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
@@ -10077,7 +10085,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
       comune: comune||'', provincia: provincia||'',
       metaRows: (metaRows||[]).concat(await caricaRigheVarianti(v.cantiere_id)),
       corpoHtml: corpoHtml,
-      luogo: comune || comuneCantiere(c) || c?.nome || '',
+      luogo: (v.tipo==='collaudo_statico' && (dx.luogo || luogoCantiere(c))) || comune || comuneCantiere(c) || c?.nome || '',
       dataDoc: v.data,
       fileName: nomeFileVerbale(c, v.data, VERBALE_FILE_CODE[v.tipo]||'VER_GEN', v.numero),
       // Alcuni atti hanno firmatari propri, definiti dai dati del documento
