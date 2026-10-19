@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.19b';
+const APP_VERSIONE = '2026.10.19c';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -8954,71 +8954,121 @@ const PRELIEVO_TIPI = {
   malta: {
     label: 'Prelievo provini di malta',
     titolo: 'VERBALE DI PRELIEVO PROVINI DI MALTA',
-    normativa: 'D.M. 17/01/2018 — Punto 11.10.2 / 11.10.3',
+    normativa: 'D.M. 17/01/2018 — Punto 11.10.2 — prove UNI EN 1015-11',
     icon: '🪣',
     cols: [
       {key:'sigla', label:'Sigla provino'},
-      {key:'n_provini', label:'N. provini'},
-      {key:'tipo_malta', label:'Tipologia malta (prestazione garantita/prescritta/cantiere)'},
-      {key:'resistenza', label:'Resistenza di progetto (MPa)'},
-      {key:'destinazione', label:'Destinazione (parte strutturale)'}
+      {key:'n_provini', label:'N. provini prismatici 40×40×160 mm', th:'N. provini',
+       placeholder:'es. 3', hint:'UNI EN 1015-11: ogni prisma si prova a flessione e le due metà a compressione'},
+      {key:'tipo_malta', label:'Tipologia malta', th:'Tipologia', type:'datalist',
+       opts:['A prestazione garantita — UNI EN 998-2 (§ 11.10.2.1)','A composizione prescritta (§ 11.10.2.2)','Prodotta in cantiere (§ 11.10.2.3)'],
+       placeholder:'es. a prestazione garantita'},
+      {key:'classe', label:'Classe di resistenza (M2,5 … M20 / Md)', th:'Classe', type:'datalist',
+       opts:['M2,5','M5','M10','M15','M20','Md'], placeholder:'es. M10'},
+      {key:'resistenza', label:'Resistenza media a compressione di progetto fm (MPa)', th:'fm progetto (MPa)'},
+      {key:'prodotto', label:'Prodotto / produttore', th:'Prodotto'},
+      // malte a prestazione garantita: norma armonizzata UNI EN 998-2
+      {key:'dop', label:'DoP e marcatura CE (n. e data)', th:'DoP / CE',
+       placeholder:'es. DoP n. 12/2026 — UNI EN 998-2',
+       hint:'Per malte a composizione prescritta o di cantiere indicare la ricetta (vedi composizione sotto)'},
+      {key:'lotto', label:'Lotto / DDT', th:'Lotto / DDT'},
+      {key:'destinazione', label:'Destinazione (parte strutturale)', th:'Destinazione'}
     ],
     firmatariRuoli: ['Il Direttore dei Lavori', 'Il Collaudatore', 'L\'incaricato della custodia dei prelievi']
   },
   muratura: {
-    label: 'Prelievo provini di muratura',
-    titolo: 'VERBALE DI PRELIEVO PROVINI DI MURATURA',
-    normativa: 'D.M. 17/01/2018 — Punto 11.10',
+    label: 'Prelievo elementi per muratura (mattoni / blocchi)',
+    titolo: 'VERBALE DI PRELIEVO DI ELEMENTI PER MURATURA',
+    normativa: 'D.M. 17/01/2018 — Punto 11.10.1 — prove UNI EN 772-1',
     icon: '🧱',
     cols: [
-      {key:'sigla', label:'Sigla provino'},
-      {key:'n_provini', label:'N. provini'},
-      {key:'tipo_elemento', label:'Tipo elemento (laterizio / calcestruzzo / pietra...)'},
-      {key:'categoria', label:'Categoria (I / II)'},
-      {key:'resistenza', label:'Resistenza dichiarata (MPa)'},
-      {key:'destinazione', label:'Destinazione (parte strutturale)'}
+      {key:'sigla', label:'Sigla campione', placeholder:'es. M1'},
+      {key:'n_provini', label:'N. elementi del campione', th:'N. elementi',
+       placeholder:'3', hint:'NTC § 11.10.1.1.1: almeno 3 campioni, ciascuno di 3 elementi'},
+      {key:'tipo_elemento', label:'Tipo elemento', th:'Tipo elemento', type:'datalist',
+       opts:['Laterizio — UNI EN 771-1','Silicato di calcio — UNI EN 771-2','Calcestruzzo (aggregati) — UNI EN 771-3','Calcestruzzo aerato autoclavato — UNI EN 771-4','Pietra artificiale — UNI EN 771-5','Pietra naturale — UNI EN 771-6'],
+       placeholder:'es. Laterizio — UNI EN 771-1'},
+      {key:'foratura', label:'Foratura (pieno / semipieno / forato, % fori)', th:'Foratura',
+       placeholder:'es. semipieno, 45%'},
+      {key:'dimensioni', label:'Dimensioni (mm)', th:'Dimensioni', placeholder:'es. 250×120×190'},
+      {key:'categoria', label:'Categoria (I / II)', th:'Cat.', type:'datalist', opts:['I','II'], placeholder:'I'},
+      {key:'resistenza', label:'Resistenza caratteristica dichiarata fbk (MPa)', th:'fbk (MPa)',
+       hint:'Nella direzione di carico prevista in opera (normale o parallela ai fori)'},
+      {key:'dop', label:'DoP e marcatura CE (n. e data)', th:'DoP / CE'},
+      {key:'lotto', label:'Lotto / DDT', th:'Lotto / DDT'},
+      {key:'destinazione', label:'Destinazione (parte strutturale)', th:'Destinazione'}
     ],
     firmatariRuoli: ['Il Direttore dei Lavori', 'Il Collaudatore', 'L\'incaricato della custodia dei prelievi']
   },
   frp: {
     label: 'Prelievo campioni di FRP',
     titolo: 'VERBALE DI PRELIEVO DI CAMPIONI DI FRP',
-    normativa: 'Linee Guida CSLLPP — Maggio 2019 (compositi fibrorinforzati a matrice polimerica)',
+    normativa: 'Linea Guida CSLLPP per l\'identificazione, la qualificazione e il controllo di accettazione di compositi fibrorinforzati a matrice polimerica (FRP) — 2019',
     icon: '🧵',
     cols: [
       {key:'sigla', label:'Sigla'},
-      {key:'tipo_campione', label:'Tipologia campione (pannello / tessuto)'},
+      {key:'sistema', label:'Sistema (nome commerciale) e produttore', th:'Sistema'},
+      // i compositi FRP si impiegano solo se qualificati con CVT del S.T.C.
+      {key:'cvt', label:'CVT del S.T.C. (n. e data)', th:'CVT',
+       placeholder:'es. CVT n. 123/2025 del 10/03/2025',
+       hint:'Certificato di Valutazione Tecnica del sistema: obbligatorio per l\'impiego'},
+      {key:'tipo_campione', label:'Tipologia campione', th:'Tipologia', type:'datalist',
+       opts:['Lamina preformata (trazione)','Pannello testimone impregnato in situ (trazione)','Tessuto secco','Resina / adesivo (Tg)'],
+       placeholder:'es. pannello testimone'},
+      {key:'fibra', label:'Fibra e grammatura / spessore', th:'Fibra',
+       placeholder:'es. carbonio 300 g/m² — lamina 1,4 mm'},
       {key:'n_strati', label:'N. strati'},
-      {key:'tipo_resina', label:'Tipologia resina per Tg'},
-      {key:'lotto', label:'Lotto'}
+      {key:'n_provini', label:'N. provini', placeholder:'es. 3'},
+      {key:'tipo_resina', label:'Resina / adesivo (per verifica Tg)', th:'Resina'},
+      {key:'lotto', label:'Lotto fibra / lotto resina', th:'Lotti'},
+      {key:'destinazione', label:'Destinazione (elemento rinforzato)', th:'Destinazione'}
     ],
     firmatariRuoli: ['Per il Committente', 'Per l\'Impresa Esecutrice', 'Per la Direzione dei Lavori']
   },
   frcm: {
     label: 'Prelievo campioni di FRCM',
     titolo: 'VERBALE DI PRELIEVO DI CAMPIONI DI FRCM',
-    normativa: 'Linee Guida CSLLPP (compositi fibrorinforzati a matrice inorganica)',
+    normativa: 'Linea Guida CSLLPP per l\'identificazione, la qualificazione e il controllo di accettazione di compositi fibrorinforzati a matrice inorganica (FRCM) — 2018',
     icon: '🧵',
     cols: [
       {key:'sigla', label:'Sigla'},
-      {key:'tipo_campione', label:'Tipologia campione / n° strati / spessore nominale'},
-      {key:'lotto', label:'Lotto'}
+      {key:'sistema', label:'Sistema (nome commerciale) e produttore', th:'Sistema'},
+      {key:'cvt', label:'CVT del S.T.C. (n. e data)', th:'CVT',
+       placeholder:'es. CVT n. 45/2024 del 02/05/2024',
+       hint:'Certificato di Valutazione Tecnica del sistema: obbligatorio per l\'impiego'},
+      {key:'tipo_campione', label:'Tipologia campione', th:'Tipologia', type:'datalist',
+       opts:['Rete / tessuto secco (trazione)','Provini di composito FRCM (trazione)','Prismi di matrice 40×40×160 (flessione e compressione)'],
+       placeholder:'es. rete secca'},
+      {key:'fibra', label:'Fibra e grammatura della rete', th:'Fibra',
+       placeholder:'es. basalto 250 g/m²'},
+      {key:'n_strati', label:'N. strati / spessore nominale', th:'Strati / spessore'},
+      {key:'n_provini', label:'N. provini', placeholder:'es. 3'},
+      {key:'lotto', label:'Lotto rete / lotto matrice', th:'Lotti'},
+      {key:'destinazione', label:'Destinazione (elemento rinforzato)', th:'Destinazione'}
     ],
     firmatariRuoli: ['Per il Committente', 'Per l\'Impresa Esecutrice', 'Per la Direzione dei Lavori']
   },
   crm: {
     label: 'Prelievo campioni di CRM',
     titolo: 'VERBALE DI PRELIEVO DI CAMPIONI DI CRM',
-    normativa: 'Linee Guida CSLLPP — sistemi a rete preformata (intonaco armato CRM)',
+    normativa: 'Linea Guida CSLLPP per l\'identificazione, la qualificazione e il controllo di accettazione dei sistemi a rete preformata in compositi fibrorinforzati a matrice polimerica (intonaco armato CRM) — 2019',
     icon: '🧵',
     cols: [
-      {key:'sistema', label:'Nome sistema'},
-      {key:'malta', label:'Nome malta'},
-      {key:'rete', label:'Rete di rinforzo'},
+      {key:'sigla', label:'Sigla'},
+      {key:'sistema', label:'Nome sistema e produttore', th:'Sistema'},
+      {key:'cvt', label:'CVT del S.T.C. (n. e data)', th:'CVT',
+       hint:'Certificato di Valutazione Tecnica del sistema: obbligatorio per l\'impiego'},
+      {key:'tipo_campione', label:'Tipologia campione', th:'Tipologia', type:'datalist',
+       opts:['Rete preformata (trazione)','Connettori (trazione)','Angolari','Prismi di malta 40×40×160 (flessione e compressione)'],
+       placeholder:'es. rete preformata'},
+      {key:'n_provini', label:'N. provini', placeholder:'es. 3'},
+      {key:'malta', label:'Nome malta', th:'Malta'},
+      {key:'rete', label:'Rete di rinforzo', th:'Rete'},
       {key:'connettore', label:'Connettore'},
       {key:'angolare', label:'Angolare'},
       {key:'ancorante', label:'Ancorante'},
-      {key:'lotti', label:'Lotti'}
+      {key:'lotti', label:'Lotti'},
+      {key:'destinazione', label:'Destinazione (elemento rinforzato)', th:'Destinazione'}
     ],
     firmatariRuoli: ['Il Committente', 'L\'incaricato', 'Per il Laboratorio incaricato']
   },
@@ -9148,6 +9198,18 @@ function bodyPrelievoStrutture(c, v, dp){
     html += '<p>Rapporto acqua/impasto: <strong>'+esc(dp.rapporto_acqua)+'</strong></p>';
   }
 
+  if(tipo==='muratura'){
+    html += '<p style="font-size:11px">Controllo di accettazione ai sensi del § 11.10.1.1.1 delle NTC 2018: su almeno tre campioni, '
+      + 'ciascuno di tre elementi, provati a compressione secondo UNI EN 772-1, essendo f<sub>1</sub>, f<sub>2</sub>, f<sub>3</sub> '
+      + 'le resistenze medie dei campioni, deve risultare (f<sub>1</sub>+f<sub>2</sub>+f<sub>3</sub>)/3 &ge; 1,20 f<sub>bk</sub> '
+      + 'e min(f<sub>1</sub>, f<sub>2</sub>, f<sub>3</sub>) &ge; 0,90 f<sub>bk</sub>.</p>';
+  }
+  if(tipo==='frp'||tipo==='frcm'||tipo==='crm'){
+    html += '<p style="font-size:11px">I materiali sono impiegabili solo se il sistema è qualificato con Certificato di Valutazione Tecnica '
+      + 'rilasciato dal Servizio Tecnico Centrale; il Direttore dei Lavori ne ha verificato la corrispondenza con la fornitura. '
+      + 'Le prove di accettazione sono eseguite secondo la Linea Guida di riferimento e confrontate con i valori dichiarati nel CVT.</p>';
+  }
+
   // disposizioni custodia / laboratorio
   if(dp.custode_nome){
     html += '<p>Si dispone che il Sig. <strong>'+esc(dp.custode_nome)+'</strong>'
@@ -9160,7 +9222,7 @@ function bodyPrelievoStrutture(c, v, dp){
   }
 
   // clausola di chiusura standard NTC (per acciai/cls/materiali strutturali)
-  const clausolaResp = ['bulloni','barre_ca','acciaio_carpenteria','reti_tralicci','calcestruzzo','generico'].includes(tipo);
+  const clausolaResp = ['bulloni','barre_ca','acciaio_carpenteria','reti_tralicci','calcestruzzo','generico','malta','muratura','frp','frcm','crm'].includes(tipo);
   if(tipo==='saldature'){
     html += '<p style="font-size:11px">I controlli sono stati eseguiti secondo la UNI EN 1090-2:2018 § 12.4, con criteri di accettazione '
       + 'della UNI EN ISO 5817. L\'accettazione delle strutture saldate resta subordinata al favorevole esito dei controlli non distruttivi '
@@ -9450,6 +9512,14 @@ function prelievoOnTipoChange(prefix){
   if(tipo==='saldature') saldInitRighe(prefix);
 }
 
+// segnaposto del campo "caratteristiche da verificare" per tipo di prelievo
+const PRELIEVO_PROVE_HINT = {
+  malta: 'Es. resistenza a flessione e a compressione (UNI EN 1015-11)',
+  muratura: 'Es. resistenza a compressione degli elementi (UNI EN 772-1)',
+  frp: 'Es. resistenza e modulo a trazione, deformazione ultima; temperatura di transizione vetrosa Tg della resina',
+  frcm: 'Es. trazione sulla rete secca e sul composito; flessione e compressione della matrice (UNI EN 1015-11)',
+  crm: 'Es. trazione su rete e connettori; flessione e compressione della malta (UNI EN 1015-11)'
+};
 // sezioni extra specifiche (malta: composizione/rapporto acqua; muratura: rapporto; tutti: custodia/laboratorio/prova)
 function prelievoExtraFieldsHtml(prefix, tipo, dp){
   dp = dp || {};
@@ -9476,7 +9546,7 @@ function prelievoExtraFieldsHtml(prefix, tipo, dp){
     html += `<div class="form-group span-2"><label class="form-label">Composizione impasto (confezionamento cantiere/laboratorio)</label>
       <textarea class="form-control" id="${prefix}_composizione" rows="2" placeholder="Es. cemento 20%, calce idraulica 10%, sabbia 70%...">${esc(dp.composizione||'')}</textarea></div>`;
   }
-  if(tipo==='malta'||tipo==='muratura'){
+  if(tipo==='malta'||(tipo==='muratura'&&dp.rapporto_acqua)){
     html += `<div class="form-group"><label class="form-label">Rapporto acqua/impasto</label>
       <input class="form-control" id="${prefix}_rapporto_acqua" value="${esc(dp.rapporto_acqua||'')}"></div>`;
   }
@@ -9487,7 +9557,7 @@ function prelievoExtraFieldsHtml(prefix, tipo, dp){
     <div class="form-group span-2"><label class="form-label">Laboratorio autorizzato (art. 59 D.P.R. 380/2001)</label>
       <input class="form-control" id="${prefix}_laboratorio" value="${esc(dp.laboratorio||'')}"></div>
     <div class="form-group span-2"><label class="form-label">Caratteristiche da verificare in prova</label>
-      <input class="form-control" id="${prefix}_caratteristiche_prova" value="${esc(dp.caratteristiche_prova||'')}" placeholder="Es. resistenza a trazione, snervamento, allungamento"></div>`;
+      <input class="form-control" id="${prefix}_caratteristiche_prova" value="${esc(dp.caratteristiche_prova||'')}" placeholder="${esc(PRELIEVO_PROVE_HINT[tipo]||'Es. resistenza a trazione, snervamento, allungamento')}"></div>`;
   return html;
 }
 
