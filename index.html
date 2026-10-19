@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.18b';
+const APP_VERSIONE = '2026.10.19a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -8323,7 +8323,7 @@ function prelievoPresentiBlocco(dp){
 function prelievoTabellaCampioni(cols, righe){
   righe = righe || [];
   let html = '<table class="campioni-table"><thead><tr>';
-  cols.forEach(col=>{ html += '<th'+(col.width?' style="width:'+col.width+'"':'')+'>'+col.label+'</th>'; });
+  cols.forEach(col=>{ html += '<th'+(col.width?' style="width:'+col.width+'"':'')+'>'+(col.th||col.label)+'</th>'; });
   html += '</tr></thead><tbody>';
   if(!righe.length){
     // almeno una riga vuota per la compilazione a mano post-stampa
@@ -8877,7 +8877,7 @@ const PRELIEVO_TIPI = {
       {key:'fornitore', label:'Fornitore'},
       {key:'attestato_fornitore', label:'Attestato qualifica Fornitore (n. e data)'},
       {key:'centro_trasformazione', label:'Centro di trasformazione'},
-      {key:'attestato_ct', label:'Attestato qualifica Centro Trasf. (n. e data)'},
+      {key:'attestato_ct', label:'Attestato denuncia attività Centro Trasf. S.T.C. (n. e data)'},
       {key:'destinazione', label:'Destinazione (parte strutturale)'},
       {key:'ddt', label:'DDT / Marchio'}
     ],
@@ -8890,11 +8890,17 @@ const PRELIEVO_TIPI = {
     icon: '⚙️',
     cols: [
       {key:'sigla', label:'Sigla campione'},
-      {key:'tipo_acciaio', label:'Tipo acciaio (S235/S275/S355)'},
-      {key:'fornitore', label:'Fornitore'},
-      {key:'attestato_fornitore', label:'Attestato qualifica Fornitore (n. e data)'},
-      {key:'centro_trasformazione', label:'Centro di trasformazione'},
-      {key:'attestato_ct', label:'Attestato qualifica Centro Trasf. (n. e data)'},
+      {key:'tipo_acciaio', label:'Tipo acciaio e prodotto (S235/S275/S355)', placeholder:'es. S355J2 — profilato HEA 200'},
+      {key:'fornitore', label:'Produttore (acciaieria) / Fornitore'},
+      // laminati e profilati sono coperti da norma armonizzata (UNI EN 10025,
+      // 10210, 10219): si controllano marcatura CE e DoP, non l'attestato STC
+      {key:'attestato_fornitore', label:'DoP e marcatura CE (n. DoP e data)', placeholder:'es. DoP n. 123/2026 del 10/01/2026 — UNI EN 10025-2',
+       hint:'Solo per prodotti senza marcatura CE indicare qui l\'attestato di qualificazione del S.T.C.'},
+      {key:'cert_31', label:'Certificato di controllo 3.1 UNI EN 10204 / n. colata', th:'Cert. 3.1 EN 10204 / colata', placeholder:'es. cert. n. 4567 — colata 89012'},
+      {key:'centro_trasformazione', label:'Officina di carpenteria / Centro di trasformazione', th:'Officina / Centro trasf.'},
+      {key:'attestato_ct', label:'Attestato denuncia attività S.T.C. / certificato FPC UNI EN 1090-1 (n. e data)', th:'Denuncia attività STC / FPC EN 1090-1',
+       placeholder:'es. denuncia STC n. 789/CT — FPC 1090-1 EXC2 n. 0474-CPR-…',
+       hint:'Centro di trasformazione: attestato di denuncia dell\'attività (NTC § 11.3.1.7). Officina che marca CE i componenti: certificato FPC UNI EN 1090-1 con classe di esecuzione'},
       {key:'destinazione', label:'Destinazione (parte strutturale)'},
       {key:'ddt', label:'DDT'}
     ],
@@ -8913,7 +8919,7 @@ const PRELIEVO_TIPI = {
       {key:'fornitore', label:'Fornitore'},
       {key:'attestato_fornitore', label:'Attestato qualifica Fornitore (n. e data)'},
       {key:'centro_trasformazione', label:'Centro di trasformazione'},
-      {key:'attestato_ct', label:'Attestato qualifica Centro Trasf. (n. e data)'},
+      {key:'attestato_ct', label:'Attestato denuncia attività Centro Trasf. S.T.C. (n. e data)'},
       {key:'destinazione', label:'Destinazione (parte strutturale)'}
     ],
     firmatariRuoli: ['Il Direttore dei Lavori', 'L\'incaricato della custodia dei campioni', 'Per l\'Impresa esecutrice']
