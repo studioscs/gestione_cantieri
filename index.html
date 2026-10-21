@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.19e';
+const APP_VERSIONE = '2026.10.21a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -3347,6 +3347,7 @@ async function openModalNuovoVerbale(tipoIniziale){
     ${extraFieldsConsegnaLavoriHtml('nv2', teamDx)}
     ${extraFieldsConsegnaParzialeHtml('nv2', teamDx)}
     ${extraFieldsConstatazioneLuoghiHtml('nv2')}
+    ${extraFieldsConstatazioneHtml('nv2')}
     ${extraFieldsCertUltimazioneHtml('nv2')}
     ${extraFieldsCertUltimazioneConOpereHtml('nv2')}
     ${extraFieldsRiconsegnaAnticipataHtml('nv2', teamDx)}
@@ -3469,6 +3470,7 @@ async function openModalEditVerbale(id, duplica){
     ${extraFieldsConsegnaLavoriHtml('ev2', dxWithTeam)}
     ${extraFieldsConsegnaParzialeHtml('ev2', dxWithTeam)}
     ${extraFieldsConstatazioneLuoghiHtml('ev2', dx)}
+    ${extraFieldsConstatazioneHtml('ev2', dx, v)}
     ${extraFieldsCertUltimazioneHtml('ev2', dx)}
     ${extraFieldsCertUltimazioneConOpereHtml('ev2', dx)}
     ${extraFieldsRiconsegnaAnticipataHtml('ev2', dxWithTeam)}
@@ -10048,7 +10050,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
     } else {
       const tipoLabelMap = {sopralluogo:'Verbale di sopralluogo',constatazione:'Verbale di constatazione',riunione:'Verbale di riunione di cantiere',fine_lavori:'Verbale di fine lavori',altro:'Verbale'};
       titolo = tipoLabelMap[v.tipo] || 'Verbale';
-      corpoHtml = bodyGenericoVerbale(c, v);
+      corpoHtml = (v.tipo==='constatazione' && dx.cs_modello) ? bodyConstatazione(c, v, dx) : bodyGenericoVerbale(c, v);
       metaRows = [
         ['LAVORI', esc(c?.descrizione||c?.nome||'')],
         ['COMMITTENTE', esc(c?.stazione_appaltante||'')],
@@ -10109,7 +10111,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
 
 function toggleVerbaleExtra(prefix){
   const tipo = document.getElementById(prefix+'_tipo').value;
-  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata','collaudo_statico','certificato_collaudo_statico','programma_prove_collaudo','relazione_struttura_ultimata'];
+  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata','collaudo_statico','certificato_collaudo_statico','programma_prove_collaudo','relazione_struttura_ultimata'];
   TIPI_STRUTTURATI.forEach(function(t){
     const el = document.getElementById(prefix+'_extra_'+t);
     if(el) el.style.display = (tipo===t) ? 'block' : 'none';
@@ -10117,14 +10119,74 @@ function toggleVerbaleExtra(prefix){
   // Il "Testo del verbale" libero finisce nel PDF solo per i tipi generici:
   // per i tipi strutturati va nascosto (il documento e' generato dai campi dedicati).
   const testoWrap = document.getElementById(prefix+'_testo_wrap');
-  if(testoWrap) testoWrap.style.display = TIPI_STRUTTURATI.includes(tipo) ? 'none' : 'block';
+  // '' e non 'block': il contenitore e' un flex a colonna, con 'block' la
+  // textarea perdeva la larghezza piena
+  if(testoWrap) testoWrap.style.display = TIPI_STRUTTURATI.includes(tipo) ? 'none' : '';
   // La constatazione dello stato dei luoghi ha un oggetto fisso: non c'e'
   // bisogno di scriverlo, si autocompila (solo se il campo e' vuoto, per
   // non sovrascrivere un testo che l'utente avesse gia' digitato).
+  const OGG_CSL = 'Verbale di constatazione dello stato dei luoghi alla data odierna';
+  const ogg = document.getElementById(prefix+'_ogg');
   if(tipo==='constatazione_stato_luoghi'){
-    const ogg = document.getElementById(prefix+'_ogg');
-    if(ogg && !ogg.value.trim()) ogg.value = 'Verbale di constatazione dello stato dei luoghi alla data odierna';
+    if(ogg && !ogg.value.trim()) ogg.value = OGG_CSL;
+  } else if(ogg && ogg.value.trim()===OGG_CSL){
+    // cambiando tipo non resta l'oggetto automatico della constatazione stato luoghi
+    ogg.value = '';
   }
+}
+
+// Verbale di constatazione: apertura composta in automatico (data, ora,
+// presenti) e due caselle guidate "Si constata che" / "Si dispone che".
+function extraFieldsConstatazioneHtml(prefix, dx, v){
+  dx = dx || {};
+  // verbali vecchi a testo libero: il testo va nella casella "Si constata che"
+  const constata = dx.cs_modello ? (dx.cs_constata||'') : ((v && v.testo) || '');
+  const ora = dx.cs_modello ? (dx.cs_ora||'') : (v ? '' : new Date().toTimeString().slice(0,5));
+  return `<div id="${prefix}_extra_constatazione" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:6px">Verbale di constatazione</div>
+    <div class="form-hint" style="margin-bottom:10px">L'apertura si compone da sola con la data e l'ora indicate e con i presenti: <em>«Il giorno … del mese di … dell'anno …, alle ore …, si sono riuniti presso il cantiere in oggetto il Direttore dei Lavori … e il rappresentante dell'Impresa …, alla presenza di …»</em>.</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Ora</label>
+        <input class="form-control" type="time" id="${prefix}_cs_ora" value="${esc(ora)}"></div>
+      <div class="form-group span-2"><label class="form-label">Si constata che…</label>
+        <textarea class="form-control" id="${prefix}_cs_constata" rows="5" placeholder="Descrivi quanto constatato in cantiere">${esc(constata)}</textarea></div>
+      <div class="form-group span-2"><label class="form-label">Si dispone che…</label>
+        <textarea class="form-control" id="${prefix}_cs_dispone" rows="4" placeholder="Disposizioni impartite all'Impresa (lasciare vuoto se nessuna)">${esc(dx.cs_dispone||'')}</textarea></div>
+    </div>
+  </div>`;
+}
+
+// Riconosce DL e rappresentante dell'impresa fra i presenti "Nome (Ruolo)"
+function constatazioneApertura(c, v, dx){
+  const dl = dataInLettere(v.data);
+  const presenti = parsePresentiList(v.presenti);
+  const isDL = p => /diret\w*\s+(dei\s+)?lavori|^d\.?\s?l\.?$|\bdl\b/i.test(p.ruolo||'');
+  const isImp = p => /impres|appaltat|\bdt\b|direttore\s+tecnico/i.test(p.ruolo||'');
+  const pDL = presenti.find(isDL);
+  const pImp = presenti.find(p=>p!==pDL && isImp(p));
+  const altri = presenti.filter(p=>p!==pDL && p!==pImp);
+  const nomeDL = (pDL && pDL.nome) || v.redattore || '';
+  let h = '<p>Il giorno <strong>'+dl.giorno+'</strong> del mese di <strong>'+dl.mese+'</strong> dell\'anno <strong>'+dl.anno+'</strong>'
+    + ' ('+fmt(v.data)+')'
+    + (dx.cs_ora ? ', alle ore <strong>'+esc(dx.cs_ora)+'</strong>' : '')
+    + ', si sono riuniti presso il cantiere in oggetto il Direttore dei Lavori <strong>'+esc(nomeDL||'…')+'</strong>';
+  if(pImp){
+    h += ' e il rappresentante dell\'Impresa'+(c && c.impresa ? ' <strong>'+esc(c.impresa)+'</strong>' : '')
+      + ', <strong>'+esc(pImp.nome)+'</strong>'+(pImp.ruolo ? ' ('+esc(pImp.ruolo)+')' : '');
+  }
+  if(altri.length){
+    h += ', alla presenza di '+altri.map(p=>'<strong>'+esc(p.nome)+'</strong>'+(p.ruolo?' ('+esc(p.ruolo)+')':'')).join(', ');
+  }
+  return h + '.</p>';
+}
+
+function bodyConstatazione(c, v, dx){
+  let html = constatazioneApertura(c, v, dx);
+  if(v.oggetto) html += '<p><strong>Oggetto:</strong> '+esc(v.oggetto)+'</p>';
+  html += '<p><strong>Si constata che</strong></p>' + (paraP(dx.cs_constata) || '<p>&nbsp;</p>');
+  if(dx.cs_dispone) html += '<p><strong>Si dispone che</strong></p>' + paraP(dx.cs_dispone);
+  html += '<p>Il presente verbale, previa lettura e conferma, viene sottoscritto dagli intervenuti.</p>';
+  return html;
 }
 
 function extraFieldsSopralluogoHtml(prefix, dx, cantiere){
@@ -11673,6 +11735,14 @@ function bodyProgrammaProve(c, v, dx){
 }
 
 function raccogliDatiExtraVerbale(prefix, tipo){
+  if(tipo==='constatazione'){
+    return {
+      cs_modello: true,
+      cs_ora: document.getElementById(prefix+'_cs_ora')?.value||null,
+      cs_constata: document.getElementById(prefix+'_cs_constata')?.value.trim()||null,
+      cs_dispone: document.getElementById(prefix+'_cs_dispone')?.value.trim()||null
+    };
+  }
   if(tipo==='programma_prove_collaudo') return raccogliDatiProgrammaProve(prefix);
   if(tipo==='certificato_collaudo_statico'){
     return raccogliDatiCollaudoCert(prefix);
