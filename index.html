@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.21a';
+const APP_VERSIONE = '2026.10.25a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -308,6 +308,7 @@ window.sb = sb; // esposto su window: le finestre popup dei verbali firmabili vi
 let currentUser = null;       // {id, email, nome, cognome}
 let currentCantiere = null;   // id
 let currentRole = null;       // ruolo nel cantiere selezionato
+let currentAncheCSE = false;  // il membro svolge anche il ruolo di CSE (es. DL che e' anche coordinatore)
 let myCantieri = [];          // [{cantiere, ruolo}]
 let authMode = 'login';
 
@@ -329,9 +330,12 @@ function can(p){ if(!currentRole) return false; return !!ROLE_PERMS[currentRole]
 // Verbali che il collaudatore puo' creare, modificare e generare.
 // Gli altri verbali per lui restano in sola lettura, come per il RUP.
 const TIPI_VERBALE_COLLAUDO = ['collaudo_statico','certificato_collaudo_statico'];
-function puoCreareVerbali(){ return can('write') || can('collaudo'); }
+// Coordinatore per l'esecuzione: per ruolo oppure come incarico aggiuntivo
+function isCSE(){ return currentRole==='cse' || !!currentAncheCSE; }
+function puoCreareVerbali(){ return can('write') || can('collaudo') || isCSE(); }
 function puoGestireVerbale(tipo){
   if(can('write')) return true;
+  if(isCSE() && typeof TIPI_VERBALE_CSE!=='undefined' && TIPI_VERBALE_CSE.includes(tipo)) return true;
   return can('collaudo') && TIPI_VERBALE_COLLAUDO.includes(tipo);
 }
 // Nei moduli verbale lascia selezionabili solo i tipi che il ruolo puo' gestire
@@ -340,6 +344,7 @@ function limitaTipiVerbale(prefix){
   const sel = document.getElementById(prefix+'_tipo');
   if(!sel) return;
   [...sel.options].forEach(o=>{ if(!puoGestireVerbale(o.value)) o.remove(); });
+  sel.querySelectorAll('optgroup').forEach(g=>{ if(!g.children.length) g.remove(); });
   if(!puoGestireVerbale(sel.value) && sel.options.length) sel.value = sel.options[0].value;
   toggleVerbaleExtra(prefix);
 }
@@ -536,7 +541,7 @@ async function onLoggedIn(){
 async function loadMyCantieri(){
   // grazie a RLS, .select() restituisce solo i cantieri di cui sono membro
   const {data:cu, error} = await sb.from('cantiere_utenti')
-    .select('ruolo, cantiere:cantieri(*)')
+    .select('ruolo, anche_cse, cantiere:cantieri(*)')
     .eq('utente_id', currentUser.id);
   if(error){ console.error(error); myCantieri=[]; }
   else myCantieri = (cu||[]).filter(r=>r.cantiere);
@@ -560,7 +565,8 @@ function selectCantiere(id, skipView){
   currentCantiere = id || null;
   const r = myCantieri.find(x=>x.cantiere.id===id);
   currentRole = r ? r.ruolo : null;
-  document.getElementById('topbarRole').textContent = currentRole ? ROLE_LABELS[currentRole] : '—';
+  currentAncheCSE = !!(r && r.anche_cse);
+  document.getElementById('topbarRole').textContent = currentRole ? ROLE_LABELS[currentRole] + (currentAncheCSE && currentRole!=='cse' ? ' + CSE' : '') : '—';
   const nav = document.getElementById('navCantiere');
   nav.style.opacity = id?'1':'0.4';
   nav.style.pointerEvents = id?'auto':'none';
@@ -693,6 +699,35 @@ async function renderStudio(){
         <input class="form-control" id="st_web" value="${esc(s.studio_web||'')}" placeholder="www.esempio.it">
       </div>
     </div>
+    <div style="font-size:12px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em;margin:20px 0 6px">Dati del professionista</div>
+    <div class="form-hint" style="margin-bottom:10px">Usati nelle lettere e nei verbali in cui sei il firmatario, ad esempio come Coordinatore per la sicurezza: «Il sottoscritto Ing. …, nato a … il …, residente a …, con studio in …, iscritto all'Ordine … al n. …».</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Titolo</label>
+        <input class="form-control" id="st_titolo" list="st_titolo_dl" value="${esc(s.titolo||'')}" placeholder="Es. Ing., Dott. Arch., Geom.">
+        <datalist id="st_titolo_dl"><option value="Ing."><option value="Dott. Ing."><option value="Arch."><option value="Dott. Arch."><option value="Geom."><option value="Per. Ind."></datalist>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data di nascita</label>
+        <input class="form-control" type="date" id="st_data_nascita" value="${esc(s.data_nascita||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Luogo di nascita</label>
+        <input class="form-control" id="st_luogo_nascita" value="${esc(s.luogo_nascita||'')}" placeholder="Es. Recanati (MC)">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Residenza</label>
+        <input class="form-control" id="st_residenza" value="${esc(s.residenza||'')}" placeholder="Es. Recanati (MC), via Roma 1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ordine / Collegio</label>
+        <input class="form-control" id="st_ordine" value="${esc(s.ordine||'')}" placeholder="Es. Ordine degli Architetti di Macerata">
+      </div>
+      <div class="form-group">
+        <label class="form-label">N. iscrizione</label>
+        <input class="form-control" id="st_num_iscriz" value="${esc(s.num_iscriz||'')}">
+      </div>
+    </div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="anteprimaIntestazione()">👁️ Anteprima intestazione</button>
       <button class="btn btn-primary" onclick="salvaStudio()">Salva</button>
@@ -795,7 +830,13 @@ async function salvaStudio(){
     studio_email: val('st_email'),
     studio_web: val('st_web'),
     studio_logo: document.getElementById('st_logo_data')?.value || null,
-    studio_certificazioni: raccogliCertificazioni()
+    studio_certificazioni: raccogliCertificazioni(),
+    titolo: val('st_titolo'),
+    data_nascita: val('st_data_nascita'),
+    luogo_nascita: val('st_luogo_nascita'),
+    residenza: val('st_residenza'),
+    ordine: val('st_ordine'),
+    num_iscriz: val('st_num_iscriz')
   }).eq('id', currentUser.id);
   if(error){
     alert(error.message.includes('studio_')
@@ -1148,7 +1189,7 @@ async function renderGiornale(){
         <td style="font-size:11px;color:var(--muted)">${mezziStr||'—'}</td>
         <td style="font-size:12px;color:var(--text)">${lavStr||'—'}</td>
         <td style="text-align:center">${hasOss?'<span title="Osservazioni / Anomalie presenti">⚠️</span>':''}${g.note_cse?'<span title="Annotazione CSE presente">🦺</span>':''}${(!hasOss&&!g.note_cse)?'—':''}</td>
-        <td>${giornaleAccess()===true?`<div style="display:flex;flex-wrap:wrap;gap:2px"><button class="btn btn-secondary btn-sm" onclick="openModalEditGiornaleData('${g.id}','${data}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="copiaGiornoGiornale('${g.id}','${data}')" title="Copia">📋</button><button class="btn btn-danger btn-sm" onclick="eliminaRegistrazione('${g.id}','${data}')">🗑️</button></div>`:''}${currentRole==='cse'?`<button class="btn btn-secondary btn-sm" title="Annotazione CSE — Sicurezza" onclick="openModalAnnotazioneCSE('${g.id}','${data}')">🦺 Annota</button>`:''}</td>
+        <td>${giornaleAccess()===true?`<div style="display:flex;flex-wrap:wrap;gap:2px"><button class="btn btn-secondary btn-sm" onclick="openModalEditGiornaleData('${g.id}','${data}')">✏️</button><button class="btn btn-secondary btn-sm" onclick="copiaGiornoGiornale('${g.id}','${data}')" title="Copia">📋</button><button class="btn btn-danger btn-sm" onclick="eliminaRegistrazione('${g.id}','${data}')">🗑️</button></div>`:''}${isCSE()?`<button class="btn btn-secondary btn-sm" title="Annotazione CSE — Sicurezza" onclick="openModalAnnotazioneCSE('${g.id}','${data}')">🦺 Annota</button>`:''}</td>
       </tr>`;
       if(g.note_cse){
         html += `<tr style="background:#FFF3CD">
@@ -1166,7 +1207,7 @@ async function renderGiornale(){
         </td>
         <td colspan="5" style="font-size:11px;color:#ADB5BD;font-style:italic">— nessuna lavorazione registrata —</td>
         <td></td>
-        <td>${giornaleAccess()===true?`<button class="btn btn-primary btn-sm" onclick="openModalNuovaRegistrazioneData('${data}')" title="Aggiungi registrazione">+</button>`:''}${currentRole==='cse'?`<button class="btn btn-secondary btn-sm" title="Annotazione CSE — Sicurezza" onclick="openModalAnnotazioneCSE(null,'${data}')">🦺 Annota</button>`:''}</td>
+        <td>${giornaleAccess()===true?`<button class="btn btn-primary btn-sm" onclick="openModalNuovaRegistrazioneData('${data}')" title="Aggiungi registrazione">+</button>`:''}${isCSE()?`<button class="btn btn-secondary btn-sm" title="Annotazione CSE — Sicurezza" onclick="openModalAnnotazioneCSE(null,'${data}')">🦺 Annota</button>`:''}</td>
       </tr>`;
     }
     i++;
@@ -2505,7 +2546,7 @@ async function renderTeam(){
   let html = `<div class="section-header"><div><div class="page-title">Team Cantiere</div><div class="page-subtitle">${esc(c?.nome||'')}</div></div>
     ${currentRole==='dl'?`<button class="btn btn-primary" onclick="openModalNuovoMembro()">+ Aggiungi membro</button>`:''}</div><div class="card" style="padding:0">
     <table><thead><tr><th>Nome</th><th>Ruolo</th><th>Email registrazione</th><th>Email prof.</th><th>PEC</th><th>Tel.</th><th></th></tr></thead><tbody>`;
-  const {data:teamRaw} = await sb.from('cantiere_utenti').select('id,ruolo,telefono,email_prof,pec,utente_id').eq('cantiere_id',currentCantiere);
+  const {data:teamRaw} = await sb.from('cantiere_utenti').select('id,ruolo,anche_cse,telefono,email_prof,pec,utente_id').eq('cantiere_id',currentCantiere);
   const team = teamRaw || [];
   // carica profili separatamente per evitare errori join
   const profili = {};
@@ -2518,7 +2559,7 @@ async function renderTeam(){
   else team.forEach(t=>{ t.profilo = profili[t.utente_id] || {};
     const p=t.profilo||{};
     const nome = `${p.nome||''} ${p.cognome||''}`.trim() || p.email || '—';
-    html += `<tr><td><strong>${esc(nome)}</strong></td><td>${roleBadge(t.ruolo)}</td>
+    html += `<tr><td><strong>${esc(nome)}</strong></td><td>${roleBadge(t.ruolo)}${t.anche_cse&&t.ruolo!=='cse'?' '+roleBadge('cse'):''}</td>
       <td style="font-size:11px"><a href="mailto:${esc(p.email||'')}" style="color:var(--accent)">${esc(p.email||'—')}</a></td>
       <td style="font-size:11px">${t.email_prof?'<a href="mailto:'+esc(t.email_prof)+'" style="color:var(--accent)">'+esc(t.email_prof)+'</a>':'—'}</td>
       <td style="font-size:11px">${t.pec?'<a href="mailto:'+esc(t.pec)+'" style="color:var(--accent)">'+esc(t.pec)+'</a>':'—'}</td>
@@ -3147,7 +3188,7 @@ async function renderVerbali(soloTipo){
       <div class="page-title">Verbali / RSU / Collaudo statico</div>
       <div class="page-subtitle">${esc(c?.nome||'')} — verbali, relazione a struttura ultimata e collaudo statico</div>
     </div>
-    ${puoCreareVerbali()?`<button class="btn btn-primary" onclick="openModalNuovoVerbale()">+ Nuovo ${can('write')?'verbale':'verbale di collaudo'}</button>`:''}
+    ${puoCreareVerbali()?`<button class="btn btn-primary" onclick="openModalNuovoVerbale()">+ Nuovo ${can('write')?'verbale':(isCSE()?'verbale sicurezza':'verbale di collaudo')}</button>`:''}
   </div>
   <div class="alert alert-info" style="font-size:12px">
     I verbali registrati sono visibili a tutti i membri del cantiere. Per comunicazioni riservate usa la sezione <strong>Comunicazioni</strong> con visibilità impostata su "Riservata".
@@ -3176,6 +3217,8 @@ async function renderVerbali(soloTipo){
     constatazione:'Constatazione', constatazione_stato_luoghi:'Constatazione stato dei luoghi', riunione:'Riunione di cantiere',
     fine_lavori:'Fine lavori (dismesso)', certificato_ultimazione:'Certificato di ultimazione lavori', certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare', riconsegna_anticipata:'Presa in consegna anticipata delle opere', collaudo_statico:'Verbale di visita di collaudo statico', certificato_collaudo_statico:'Certificato di collaudo statico (art. 67 D.P.R. 380/2001)', programma_prove_collaudo:'Programma delle prove di collaudo (All. II.14 art. 1)', relazione_struttura_ultimata:'Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)', altro:'Altro verbale'
   };
+
+  CSE_VERBALI.forEach(x=>{ tipoIcon[x.v]=x.icon; tipoLabel[x.v]=x.label; });
 
   verbali.forEach(v=>{
     html += `<div class="card" style="margin-bottom:12px">
@@ -3230,20 +3273,25 @@ async function getTeamRoster(cantiereId){
   if(!cantiereId) return roster;
   try{
     const {data:team, error} = await sb.from('cantiere_utenti')
-      .select('ruolo,utente_id')
+      .select('ruolo,utente_id,anche_cse')
       .eq('cantiere_id',cantiereId);
     if(error) throw error;
     if(!team || !team.length) return roster;
     const {data:profili, error:e2} = await sb.from('profiles')
-      .select('id,nome,cognome')
+      .select('id,nome,cognome,titolo,ordine,num_iscriz,luogo_nascita,data_nascita,residenza,studio_sede_legale,studio_sede_operativa')
       .in('id', team.map(t=>t.utente_id));
     if(e2) throw e2;
     const profMap = {}; (profili||[]).forEach(p=>{ profMap[p.id]=p; });
     team.forEach(t=>{
       if(roster[t.ruolo]) return; // primo trovato per ruolo se piu' persone condividono lo stesso ruolo
       const p = profMap[t.utente_id];
-      if(p) roster[t.ruolo] = { id:p.id, nome:`${p.nome||''} ${p.cognome||''}`.trim() };
+      if(p) roster[t.ruolo] = { id:p.id, nome:`${p.nome||''} ${p.cognome||''}`.trim(), prof:p };
     });
+    // CSE come incarico aggiuntivo di un altro membro (DL, DO…)
+    if(!roster.cse){
+      const t = team.find(x=>x.anche_cse && profMap[x.utente_id]);
+      if(t){ const p = profMap[t.utente_id]; roster.cse = { id:p.id, nome:`${p.nome||''} ${p.cognome||''}`.trim(), prof:p }; }
+    }
   }catch(e){ console.error('getTeamRoster', e); }
   return roster;
 }
@@ -3291,6 +3339,10 @@ async function openModalNuovoVerbale(tipoIniziale){
   // Ordini di servizio del cantiere: servono al verbale di verifica adempimento
   // per far scegliere quale OdS citare e copiarne il testo.
   const {data:odsListNuovo} = await sb.from('ods').select('*').eq('cantiere_id',currentCantiere).order('numero');
+  await caricaDitteCSE(currentCantiere);
+  // redattore e presenti cambiano se si sceglie un verbale della sicurezza
+  const redattoreCSE = (team.cse && team.cse.nome) || redattoreDefault;
+  const presentiCSE = formatPresentiCSE(team);
   ODS_LIST_PER_VERBALE = odsListNuovo||[];
   openModal('Nuovo Verbale', `
     <div class="form-grid">
@@ -3313,6 +3365,7 @@ async function openModalNuovoVerbale(tipoIniziale){
           <option value="programma_prove_collaudo">🧪 Programma delle prove di collaudo (All. II.14 art. 1)</option>
           <option value="relazione_struttura_ultimata">📑 Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)</option>
           <option value="altro">📋 Altro verbale</option>
+          ${cseOpzioniTipoHtml()}
         </select>
       </div>
       <div class="form-group">
@@ -3325,7 +3378,7 @@ async function openModalNuovoVerbale(tipoIniziale){
       </div>
       <div class="form-group">
         <label class="form-label">Redattore</label>
-        <input class="form-control" id="nv2_red" value="${esc(redattoreDefault)}">
+        <input class="form-control" id="nv2_red" value="${cseA(redattoreDefault)}" data-std="${cseA(redattoreDefault)}" data-cse="${cseA(redattoreCSE)}">
       </div>
       <div class="form-group span-2">
         <label class="form-label">Oggetto</label>
@@ -3339,7 +3392,7 @@ async function openModalNuovoVerbale(tipoIniziale){
       <div class="form-group span-2">
         <label class="form-label">Presenti</label>
         <div class="form-hint">Precompilato dal Team cantiere (DL, RUP, DT Impresa...). Una persona per riga, formato "Nome (Ruolo)" &mdash; verranno riproposti come firmatari nel verbale PDF. Modifica o cancella liberamente.</div>
-        <textarea class="form-control" id="nv2_pres" rows="3" placeholder="Ing. Rossi (DL)&#10;Geom. Bianchi (RUP/Committente)&#10;Ing. Verdi (DT Impresa)">${esc(presentiDefault)}</textarea>
+        <textarea class="form-control" id="nv2_pres" rows="3" placeholder="Ing. Rossi (DL)&#10;Geom. Bianchi (RUP/Committente)&#10;Ing. Verdi (DT Impresa)" data-std="${cseA(presentiDefault)}" data-cse="${cseA(presentiCSE)}">${esc(presentiDefault)}</textarea>
       </div>
     </div>
     ${extraFieldsSopralluogoHtml('nv2', teamDx, getCantiereObj())}
@@ -3355,6 +3408,7 @@ async function openModalNuovoVerbale(tipoIniziale){
     ${extraFieldsCollaudoCertHtml('nv2', null, teamDx, getCantiereObj())}
     ${extraFieldsProgrammaProveHtml('nv2', null, teamDx, getCantiereObj())}
     ${extraFieldsRSUHtml('nv2', null, teamDx, getCantiereObj())}
+    ${extraFieldsCseHtml('nv2', null, {team, c:getCantiereObj()})}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       <button class="btn btn-primary" onclick="salvaVerbale()">Salva verbale</button>
@@ -3387,6 +3441,7 @@ async function salvaVerbale(prefix){
   if(error){ alert(error.message); return; }
   // Annotazione automatica sul giornale
   const tipoL = {consegna_lavori:'Consegna lavori',consegna_parziale:'Consegna parziale lavori',sopralluogo:'Sopralluogo',sopralluogo_periodico:'Sopralluogo periodico',verifica_ods:'Verifica adempimento OdS',constatazione:'Constatazione',constatazione_stato_luoghi:'Constatazione stato dei luoghi',riunione:'Riunione di cantiere',fine_lavori:'Fine lavori',certificato_ultimazione:'Certificato di ultimazione lavori',certificato_ultimazione_con_opere:'Certificato di ultimazione con opere da completare',riconsegna_anticipata:'Presa in consegna anticipata delle opere',collaudo_statico:'Verbale di visita di collaudo statico',certificato_collaudo_statico:'Certificato di collaudo statico',programma_prove_collaudo:'Programma delle prove di collaudo',relazione_struttura_ultimata:'Relazione a struttura ultimata',altro:'Verbale'};
+  CSE_VERBALI.forEach(x=>{ tipoL[x.v]=x.label; });
   const ogg = g('ogg').value.trim();
   // Il giornale e' compilato dalla direzione lavori: per chi non ha accesso
   // in scrittura (es. collaudatore) l'annotazione non si fa
@@ -3405,6 +3460,7 @@ async function openModalEditVerbale(id, duplica){
   const dx = v.dati_extra || {};
   const team = await getTeamRoster(v.cantiere_id);
   const {data:odsListEdit} = await sb.from('ods').select('*').eq('cantiere_id',v.cantiere_id).order('numero');
+  await caricaDitteCSE(v.cantiere_id);
   ODS_LIST_PER_VERBALE = odsListEdit||[];
   const dxWithTeam = Object.assign({}, dx, {
     rup_nome: dx.rup_nome || (team.rup && team.rup.nome) || '',
@@ -3437,6 +3493,7 @@ async function openModalEditVerbale(id, duplica){
           <option value="relazione_struttura_ultimata"${v.tipo==='relazione_struttura_ultimata'?' selected':''}>📑 Relazione a struttura ultimata (art. 65 D.P.R. 380/2001)</option>
           ${v.tipo==='fine_lavori'?'<option value="fine_lavori" selected>✅ Fine lavori (tipo dismesso — cambia in uno dei nuovi tipi sopra)</option>':''}
           <option value="altro"${v.tipo==='altro'?' selected':''}>📋 Altro verbale</option>
+          ${cseOpzioniTipoHtml(v.tipo)}
         </select>
       </div>
       <div class="form-group">
@@ -3478,6 +3535,7 @@ async function openModalEditVerbale(id, duplica){
     ${extraFieldsCollaudoCertHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
     ${extraFieldsProgrammaProveHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
     ${extraFieldsRSUHtml('ev2', dx, dxWithTeam, getCantiereObj(v.cantiere_id))}
+    ${extraFieldsCseHtml('ev2', TIPI_VERBALE_CSE.includes(v.tipo)?dx:null, {team, c:getCantiereObj(v.cantiere_id)})}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
       ${duplica
@@ -5948,6 +6006,13 @@ async function openModalEditMembro(membroId, utenteId){
         <label class="form-label">Telefono</label>
         <input class="form-control" id="em_tel" value="${esc(t.telefono||'')}">
       </div>
+      <div class="form-group span-2">
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="em_anche_cse"${t.anche_cse?' checked':''}${currentRole==='dl'?'':' disabled'} style="margin-top:3px">
+          <span><strong>Svolge anche il ruolo di CSE</strong> (Coordinatore per la sicurezza in fase di esecuzione)
+          <span class="form-hint" style="display:block">Per quando il CSE coincide con il DL o con un direttore operativo: mantiene il proprio ruolo e in più può compilare i verbali della sicurezza. I suoi dati compaiono come coordinatore nei documenti.</span></span>
+        </label>
+      </div>
       <div class="form-group">
         <label class="form-label">Email professionale</label>
         <input class="form-control" type="email" id="em_email_prof" value="${esc(t.email_prof||'')}" placeholder="nome@studio.it">
@@ -5983,6 +6048,8 @@ async function salvaEditMembro(membroId, utenteId){
     email_prof: document.getElementById('em_email_prof').value.trim()||null,
     pec:        document.getElementById('em_pec').value.trim()||null
   };
+  // solo il DL puo' assegnare l'incarico di CSE (lo impone anche la policy)
+  if(currentRole==='dl') aggiornamento.anche_cse = !!document.getElementById('em_anche_cse')?.checked;
   const {data:upd, error} = await sb.from('cantiere_utenti')
     .update(aggiornamento)
     .eq('id', membroId)
@@ -7195,7 +7262,9 @@ const VERBALE_FILE_CODE = {
   constatazione:'VER_CON', constatazione_stato_luoghi:'VER_STALUO',
   certificato_ultimazione:'VER_UL', certificato_ultimazione_con_opere:'VER_ULCO',
   riconsegna_anticipata:'VER_PCA', riunione:'VER_RIU',
-  verifica_ods:'VER_ODS', collaudo_statico:'VER_COL', certificato_collaudo_statico:'CERT_COL', programma_prove_collaudo:'PROG_PROVE_COL', relazione_struttura_ultimata:'REL_RSU', fine_lavori:'VER_GEN', altro:'VER_GEN'
+  verifica_ods:'VER_ODS', collaudo_statico:'VER_COL', certificato_collaudo_statico:'CERT_COL', programma_prove_collaudo:'PROG_PROVE_COL', relazione_struttura_ultimata:'REL_RSU', fine_lavori:'VER_GEN', altro:'VER_GEN',
+  cse_visita:'CSE_VIS', cse_riunione:'CSE_RIUN', cse_accettazione_psc:'CSE_ACC_PSC', cse_procura_notifica:'CSE_PROCURA',
+  cse_assunzione_resp:'CSE_ASS_RESP', cse_comunicazione_committente:'CSE_COM', cse_fine_incarico:'CSE_FINE'
 };
 const PRELIEVO_FILE_CODE = {
   acciaio_carpenteria:'ACC', barre_ca:'AC-CA', reti_tralicci:'RT-CA',
@@ -9916,7 +9985,7 @@ async function apriVerbaleFirmabile(id, solaLettura){
     }
     const c = getCantiereObj(v.cantiere_id);
     const dx = v.dati_extra || {};
-    let corpoHtml, titolo, normativa, metaRows, comune='', provincia='';
+    let corpoHtml, titolo, normativa, metaRows, comune='', provincia='', cseCtx=null;
 
     if(v.tipo==='sopralluogo_periodico'){
       titolo = 'Verbale di sopralluogo periodico';
@@ -10047,6 +10116,14 @@ async function apriVerbaleFirmabile(id, solaLettura){
         ['IMPRESA', esc(c?.impresa||'')],
         rigaContratto(c)
       ];
+    } else if(TIPI_VERBALE_CSE.includes(v.tipo)){
+      const info = cseInfo(v.tipo);
+      cseCtx = {team: await getTeamRoster(v.cantiere_id)};
+      titolo = info.titolo;
+      normativa = info.norma;
+      comune = comuneCantiere(c);
+      corpoHtml = bodyCse(c, v, dx, cseCtx);
+      metaRows = cseMeta(dx, c);
     } else {
       const tipoLabelMap = {sopralluogo:'Verbale di sopralluogo',constatazione:'Verbale di constatazione',riunione:'Verbale di riunione di cantiere',fine_lavori:'Verbale di fine lavori',altro:'Verbale'};
       titolo = tipoLabelMap[v.tipo] || 'Verbale';
@@ -10078,14 +10155,16 @@ async function apriVerbaleFirmabile(id, solaLettura){
         ? dx.professionisti.filter(p=>p.nome).map(p=>({nome:p.nome, ruolo:'Il Direttore dei Lavori strutturali'}))
         : [{nome:redattoreDefault, ruolo:'Il Direttore dei Lavori strutturali'}])
     };
-    const FIRMATARI_DA_DOCUMENTO = ['certificato_collaudo_statico','programma_prove_collaudo','relazione_struttura_ultimata'];
+    const FIRMATARI_DA_DOCUMENTO = ['certificato_collaudo_statico','programma_prove_collaudo','relazione_struttura_ultimata'].concat(TIPI_VERBALE_CSE);
+    if(cseCtx) firmatariDefaultMap[v.tipo] = firmatariCse(v, dx, cseCtx);
     const firmatariDefault = firmatariDefaultMap[v.tipo] || [{nome:'',ruolo:'Il Direttore dei Lavori'},{nome:'',ruolo:"L'Impresa"}];
 
     apriDocumentoFirmabile({
       titolo: titolo,
       normativa: normativa||'',
       comune: comune||'', provincia: provincia||'',
-      metaRows: (metaRows||[]).concat(await caricaRigheVarianti(v.cantiere_id)),
+      // le varianti contrattuali non riguardano gli atti della sicurezza
+      metaRows: (metaRows||[]).concat(cseCtx ? [] : await caricaRigheVarianti(v.cantiere_id)),
       corpoHtml: corpoHtml,
       luogo: (v.tipo==='collaudo_statico' && (dx.luogo || luogoCantiere(c))) || comune || comuneCantiere(c) || c?.nome || '',
       dataDoc: v.data,
@@ -10111,7 +10190,17 @@ async function apriVerbaleFirmabile(id, solaLettura){
 
 function toggleVerbaleExtra(prefix){
   const tipo = document.getElementById(prefix+'_tipo').value;
-  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata','collaudo_statico','certificato_collaudo_statico','programma_prove_collaudo','relazione_struttura_ultimata'];
+  const TIPI_STRUTTURATI = ['sopralluogo_periodico','verifica_ods','consegna_lavori','consegna_parziale','constatazione','constatazione_stato_luoghi','certificato_ultimazione','certificato_ultimazione_con_opere','riconsegna_anticipata','collaudo_statico','certificato_collaudo_statico','programma_prove_collaudo','relazione_struttura_ultimata'].concat(TIPI_VERBALE_CSE);
+  const eCse = TIPI_VERBALE_CSE.includes(tipo);
+  const boxCse = document.getElementById(prefix+'_extra_cse_comune');
+  if(boxCse) boxCse.style.display = eCse ? 'block' : 'none';
+  // nuovo verbale: redattore e presenti proposti seguono il tipo (DL o CSE),
+  // ma solo finche' l'utente non li ha modificati
+  ['red','pres'].forEach(function(k){
+    const el = document.getElementById(prefix+'_'+k);
+    if(!el || el.dataset.std===undefined) return;
+    if(el.value===el.dataset.std || el.value===el.dataset.cse) el.value = eCse ? el.dataset.cse : el.dataset.std;
+  });
   TIPI_STRUTTURATI.forEach(function(t){
     const el = document.getElementById(prefix+'_extra_'+t);
     if(el) el.style.display = (tipo===t) ? 'block' : 'none';
@@ -11734,7 +11823,453 @@ function bodyProgrammaProve(c, v, dx){
   return h;
 }
 
+// ============================================================
+// VERBALI DELLA SICUREZZA — a carico del Coordinatore per l'esecuzione (CSE)
+// ============================================================
+// Il CSE puo' essere un membro con ruolo "cse" oppure il DL / un DO che
+// svolge anche quell'incarico (cantiere_utenti.anche_cse). I dati della
+// persona (anagrafica, ordine, studio) vengono dal suo profilo.
+const CSE_VERBALI = [
+  {v:'cse_visita', icon:'🦺', file:'CSE_VIS', label:'Verbale di visita in cantiere (CSE)',
+   titolo:'Verbale di visita in cantiere', norma:'art. 92, comma 1, lett. a) del D.Lgs. 9 aprile 2008, n. 81 e s.m.i.'},
+  {v:'cse_riunione', icon:'🦺', file:'CSE_RIUN', label:'Verbale di riunione di coordinamento (CSE)',
+   titolo:'Verbale di riunione di coordinamento', norma:'art. 92 del D.Lgs. 9 aprile 2008, n. 81 e s.m.i.'},
+  {v:'cse_accettazione_psc', icon:'🦺', file:'CSE_ACC_PSC', label:'Accettazione del PSC da parte dell\'impresa',
+   titolo:'Accettazione del Piano di Sicurezza e Coordinamento', norma:'artt. 96 e 100 del D.Lgs. 9 aprile 2008, n. 81 e s.m.i.'},
+  {v:'cse_procura_notifica', icon:'🦺', file:'CSE_PROCURA', label:'Procura speciale per l\'invio della notifica preliminare',
+   titolo:'Procura speciale', norma:'artt. 1392-1393 codice civile &mdash; notifica preliminare art. 99 D.Lgs. 81/2008'},
+  {v:'cse_assunzione_resp', icon:'🦺', file:'CSE_ASS_RESP', label:'Assunzione di responsabilità dell\'impresa (detrazioni IRPEF)',
+   titolo:'Assunzione di responsabilità', norma:'allegato alla comunicazione per detrazione d\'imposta ai fini IRPEF &mdash; Legge 449/1997 e s.m. &mdash; D.M. n. 41 del 18/02/1998'},
+  {v:'cse_comunicazione_committente', icon:'🦺', file:'CSE_COM', label:'Comunicazione al committente: obbligo di nomina CSE e notifica',
+   titolo:'Comunicazione al Committente', norma:'artt. 90, 98 e 99 del D.Lgs. 9 aprile 2008, n. 81 e s.m.i.'},
+  {v:'cse_fine_incarico', icon:'🦺', file:'CSE_FINE', label:'Comunicazione di fine incarico del CSE',
+   titolo:'Comunicazione di fine incarico del Coordinatore per l\'esecuzione', norma:'art. 92 del D.Lgs. 9 aprile 2008, n. 81 e s.m.i.'}
+];
+const TIPI_VERBALE_CSE = CSE_VERBALI.map(x=>x.v);
+function cseInfo(tipo){ return CSE_VERBALI.find(x=>x.v===tipo); }
+// <optgroup> per i menu "Tipo verbale"
+function cseOpzioniTipoHtml(sel){
+  return '<optgroup label="Sicurezza — Coordinatore per l\'esecuzione (D.Lgs. 81/2008)">'
+    + CSE_VERBALI.map(x=>`<option value="${x.v}"${sel===x.v?' selected':''}>${x.icon} ${esc(x.label)}</option>`).join('')
+    + '</optgroup>';
+}
+// value="..." sicuro anche con le virgolette
+function cseA(s){ return esc(s).replace(/"/g,'&quot;'); }
+
+// Imprese del cantiere (sezione Ditte): suggerimenti per i campi impresa
+let CSE_DITTE = [];
+async function caricaDitteCSE(cantiereId){
+  try{
+    const {data} = await sb.from('ditte').select('nome,piva,citta,indirizzo,provincia,cap,tipo').eq('cantiere_id',cantiereId).order('nome');
+    CSE_DITTE = data||[];
+  }catch(e){ CSE_DITTE = []; }
+}
+function cseDittaPerNome(nome){
+  const n = String(nome||'').trim().toLowerCase();
+  return n ? CSE_DITTE.find(d=>String(d.nome||'').trim().toLowerCase()===n) : null;
+}
+function cseSedeDitta(d){
+  if(!d) return '';
+  return [d.indirizzo, [d.cap, d.citta].filter(Boolean).join(' ') + (d.provincia?' ('+d.provincia+')':'')].filter(s=>String(s||'').trim()).join(', ');
+}
+
+// "Ing. Mario Rossi, nato a … il …, residente a …, con studio in …, iscritto all'Ordine … al n. …"
+function anagraficaProfessionista(p, nomeRipiego){
+  p = p || {};
+  const nome = `${p.nome||''} ${p.cognome||''}`.trim() || nomeRipiego || '';
+  let s = (p.titolo ? p.titolo+' ' : '') + nome.toUpperCase();
+  if(p.luogo_nascita || p.data_nascita) s += ', nato a '+(p.luogo_nascita||'…')+(p.data_nascita?' il '+fmt(p.data_nascita):'');
+  if(p.residenza) s += ', residente a '+p.residenza;
+  const studio = p.studio_sede_operativa || p.studio_sede_legale;
+  if(studio) s += ', con studio in '+studio;
+  if(p.ordine) s += ', iscritto all\''+p.ordine+(p.num_iscriz?' al n. '+p.num_iscriz:'');
+  return s;
+}
+
+// Presenti proposti per i verbali del CSE: il coordinatore e il DT dell'impresa
+function formatPresentiCSE(team){
+  return [['cse','CSE - Coordinatore Sicurezza'],['dt_impresa','DT Impresa']]
+    .filter(([r])=>team[r] && team[r].nome)
+    .map(([r,l])=>team[r].nome+' ('+l+')').join('\n');
+}
+
+// ---- campi del modulo ----
+function cseRadio(prefix, key, val, opts){
+  return opts.map(([v,l])=>`<label style="display:flex;gap:6px;align-items:flex-start;font-size:12px;margin:3px 0;cursor:pointer">
+      <input type="radio" name="${prefix}_${key}" value="${v}"${val===v?' checked':''} style="margin-top:2px"> <span>${l}</span></label>`).join('');
+}
+function cseRadioVal(prefix, key){
+  const r = document.querySelector(`input[name="${prefix}_${key}"]:checked`);
+  return r ? r.value : null;
+}
+function cseBox(prefix, tipo, titolo, inner){
+  return `<div id="${prefix}_extra_${tipo}" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:10px">${titolo}</div>${inner}</div>`;
+}
+function cseCampo(prefix, key, label, val, opt){
+  opt = opt || {};
+  const id = `${prefix}_${key}`;
+  const campo = opt.area
+    ? `<textarea class="form-control" id="${id}" rows="${opt.rows||3}" placeholder="${cseA(opt.ph||'')}">${esc(val||'')}</textarea>`
+    : `<input class="form-control" id="${id}"${opt.type?` type="${opt.type}"`:''}${opt.list?` list="${opt.list}"`:''} value="${cseA(val||'')}" placeholder="${cseA(opt.ph||'')}">`;
+  return `<div class="form-group${opt.span2?' span-2':''}"><label class="form-label">${label}</label>${campo}${opt.hint?`<div class="form-hint">${opt.hint}</div>`:''}</div>`;
+}
+
+const CSE_ARGOMENTI_DEFAULT = [
+  'Programmazione lavorazioni iniziali ed allestimento cantiere',
+  'Coordinamento imprese e lavoratori autonomi',
+  'Gestione emergenze e primo soccorso',
+  'Documentazione da custodire in cantiere e luogo di custodia',
+  'Accettazione del PSC precedentemente trasmesso'
+].join('\n');
+
+// ctx: {team, c} — dx: dati salvati (o {} per un nuovo verbale)
+function extraFieldsCseHtml(prefix, dx, ctx){
+  dx = dx || {}; ctx = ctx || {};
+  const c = ctx.c || {}, team = ctx.team || {};
+  const cseNome = (team.cse && team.cse.nome) || '';
+  const dlNome = (team.dl && team.dl.nome) || '';
+  const dtNome = (team.dt_impresa && team.dt_impresa.nome) || '';
+  const d = (k, def) => (dx[k]!=null && dx[k]!=='') ? dx[k] : (def||'');
+  const ubic = luogoCantiere(c);
+  const dl = `${prefix}_cse_ditte`;
+  let h = `<datalist id="${dl}">${CSE_DITTE.map(x=>`<option value="${cseA(x.nome)}">`).join('')}</datalist>`;
+
+  // Dati comuni a tutti i documenti della sicurezza
+  h += `<div id="${prefix}_extra_cse_comune" style="display:none;border:1px solid var(--border);border-radius:6px;padding:14px;background:var(--surface);margin-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--primary);margin-bottom:6px">🦺 Dati del cantiere per la sicurezza</div>
+    <div class="form-hint" style="margin-bottom:10px">Coordinatore per l'esecuzione: <strong>${esc(cseNome||'non assegnato')}</strong>${cseNome?'':' &mdash; assegnalo dal Team cantiere (ruolo CSE oppure "svolge anche il ruolo di CSE")'}. Nome, titolo, ordine e dati anagrafici del coordinatore vengono dal suo profilo ("Il mio studio").</div>
+    <div class="form-grid">
+      ${cseCampo(prefix,'cse_committente','Committente',d('committente', c.stazione_appaltante))}
+      ${cseCampo(prefix,'cse_resp_lavori','Responsabile dei lavori',d('resp_lavori', team.rup && team.rup.nome),{ph:'Se nominato'})}
+      ${cseCampo(prefix,'cse_lavoro','Lavoro',d('lavoro', c.descrizione||c.nome),{span2:true})}
+      ${cseCampo(prefix,'cse_ubicazione','Cantiere / ubicazione',d('ubicazione', ubic))}
+      ${cseCampo(prefix,'cse_catastali','Dati catastali',d('catastali'),{ph:'Es. Foglio 12, part. 345'})}
+    </div></div>`;
+
+  h += cseBox(prefix,'cse_visita','Verbale di visita in cantiere — art. 92 c. 1 lett. a) D.Lgs. 81/2008', `
+    <div class="form-grid">
+      ${cseCampo(prefix,'cse_fasi','Fasi di lavoro in svolgimento alla data odierna',d('fasi'),{area:true,span2:true})}
+      <div class="form-group span-2"><label class="form-label">Durante il sopralluogo si è potuto accertare che</label>
+        <div style="background:white;border:1px solid var(--border);border-radius:5px;padding:8px 10px">
+        ${cseRadio(prefix,'cse_viol',d('violazioni','no'),[['no','Non sono state rilevate violazioni delle disposizioni del PSC da parte delle imprese presenti in cantiere'],['si','Sono state rilevate violazioni delle disposizioni del PSC da parte delle imprese presenti in cantiere']])}
+        <hr style="border:none;border-top:1px dashed var(--border);margin:5px 0">
+        ${cseRadio(prefix,'cse_adeg',d('adeguamento','no'),[['no','Non vige la necessità di adeguare il PSC e il Fascicolo dell\'opera (nessuna modifica alle fasi di lavoro)'],['si','Vige la necessità di adeguare il PSC e il Fascicolo dell\'opera (sono intervenute modifiche alle fasi di lavoro)']])}
+        <hr style="border:none;border-top:1px dashed var(--border);margin:5px 0">
+        ${cseRadio(prefix,'cse_coop',d('cooperazione','si'),[['si','Vige in cantiere un regime di cooperazione e coordinamento delle attività'],['no','Non vige in cantiere un regime di cooperazione e coordinamento delle attività']])}
+        <hr style="border:none;border-top:1px dashed var(--border);margin:5px 0">
+        ${cseRadio(prefix,'cse_peric',d('pericolo','no'),[['no','Non esistono situazioni di pericolo grave ed imminente'],['si','Esistono situazioni di pericolo grave ed imminente']])}
+        </div></div>
+      ${cseCampo(prefix,'cse_note','Note / difformità rilevate',d('note'),{area:true,rows:4,span2:true})}
+      <div class="form-group span-2"><label class="form-label">Pertanto, visto l'esito dei controlli, il coordinatore</label>
+        <div style="background:white;border:1px solid var(--border);border-radius:5px;padding:8px 10px">
+        ${cseRadio(prefix,'cse_esito',d('esito','nessuno'),[['nessuno','NON HA DISPOSTO interventi correttivi e/o sospensione delle lavorazioni'],['correttivi','ORDINA ai soggetti interessati di predisporre i relativi interventi correttivi'],['sospensione','HA DISPOSTO LA SOSPENSIONE DEI LAVORI (art. 92 c. 1 lett. f) con effetto immediato']])}
+        </div></div>
+      ${cseCampo(prefix,'cse_termine','Termine per gli interventi correttivi',d('termine','entro la giornata'),{hint:'Usato solo se si ordinano interventi correttivi'})}
+    </div>
+    <div class="form-hint">In "Presenti" indica chi firma per presa visione, uno per riga: "Nome (Ditta)".</div>`);
+
+  h += cseBox(prefix,'cse_riunione','Verbale di riunione di coordinamento — art. 92 D.Lgs. 81/2008', `
+    <div class="form-grid">
+      ${cseCampo(prefix,'cse_ora','Ora',d('ora'),{type:'time'})}
+      ${cseCampo(prefix,'cse_luogo','Luogo della riunione',d('luogo', ubic))}
+      ${cseCampo(prefix,'cse_argomenti','Argomenti discussi (uno per riga)',d('argomenti', CSE_ARGOMENTI_DEFAULT),{area:true,rows:5,span2:true})}
+      <div class="form-group span-2"><label class="form-label">I presenti</label>
+        <div style="background:white;border:1px solid var(--border);border-radius:5px;padding:8px 10px">
+        ${cseRadio(prefix,'cse_oss',d('osservazioni_si','no'),[['no','non ritengono di proporre alcuna osservazione, ritenendo il PSC idoneo allo stato attuale dei fatti'],['si','ritengono di proporre le seguenti osservazioni ad integrazione del PSC']])}
+        </div></div>
+      ${cseCampo(prefix,'cse_osservazioni','Osservazioni ad integrazione del PSC',d('osservazioni'),{area:true,span2:true})}
+      <div class="form-group span-2"><label class="form-label">Piani operativi di sicurezza (POS) consegnati dalle imprese — una per riga</label>
+        <textarea class="form-control" id="${prefix}_cse_pos" rows="3" placeholder="Nome impresa">${esc(d('pos'))}</textarea>
+        ${CSE_DITTE.length?`<button type="button" class="btn btn-secondary btn-sm" style="margin-top:5px;align-self:flex-start" onclick="document.getElementById('${prefix}_cse_pos').value=CSE_DITTE.map(x=>x.nome).join('\\n')">↓ Inserisci le imprese del cantiere</button>`:''}
+      </div>
+    </div>
+    <div class="form-hint">In "Presenti" indica i convenuti, uno per riga: "Nome (in qualità di …)". Firmano il verbale insieme a committente / responsabile dei lavori e coordinatore.</div>`);
+
+  h += cseBox(prefix,'cse_accettazione_psc','Accettazione del PSC — dichiarazione dell\'impresa', `
+    <div class="form-grid">
+      ${cseCampo(prefix,'cse_dest','Destinatario (Spett.le)',d('destinatario', cseNome?'Coordinatore per l\'esecuzione dei lavori '+cseNome:''),{span2:true})}
+      ${cseCampo(prefix,'cse_impresa','Impresa (appaltatore / subappaltatore)',d('impresa', c.impresa),{list:dl})}
+      ${cseCampo(prefix,'cse_dichiarante','Il sottoscritto',d('dichiarante', dtNome))}
+      ${cseCampo(prefix,'cse_qualita','In qualità di',d('qualita','Datore di lavoro'),{list:prefix+'_cse_qual_dl'})}
+      <datalist id="${prefix}_cse_qual_dl"><option value="Datore di lavoro"><option value="Amministratore delegato"><option value="Legale rappresentante"></datalist>
+    </div>
+    <div class="form-hint">Per i subappaltatori duplica il documento e cambia impresa e dichiarante.</div>`);
+
+  h += cseBox(prefix,'cse_procura_notifica','Procura speciale per la notifica preliminare (artt. 1392-1393 c.c.)', `
+    <div class="form-grid">
+      ${cseCampo(prefix,'cse_mandante','Il sottoscritto (committente)',d('mandante'),{ph:'Nome e cognome di chi rilascia la procura'})}
+      ${cseCampo(prefix,'cse_mandante_qualita','In qualità di',d('mandante_qualita'),{ph:'Proprietario, Titolare, Amministratore, Legale rappresentante di …'})}
+      ${cseCampo(prefix,'cse_procuratore','Tecnico incaricato (procuratore)',d('procuratore', cseNome))}
+      ${cseCampo(prefix,'cse_via','Cantiere sito in via/piazza, n°',d('via', c.indirizzo))}
+      ${cseCampo(prefix,'cse_comune','Comune',d('comune', comuneCantiere(c)))}
+    </div>
+    <div class="form-hint">Se i committenti sono più di uno, ciascuno rilascia una propria procura: usa "Duplica" e cambia il nominativo.</div>`);
+
+  const dImp = cseDittaPerNome(d('ditta', c.impresa));
+  h += cseBox(prefix,'cse_assunzione_resp','Assunzione di responsabilità dell\'impresa (L. 449/1997 — D.M. 41/1998)', `
+    <div class="form-grid">
+      ${cseCampo(prefix,'cse_ar_nome','Il sottoscritto',d('ar_nome', dtNome))}
+      ${cseCampo(prefix,'cse_ar_nascita','Nato a … il …',d('ar_nascita'),{ph:'Es. Ancona (AN) il 01/02/1970'})}
+      ${cseCampo(prefix,'cse_ar_residenza','Residente a (via/loc., n°)',d('ar_residenza'),{span2:true})}
+      ${cseCampo(prefix,'cse_ar_ditta','Legale rappresentante della ditta',d('ditta', c.impresa),{list:dl})}
+      ${cseCampo(prefix,'cse_ar_cf','C.F.',d('ar_cf'))}
+      ${cseCampo(prefix,'cse_ar_piva','P.IVA',d('ar_piva', dImp && dImp.piva))}
+      ${cseCampo(prefix,'cse_ar_sede','Sede legale (comune, via/loc., n°)',d('ar_sede', cseSedeDitta(dImp)))}
+      ${cseCampo(prefix,'cse_ar_immobile','Immobile ubicato in (comune, via/loc., n°)',d('ar_immobile', ubic),{span2:true})}
+      ${cseCampo(prefix,'cse_ar_conto','Per conto del sig.',d('ar_conto'))}
+    </div>`);
+
+  h += cseBox(prefix,'cse_comunicazione_committente','Comunicazione al committente — obbligo di nomina del CSE e di notifica preliminare', `
+    <div class="form-grid">
+      ${cseCampo(prefix,'cse_dest2','Destinatario (Spett.)',d('destinatario', c.stazione_appaltante),{span2:true})}
+      <div class="form-group"><label class="form-label">Firma la comunicazione</label>
+        <select class="form-control" id="${prefix}_cse_mittente">
+          <option value="dl"${d('mittente','dl')==='dl'?' selected':''}>Direttore dei Lavori${dlNome?' — '+esc(dlNome):''}</option>
+          <option value="cse"${d('mittente')==='cse'?' selected':''}>Coordinatore per la sicurezza${cseNome?' — '+esc(cseNome):''}</option>
+        </select></div>
+      ${cseCampo(prefix,'cse_mitt_qualita','In qualità di',d('mittente_qualita','Progettista e Direttore dei Lavori'))}
+    </div>`);
+
+  h += cseBox(prefix,'cse_fine_incarico','Comunicazione di fine incarico del coordinatore', `
+    <div class="form-grid">
+      ${cseCampo(prefix,'cse_dest3','Destinatario (Committente / Responsabile dei lavori)',d('destinatario', c.stazione_appaltante),{span2:true})}
+      <div class="form-group"><label class="form-label">Incarico</label>
+        <select class="form-control" id="${prefix}_cse_incarico">
+          <option value="esecuzione"${d('incarico','esecuzione')==='esecuzione'?' selected':''}>Coordinamento della sicurezza in fase di esecuzione</option>
+          <option value="prog_esec"${d('incarico')==='prog_esec'?' selected':''}>Coordinamento della sicurezza in fase di progettazione ed esecuzione</option>
+        </select></div>
+      <div class="form-group"><label class="form-label">Lavori ultimati</label>
+        <select class="form-control" id="${prefix}_cse_parziale">
+          <option value="no"${d('parziale','no')==='no'?' selected':''}>Tutte le fasi lavorative</option>
+          <option value="si"${d('parziale')==='si'?' selected':''}>Fine lavori parziale</option>
+        </select></div>
+    </div>`);
+  return h;
+}
+
+function raccogliDatiCse(prefix, tipo){
+  const g = k => (document.getElementById(prefix+'_'+k)?.value||'').trim()||null;
+  const out = {
+    committente: g('cse_committente'), resp_lavori: g('cse_resp_lavori'), lavoro: g('cse_lavoro'),
+    ubicazione: g('cse_ubicazione'), catastali: g('cse_catastali')
+  };
+  if(tipo==='cse_visita') Object.assign(out, {
+    fasi: g('cse_fasi'), violazioni: cseRadioVal(prefix,'cse_viol'), adeguamento: cseRadioVal(prefix,'cse_adeg'),
+    cooperazione: cseRadioVal(prefix,'cse_coop'), pericolo: cseRadioVal(prefix,'cse_peric'),
+    note: g('cse_note'), esito: cseRadioVal(prefix,'cse_esito'), termine: g('cse_termine')
+  });
+  if(tipo==='cse_riunione') Object.assign(out, {
+    ora: g('cse_ora'), luogo: g('cse_luogo'), argomenti: g('cse_argomenti'),
+    osservazioni_si: cseRadioVal(prefix,'cse_oss'), osservazioni: g('cse_osservazioni'), pos: g('cse_pos')
+  });
+  if(tipo==='cse_accettazione_psc') Object.assign(out, {
+    destinatario: g('cse_dest'), impresa: g('cse_impresa'), dichiarante: g('cse_dichiarante'), qualita: g('cse_qualita')
+  });
+  if(tipo==='cse_procura_notifica') Object.assign(out, {
+    mandante: g('cse_mandante'), mandante_qualita: g('cse_mandante_qualita'), procuratore: g('cse_procuratore'),
+    via: g('cse_via'), comune: g('cse_comune')
+  });
+  if(tipo==='cse_assunzione_resp') Object.assign(out, {
+    ar_nome: g('cse_ar_nome'), ar_nascita: g('cse_ar_nascita'), ar_residenza: g('cse_ar_residenza'),
+    ditta: g('cse_ar_ditta'), ar_cf: g('cse_ar_cf'), ar_piva: g('cse_ar_piva'), ar_sede: g('cse_ar_sede'),
+    ar_immobile: g('cse_ar_immobile'), ar_conto: g('cse_ar_conto')
+  });
+  if(tipo==='cse_comunicazione_committente') Object.assign(out, {
+    destinatario: g('cse_dest2'), mittente: g('cse_mittente')||'dl', mittente_qualita: g('cse_mitt_qualita')
+  });
+  if(tipo==='cse_fine_incarico') Object.assign(out, {
+    destinatario: g('cse_dest3'), incarico: g('cse_incarico')||'esecuzione', parziale: g('cse_parziale')||'no'
+  });
+  return out;
+}
+
+// ---- documento ----
+function cseVoce(attiva, testo){
+  return `<div style="display:flex;gap:8px;margin:3px 0"><span style="font-family:DejaVu Sans,Arial;font-size:13px;line-height:1.2">${attiva?'&#9746;':'&#9744;'}</span><span${attiva?' style="font-weight:600"':''}>${testo}</span></div>`;
+}
+function cseRighe(t){ return String(t||'').split('\n').map(s=>s.trim()).filter(Boolean); }
+function cseMeta(dx, c){
+  return [
+    ['CANTIERE', esc(dx.ubicazione||luogoCantiere(c))],
+    ['COMMITTENTE', esc(dx.committente||c?.stazione_appaltante||'')],
+    ['LAVORO', esc(dx.lavoro||c?.descrizione||c?.nome||'')]
+  ];
+}
+function cseDestinatarioHtml(dest){
+  return dest ? `<p style="text-align:right;margin-left:45%">Spett.le<br><strong>${esc(dest).replace(/\n/g,'<br>')}</strong></p>` : '';
+}
+
+// ctx: {team} con i profili del CSE e del DL
+function bodyCse(c, v, dx, ctx){
+  const team = (ctx && ctx.team) || {};
+  const cse = team.cse || {}, dl = team.dl || {};
+  const cseNome = cse.nome || v.redattore || '';
+  const t = v.tipo;
+  let h = '';
+
+  if(t==='cse_visita'){
+    h += `<p>Il sottoscritto <strong>${esc(anagraficaProfessionista(cse.prof, cseNome))}</strong>, in qualità di Coordinatore per l'esecuzione dei lavori in oggetto, in data odierna si è recato presso il cantiere sito in ${esc(dx.ubicazione||luogoCantiere(c))} al fine di verificare, ai sensi dell'art. 92, comma 1 del D.Lgs. 9 aprile 2008, n. 81 e s.m.i., il rispetto delle norme in materia di sicurezza, l'applicazione delle disposizioni contenute nel Piano di Sicurezza e Coordinamento e le relative procedure di lavoro.</p>`;
+    h += '<p><strong>Le fasi di lavoro in svolgimento alla data odierna sono:</strong></p>' + (paraP(dx.fasi) || '<p>____________________________________________</p>');
+    h += '<p><strong>Durante il sopralluogo si è potuto accertare che:</strong></p>';
+    h += cseVoce(dx.violazioni!=='si','Non sono state rilevate violazioni delle disposizioni contenute nel piano di sicurezza e coordinamento da parte delle imprese presenti in cantiere;')
+       + cseVoce(dx.violazioni==='si','Sono state rilevate violazioni delle disposizioni contenute nel piano di sicurezza e coordinamento da parte delle imprese presenti in cantiere;');
+    h += '<div style="height:6px"></div>'
+       + cseVoce(dx.adeguamento!=='si','Non vige la necessità di adeguare il Piano di Sicurezza e di Coordinamento e il Fascicolo dell\'opera in quanto non sono intervenute modifiche alle fasi di lavoro;')
+       + cseVoce(dx.adeguamento==='si','Vige la necessità di adeguare il Piano di Sicurezza e di Coordinamento e il Fascicolo dell\'opera in quanto sono intervenute modifiche alle fasi di lavoro;');
+    h += '<div style="height:6px"></div>'
+       + cseVoce(dx.cooperazione!=='no','Vige in cantiere un regime di cooperazione e coordinamento delle attività;')
+       + cseVoce(dx.cooperazione==='no','Non vige in cantiere un regime di cooperazione e coordinamento delle attività;');
+    h += '<div style="height:6px"></div>'
+       + cseVoce(dx.pericolo!=='si','Non esistono situazioni di pericolo grave ed imminente;')
+       + cseVoce(dx.pericolo==='si','Esistono situazioni di pericolo grave ed imminente;');
+    if(dx.note) h += '<p><strong>Note:</strong></p>' + paraP(dx.note);
+    h += '<p><strong>Pertanto, visto l\'esito dei controlli, il sottoscritto:</strong></p>';
+    const es = dx.esito || 'nessuno';
+    h += cseVoce(es==='nessuno','<strong>NON HA DISPOSTO</strong> interventi correttivi e/o sospensione delle lavorazioni;');
+    h += cseVoce(es==='correttivi','<strong>ORDINA</strong> ai soggetti interessati (imprese e lavoratori autonomi) di predisporre, per tutte le difformità sopra elencate, i relativi interventi correttivi, tenendo conto delle disposizioni contenute nel Piano di Sicurezza e di Coordinamento e le relative procedure di lavoro, <strong>'+esc(dx.termine||'entro la giornata')+'</strong>.');
+    if(es==='correttivi') h += '<p style="font-size:11px">Si fa presente che, essendo le difformità rilevate inosservanze che rientrano nei casi previsti dall\'art. 92, comma 1, lett. e) del D.Lgs. 9 aprile 2008, n. 81 e s.m.i., la mancata attuazione degli interventi correttivi prescritti implicherà la segnalazione al Committente con proposta di sospensione dei lavori, allontanamento o risoluzione del contratto per i soggetti inadempienti.</p>';
+    h += cseVoce(es==='sospensione','<strong>HA DISPOSTO LA SOSPENSIONE DEI LAVORI</strong> ai sensi dell\'art. 92, comma 1, lett. f) del D.Lgs. 9 aprile 2008, n. 81 e s.m.i., con effetto immediato delle lavorazioni;');
+    if(es==='sospensione') h += '<p style="font-size:11px">Le lavorazioni sospese potranno riprendere soltanto a seguito di comunicazione scritta degli avvenuti adeguamenti e all\'esito di verifica, all\'uopo eseguita dallo scrivente, dell\'avvenuta eliminazione delle inosservanze alle norme in materia di sicurezza che hanno determinato la sospensione dell\'attività lavorativa.</p>';
+    h += '<p>Per presa visione firmano i presenti.</p>';
+  }
+
+  else if(t==='cse_riunione'){
+    const dl_ = dataInLettere(v.data);
+    h += '<p>Nel giorno, ora e luogo appresso indicati, al fine di promuovere il coordinamento di cui all\'art. 92, comma 1 del D.Lgs. 9 aprile 2008, n. 81 e s.m.i., nonché di assicurare l\'applicazione delle disposizioni contenute nel piano di sicurezza e coordinamento e delle relative procedure di lavoro, è stata effettuata la riunione di coordinamento:</p>';
+    h += '<ul><li>Giorno: <strong>'+fmt(v.data)+'</strong> ('+dl_.giorno+' '+dl_.mese+' '+dl_.anno+')</li>'
+      + '<li>Ora: <strong>'+esc(dx.ora||'____')+'</strong></li>'
+      + '<li>Luogo: <strong>'+esc(dx.luogo||dx.ubicazione||luogoCantiere(c))+'</strong></li></ul>';
+    const pres = parsePresentiList(v.presenti).filter(p=>p.nome && p.nome!==cseNome);
+    h += '<p>il sottoscritto <strong>'+esc(anagraficaProfessionista(cse.prof, cseNome))+'</strong>, Coordinatore per l\'esecuzione dei lavori, si è riunito con i signori:</p>';
+    h += pres.length
+      ? '<ul>'+pres.map(p=>'<li><strong>'+esc(p.nome)+'</strong>'+(p.ruolo?' in qualità di '+esc(p.ruolo):'')+';</li>').join('')+'</ul>'
+      : '<p>____________________ in qualità di ____________________</p>';
+    h += '<p>allo scopo di illustrare ai convenuti i principali contenuti del Piano di sicurezza e coordinamento, compreso il cronoprogramma dei lavori.</p>';
+    h += '<p>Contestualmente si è proceduto all\'analisi dello stato dei luoghi, sia all\'interno che al contorno dell\'area dei lavori, raffrontando le situazioni oggettive con quanto contenuto nei piani di sicurezza, specificatamente con il sistema di organizzazione del cantiere previsto dal piano di sicurezza e coordinamento.</p>';
+    const arg = cseRighe(dx.argomenti);
+    if(arg.length) h += '<p><strong>Nel corso della riunione sono stati discussi i seguenti argomenti:</strong></p><ul>'+arg.map(a=>'<li>'+esc(a)+'</li>').join('')+'</ul>';
+    h += '<p>Tutto ciò premesso, i presenti:</p>';
+    h += cseVoce(dx.osservazioni_si==='si','ritengono di proporre le seguenti osservazioni in merito, ad integrazione del Piano di sicurezza e coordinamento:');
+    if(dx.osservazioni_si==='si') h += paraP(dx.osservazioni) || '<p>____________________________________________</p>';
+    h += cseVoce(dx.osservazioni_si!=='si','non ritengono di proporre alcuna osservazione in merito, ritenendo il Piano di sicurezza e coordinamento idoneo, allo stato attuale dei fatti.');
+    const pos = cseRighe(dx.pos);
+    h += '<p>Inoltre, sono stati consegnati al sottoscritto i piani operativi di sicurezza da parte delle seguenti imprese:</p>'
+      + (pos.length ? '<ul>'+pos.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>' : '<p>____________________________________________</p>');
+    h += '<p>Letto, firmato e sottoscritto.</p>';
+  }
+
+  else if(t==='cse_accettazione_psc'){
+    h += cseDestinatarioHtml(dx.destinatario);
+    h += '<p>Con riferimento al cantiere di <strong>'+esc(dx.ubicazione||luogoCantiere(c))+'</strong> per le opere di <strong>'+esc(dx.lavoro||c?.descrizione||c?.nome||'')+'</strong>, il sottoscritto <strong>'+esc(dx.dichiarante||'____________________')+'</strong>, in qualità di '+esc(dx.qualita||'Datore di lavoro')+', a nome dell\'Appaltatore <strong>'+esc(dx.impresa||c?.impresa||'____________________')+'</strong></p>';
+    h += '<p style="text-align:center;font-weight:700;letter-spacing:.1em">DICHIARA</p>';
+    h += '<p>di conoscere e accettare le procedure di sicurezza previste dal Piano di Sicurezza e Coordinamento e, in particolare, si impegna:</p><ul>'
+      + ['a trasmettere al Coordinatore in fase di Esecuzione il Piano Operativo di Sicurezza (art. 96 D.Lgs. 81/2008) ed a rispettarne i contenuti (prescrizione relativa anche ai subappaltatori);',
+         'a rispettare per i propri incaricati e dipendenti quanto previsto dal D.Lgs. 81/2008 e tutte le altre norme esistenti in materia di prevenzione infortuni e igiene del lavoro, assumendosi ogni responsabilità in ordine all\'osservanza delle norme citate;',
+         'ad assumersi ogni responsabilità per gli eventuali infortuni e danni a cose che potessero verificarsi durante i lavori di sua competenza e pertanto a predisporre e attuare tutte le misure e cautele richieste dalla natura del lavoro commesso, nonché ad osservare tutte le norme di legge sulla prevenzione degli infortuni sul lavoro e di igiene del lavoro;',
+         'a munirsi delle attrezzature adeguate al lavoro da compiere e rispondenti alle prescrizioni delle leggi di prevenzione infortuni e comunque tali da dare garanzia di sicurezza;',
+         'ad adibire ai lavori che esigono l\'uso di apparecchiature richiedenti una specifica capacità tecnica esclusivamente personale opportunamente preparato ed addestrato, avente le necessarie capacità e dotato della necessaria prudenza e attenzione, affinché non abbiano a verificarsi infortuni dovuti a imperizia, imprudenza o trascuratezza;',
+         'ad evitare nel modo più assoluto installazioni, sistemazioni, impieghi di attrezzi di fortuna di qualsiasi genere;',
+         'a seguire tutte le prescrizioni di divieto e comportamento stabilite nel complesso della committente mediante affissi, cartelli, targhette e segnali vari, oltre al rispetto degli avvertimenti dati dai responsabili della Committente;',
+         'quando previsto dal contratto, a provvedere immediatamente, a lavoro ultimato, affinché la zona interessata sia lasciata completamente sgombra e pulita da materiali di qualsiasi genere o altri eventuali impedimenti che possano intralciare il normale svolgimento dell\'attività lavorativa o creare situazioni di pericolo;',
+         'ad adottare in genere tutte le cautele e gli accorgimenti tecnici adatti ad evitare infortuni, anche se non menzionati nella esemplificazione che precede;',
+         'ad evitare le dispersioni di sostanze di qualsiasi natura sul suolo, nella rete fognaria o nell\'atmosfera senza la preventiva autorizzazione del Coordinatore della sicurezza in fase di esecuzione;',
+         'a riconoscere alla Committente, senza che ciò possa comunque costituire scarico di responsabilità, la facoltà di controllare con proprio personale, in ogni momento, l\'esatto adempimento degli impegni di cui ai punti precedenti, e quindi di prendere opportuni provvedimenti a carico dell\'Impresa e, occorrendo, di far sospendere il lavoro in corso ove questo non si svolga con la necessaria sicurezza;',
+         'a rendere edotti i propri dirigenti, preposti e operai delle sopracitate prescrizioni.'
+        ].map(x=>'<li>'+x+'</li>').join('')+'</ul>';
+    h += '<p>In fede.</p>';
+  }
+
+  else if(t==='cse_procura_notifica'){
+    h += '<p style="text-align:center;font-weight:700">INCARICO PER LA SOTTOSCRIZIONE DIGITALE E LA PRESENTAZIONE TELEMATICA DELLA NOTIFICA CANTIERE EDILE</p>';
+    h += '<p>Il/La sottoscritto/a <strong>'+esc(dx.mandante||'______________________________')+'</strong>, in qualità di '+esc(dx.mandante_qualita||'______________________________')+' e committente dei lavori,</p>';
+    h += '<p style="text-align:center;font-weight:700;letter-spacing:.1em">DICHIARA</p>';
+    h += '<p>di conferire al sig. <strong>'+esc((dx.procuratore||cseNome||'______________________________').toUpperCase())+'</strong>, in qualità di tecnico incaricato,</p>';
+    h += '<p style="text-align:center;font-weight:700">PROCURA SPECIALE, AI SENSI DEGLI ARTT. 1392 E 1393 DEL CODICE CIVILE, PER LA SOTTOSCRIZIONE DIGITALE E PRESENTAZIONE TELEMATICA</p>';
+    h += '<p>della Notifica preliminare (art. 99 e Allegato XII del D.Lgs. 81/2008) del cantiere edile sito in via/piazza <strong>'+esc(dx.via||'______________________________')+'</strong> del comune di <strong>'+esc(dx.comune||comuneCantiere(c)||'____________________')+'</strong>.</p>';
+    h += '<p style="font-size:10.5px;color:#555">N.B. I soggetti che devono rilasciare procura speciale possono essere più di uno e ciascuno deve compilare un modulo. Il committente può essere proprietario, titolare, amministratore, legale rappresentante di …</p>';
+  }
+
+  else if(t==='cse_assunzione_resp'){
+    h += '<p>Il sottoscritto <strong>'+esc(dx.ar_nome||'______________________________')+'</strong>'
+      + (dx.ar_nascita?', nato a '+esc(dx.ar_nascita):', nato a ____________________ il __________')
+      + (dx.ar_residenza?', residente a '+esc(dx.ar_residenza):', residente a ______________________________')
+      + ', Legale Rappresentante della Ditta <strong>'+esc(dx.ditta||c?.impresa||'______________________________')+'</strong>'
+      + ', C.F. '+esc(dx.ar_cf||'________________')+', P.IVA '+esc(dx.ar_piva||'________________')
+      + ', con sede legale in '+esc(dx.ar_sede||'______________________________')
+      + ', incaricata dell\'esecuzione dei lavori di <strong>'+esc(dx.lavoro||c?.descrizione||c?.nome||'______________________________')+'</strong>'
+      + ' presso l\'immobile ubicato in '+esc(dx.ar_immobile||dx.ubicazione||luogoCantiere(c)||'______________________________')
+      + (dx.ar_conto?', per conto del sig. <strong>'+esc(dx.ar_conto)+'</strong>':', per conto del sig. ______________________________')+',</p>';
+    h += '<p style="text-align:center;font-weight:700;letter-spacing:.1em">DICHIARA</p>';
+    h += '<p>di aver adempiuto agli obblighi previsti dalla vigente normativa, sia in materia assicurativa, previdenziale e contributiva, sia in materia di sicurezza ed igiene del lavoro, e che nell\'esecuzione dei lavori saranno rispettate tutte le norme sulla tutela della salute e della sicurezza dei lavoratori nei luoghi di lavoro e nei cantieri.</p>';
+  }
+
+  else if(t==='cse_comunicazione_committente'){
+    const mitt = dx.mittente==='cse' ? cse : dl;
+    const mittNome = mitt.nome || v.redattore || '';
+    h += cseDestinatarioHtml(dx.destinatario);
+    h += '<p>Il sottoscritto <strong>'+esc(anagraficaProfessionista(mitt.prof, mittNome))+'</strong>, in qualità di tecnico incaricato, ed in particolare nella qualità di '+esc(dx.mittente_qualita||'Direttore dei Lavori')+' del progetto di:</p>';
+    h += '<ul><li>Lavori: <strong>'+esc(dx.lavoro||c?.descrizione||c?.nome||'')+'</strong></li>'
+      + '<li>Ubicazione: <strong>'+esc(dx.ubicazione||luogoCantiere(c))+'</strong></li>'
+      + (dx.catastali?'<li>Dati catastali: <strong>'+esc(dx.catastali)+'</strong></li>':'')+'</ul>';
+    h += '<p style="text-align:center;font-weight:700;letter-spacing:.06em">COMUNICA e METTE A CONOSCENZA</p>';
+    h += '<p>il committente'+(dx.resp_lavori?' e il responsabile dei lavori':' (o il responsabile dei lavori)')+' che, con l\'entrata in cantiere di più imprese esecutrici:</p><ul>'
+      + '<li>ha l\'obbligo, ai sensi dell\'art. 90 del D.Lgs. 81/2008 e s.m.i., di nominare un coordinatore della sicurezza per l\'esecuzione dei lavori in possesso dei requisiti di cui all\'art. 98 del decreto suddetto, anche per la redazione del piano di sicurezza e coordinamento;</li>'
+      + '<li>ha l\'obbligo di trasmettere all\'Azienda Sanitaria Locale, all\'Ispettorato del Lavoro e alla Prefettura la notifica preliminare di cui all\'art. 99 (Allegato XII), in relazione all\'evoluzione dei lavori e al subentro di altre imprese.</li></ul>';
+    h += '<p>Si rimane a disposizione e in attesa di una Vostra comunicazione per il suddetto incarico, che dovrà comunque essere regolarizzato mediante opportuno contratto di incarico scritto, previo accordo sul compenso.</p>';
+    h += '<p>In fede.</p>';
+  }
+
+  else if(t==='cse_fine_incarico'){
+    const fase = dx.incarico==='prog_esec' ? 'COORDINAMENTO DELLA SICUREZZA IN FASE DI PROGETTAZIONE ED ESECUZIONE' : 'COORDINAMENTO DELLA SICUREZZA IN FASE DI ESECUZIONE';
+    h += cseDestinatarioHtml(dx.destinatario);
+    h += '<p><strong>OGGETTO: '+(dx.parziale==='si'?'Comunicazione di fine lavori parziale':'Comunicazione di fine lavori')+' e di conclusione dell\'incarico di coordinatore per l\'esecuzione</strong></p>';
+    h += '<p>Il sottoscritto <strong>'+esc(anagraficaProfessionista(cse.prof, cseNome))+'</strong>, in qualità di tecnico incaricato per il '+fase+' dei lavori di:</p>';
+    h += '<ul><li>Lavori: <strong>'+esc(dx.lavoro||c?.descrizione||c?.nome||'')+'</strong></li>'
+      + '<li>Ubicazione: <strong>'+esc(dx.ubicazione||luogoCantiere(c))+'</strong></li>'
+      + (dx.catastali?'<li>Dati catastali: <strong>'+esc(dx.catastali)+'</strong></li>':'')+'</ul>';
+    h += '<p style="text-align:center;font-weight:700;letter-spacing:.1em">COMUNICA</p>';
+    h += '<p>al Committente / Responsabile dei lavori che '
+      + (dx.parziale==='si' ? 'le fasi lavorative di propria competenza del cantiere sopra citato sono state ultimate' : 'tutte le fasi lavorative del cantiere sopra citato sono state ultimate')
+      + ' come previsto nel PSC e che pertanto si ritiene ultimato l\'incarico di coordinatore per l\'esecuzione dei lavori disciplinato dall\'art. 92 del D.Lgs. 9 aprile 2008, n. 81 e s.m.i.</p>';
+  }
+  return h;
+}
+
+// Firmatari proposti per ciascun documento della sicurezza
+function firmatariCse(v, dx, ctx){
+  const team = (ctx && ctx.team) || {};
+  const cseNome = (team.cse && team.cse.nome) || v.redattore || '';
+  const dlNome = (team.dl && team.dl.nome) || '';
+  const presenti = parsePresentiList(v.presenti).filter(p=>p.nome && p.nome!==cseNome);
+  const rl = {nome: dx.resp_lavori||dx.committente||'', ruolo:'Il Committente / Responsabile dei lavori'};
+  switch(v.tipo){
+    case 'cse_visita':
+      return [{nome:cseNome, ruolo:'Il Coordinatore della sicurezza'}]
+        .concat(presenti.map(p=>({nome:p.nome, ruolo:'Per presa visione'+(p.ruolo?' — '+p.ruolo:'')})));
+    case 'cse_riunione':
+      return presenti.map(p=>({nome:p.nome, ruolo:p.ruolo||'Presente'}))
+        .concat([rl, {nome:cseNome, ruolo:'Il Coordinatore della sicurezza'}]);
+    case 'cse_accettazione_psc':
+      return [{nome:dx.dichiarante||'', ruolo:'Timbro e firma — '+(dx.qualita||'Datore di lavoro')+(dx.impresa?' '+dx.impresa:'')}];
+    case 'cse_procura_notifica':
+      return [{nome:dx.mandante||'', ruolo:'Firma autografa del committente'}];
+    case 'cse_assunzione_resp':
+      return [{nome:dx.ar_nome||'', ruolo:'Il Legale rappresentante'+(dx.ditta?' — '+dx.ditta:'')}];
+    case 'cse_comunicazione_committente': {
+      const mitt = dx.mittente==='cse' ? {nome:cseNome, ruolo:'Il Coordinatore della sicurezza'} : {nome:dlNome||v.redattore||'', ruolo:'Il '+(dx.mittente_qualita||'Direttore dei Lavori')};
+      return [mitt, {nome:dx.resp_lavori||dx.committente||'', ruolo:'Per presa visione ed accettazione — Il Responsabile dei lavori'}];
+    }
+    case 'cse_fine_incarico':
+      return [{nome:cseNome, ruolo:'Il Coordinatore per l\'esecuzione'},
+              {nome:dx.resp_lavori||dx.committente||'', ruolo:'Per presa visione — Il Committente / Responsabile dei lavori'},
+              {nome:dlNome, ruolo:'Per presa visione — Il Direttore dei Lavori'}];
+  }
+  return [{nome:cseNome, ruolo:'Il Coordinatore della sicurezza'}];
+}
+
 function raccogliDatiExtraVerbale(prefix, tipo){
+  if(TIPI_VERBALE_CSE.includes(tipo)) return raccogliDatiCse(prefix, tipo);
   if(tipo==='constatazione'){
     return {
       cs_modello: true,
