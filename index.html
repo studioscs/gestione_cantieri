@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.25a';
+const APP_VERSIONE = '2026.10.26a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -333,14 +333,15 @@ const TIPI_VERBALE_COLLAUDO = ['collaudo_statico','certificato_collaudo_statico'
 // Coordinatore per l'esecuzione: per ruolo oppure come incarico aggiuntivo
 function isCSE(){ return currentRole==='cse' || !!currentAncheCSE; }
 function puoCreareVerbali(){ return can('write') || can('collaudo') || isCSE(); }
+// Ogni verbale lo gestisce chi lo redige (stessa regola della policy
+// puo_gestire_verbale sul database): la sicurezza il CSE, il resto DL e DO.
 function puoGestireVerbale(tipo){
+  if(typeof TIPI_VERBALE_CSE!=='undefined' && TIPI_VERBALE_CSE.includes(tipo)) return isCSE();
   if(can('write')) return true;
-  if(isCSE() && typeof TIPI_VERBALE_CSE!=='undefined' && TIPI_VERBALE_CSE.includes(tipo)) return true;
   return can('collaudo') && TIPI_VERBALE_COLLAUDO.includes(tipo);
 }
 // Nei moduli verbale lascia selezionabili solo i tipi che il ruolo puo' gestire
 function limitaTipiVerbale(prefix){
-  if(can('write')) return;
   const sel = document.getElementById(prefix+'_tipo');
   if(!sel) return;
   [...sel.options].forEach(o=>{ if(!puoGestireVerbale(o.value)) o.remove(); });
@@ -3234,12 +3235,12 @@ async function renderVerbali(soloTipo){
           ${v.oggetto?`<div style="font-size:13px;font-weight:600;margin-top:6px">${esc(v.oggetto)}</div>`:''}
         </div>
         <div class="btn-group">
-          ${(currentRole!=='collaudatore'||puoGestireVerbale(v.tipo))?`<button class="btn btn-secondary btn-sm" onclick="apriVerbaleFirmabile('${v.id}')">🖨️ Genera PDF firmabile</button>`:''}
+          ${puoGestireVerbale(v.tipo)?`<button class="btn btn-secondary btn-sm" onclick="apriVerbaleFirmabile('${v.id}')">🖨️ Genera PDF firmabile</button>`:''}
           <button class="btn btn-secondary btn-sm" title="Visualizza il verbale generato (sola lettura)" onclick="apriVerbaleFirmabile('${v.id}', true)">👁️ Visualizza</button>
           ${puoGestireVerbale(v.tipo)?`
           <button class="btn btn-secondary btn-sm" onclick="openModalEditVerbale('${v.id}')">✏️</button>
           <button class="btn btn-secondary btn-sm" title="Duplica: crea un nuovo verbale partendo da questo" onclick="openModalEditVerbale('${v.id}', true)">📋 Duplica</button>`:''}
-          ${can('write')?`<button class="btn btn-danger btn-sm" onclick="eliminaVerbale('${v.id}')">🗑️</button>`:''}
+          ${puoGestireVerbale(v.tipo)?`<button class="btn btn-danger btn-sm" onclick="eliminaVerbale('${v.id}', '${v.tipo}')">🗑️</button>`:''}
         </div>
       </div>
       ${(()=>{ const nf=(v.firmatari||[]).filter(f=>f.firmato).length;
@@ -3565,8 +3566,8 @@ async function salvaEditVerbale(id){
   tornaAiVerbali();
 }
 
-async function eliminaVerbale(id){
-  if(!can('write')){ alert('Il tuo ruolo non consente di eliminare verbali.'); return; }
+async function eliminaVerbale(id, tipo){
+  if(!puoGestireVerbale(tipo)){ alert('Il tuo ruolo non consente di eliminare questo verbale.'); return; }
   if(!confirm('Eliminare questo verbale?')) return;
   const {error} = await sb.from('verbali').delete().eq('id',id);
   if(error){ alert(error.message); return; }
@@ -3588,9 +3589,9 @@ async function openModalAnnotaRUP(id){
 }
 
 async function salvaAnnotaRUP(id){
-  const {error} = await sb.from('verbali').update({
-    note_rup: document.getElementById('annot_rup').value.trim()||null
-  }).eq('id',id);
+  // funzione dedicata: il RUP non ha permesso di modifica sul verbale,
+  // puo' scrivere solo la propria annotazione
+  const {error} = await sb.rpc('annota_verbale_rup', {p_id:id, p_nota: document.getElementById('annot_rup').value});
   if(error){ alert(error.message); return; }
   closeModal();
   tornaAiVerbali();
@@ -9980,8 +9981,8 @@ async function apriVerbaleFirmabile(id, solaLettura){
     const {data:v, error:errV} = await sb.from('verbali').select('*').eq('id',id).single();
     if(errV) throw errV;
     if(!v){ w.close(); return; }
-    if(!solaLettura && currentRole==='collaudatore' && !puoGestireVerbale(v.tipo)){
-      w.close(); alert('Il collaudatore può generare solo i verbali di collaudo. Usa "Visualizza" per gli altri.'); return;
+    if(!solaLettura && !puoGestireVerbale(v.tipo)){
+      w.close(); alert('Questo verbale è redatto da un altro ruolo: puoi solo visualizzarlo con "Visualizza".'); return;
     }
     const c = getCantiereObj(v.cantiere_id);
     const dx = v.dati_extra || {};
