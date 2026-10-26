@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.26b';
+const APP_VERSIONE = '2026.10.26c';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -7637,17 +7637,31 @@ function PDF_ENGINE_JS(firmatariIniziali){
       if(nFirmati>0 && !window.__pdfGenerato){
         if(!confirm('Le immagini delle firme non vengono archiviate: il documento firmato e\\' il PDF.\\n\\nHai gia\\' generato e salvato il PDF?\\n\\nOK = salva comunque   |   Annulla = genera prima il PDF')) return;
       }
+      // .select(): se le regole di accesso non consentono la modifica il
+      // database non da' errore ma non aggiorna nulla; senza questo
+      // controllo comparirebbe una conferma non vera
       var res = await window.opener.sb.from(window.RECORD_TABLE).update({
         firmatari: firmatari,
         pdf_generato_at: new Date().toISOString()
-      }).eq('id', window.RECORD_ID);
+      }).eq('id', window.RECORD_ID).select('id');
       if(res.error){ alert('Errore salvataggio: '+res.error.message); return; }
+      if(!res.data || !res.data.length){
+        alert("Firme NON registrate: il tuo ruolo non consente di modificare questo documento (lo gestisce chi lo redige). Il PDF generato resta comunque valido.");
+        return;
+      }
       var el = document.getElementById('saveConfirm');
       if(el){
         el.innerHTML = '&#10003; Registrate '+nFirmati+' firme su '+firmatari.length+' firmatari. '
           + 'Le immagini non sono archiviate: conserva il PDF generato.';
         el.style.display='block';
       }
+      // aggiorna l'elenco nel gestionale (badge FIRMATO) se non c'e' un modulo aperto
+      try{
+        var op = window.opener;
+        var modale = op.document.getElementById('modalOverlay');
+        var attiva = op.document.querySelector('.nav-item.active');
+        if(attiva && attiva.dataset.view && (!modale || modale.classList.contains('hidden'))) op.showView(attiva.dataset.view);
+      }catch(e){}
     }
     function stampaEsegna(){
       window.__pdfGenerato = true;
