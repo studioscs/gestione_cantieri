@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.26d';
+const APP_VERSIONE = '2026.10.26e';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -7659,7 +7659,10 @@ function PDF_ENGINE_JS(firmatariIniziali){
         el.innerHTML = '&#10003; Registrate '+nFirmati+' firme su '+firmatari.length+' firmatari. '
           + 'Le immagini non sono archiviate: conserva il PDF generato.';
         el.style.display='block';
+        try{ window.scrollTo(0,0); }catch(e){}
       }
+      // conferma esplicita: il solo banner in cima alla pagina passava inosservato
+      alert('\\u2705 Firme salvate nel gestionale.\\n\\nRegistrate '+nFirmati+' firme su '+firmatari.length+' firmatari.\\nLe immagini delle firme non sono archiviate: conserva il PDF generato.');
       // aggiorna l'elenco nel gestionale (badge FIRMATO) se non c'e' un modulo aperto
       try{
         var op = window.opener;
