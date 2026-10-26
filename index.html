@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.26c';
+const APP_VERSIONE = '2026.10.26d';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -4069,7 +4069,7 @@ async function apriModalConDati(listaId, sorgente, dataTarget, rigaTargetId){
       <label class="form-label">Note generali</label>
       <input class="form-control" id="nr_note" value="${esc(sorgente.note||'')}">
     </div>
-    ${currentRole==='cse'?`<div class="form-group" style="margin-top:10px">
+    ${isCSE()?`<div class="form-group" style="margin-top:10px">
       <label class="form-label" style="color:#856404">Annotazione CSE &mdash; Sicurezza</label>
       <div style="font-size:11px;color:#856404;margin-bottom:4px">Visibile solo al CSE &mdash; osservazioni su presenze, DPI, anomalie</div>
       <textarea class="form-control" id="nr_note_cse_area" rows="3" placeholder="Es. Verificata presenza DPI per tutti gli operatori..."></textarea>
@@ -4194,7 +4194,7 @@ async function salvaRiga(listaId){
   const data = document.getElementById('nr_data').value;
   const lav = document.getElementById('nr_lav').value.trim();
   if(!data||!lav){ alert('Data e lavorazioni obbligatorie'); return; }
-  const noteCse = currentRole==='cse' ? (document.getElementById('nr_note_cse_area')?.value.trim()||null) : null;
+  const noteCse = isCSE() ? (document.getElementById('nr_note_cse_area')?.value.trim()||null) : null;
   const {error} = await sb.from('liste_righe').insert({
     lista_id: listaId, cantiere_id: currentCantiere, data,
     manodopera: raccogliMae(), mezzi: raccogliMz(), lavorazioni: lav,
@@ -4268,10 +4268,10 @@ async function openModalEditRiga(rigaId, listaId){
     </div>
     <div class="form-group" style="margin-top:10px"><label class="form-label">Note generali</label><input class="form-control" id="nr_note" value="${esc(r.note||'')}"></div>
     <input type="hidden" id="nr_note_cse" value="${esc(r.note_cse||'')}">
-    ${(currentRole==='cse'||r.note_cse)?`<div style="margin-top:12px;padding:12px;border-radius:6px;border-left:4px solid #FFC107;background:#FFF3CD">
+    ${(isCSE()||r.note_cse)?`<div style="margin-top:12px;padding:12px;border-radius:6px;border-left:4px solid #FFC107;background:#FFF3CD">
       <label class="form-label" style="color:#856404;display:block;margin-bottom:4px">&#128203; Annotazione CSE — Sicurezza</label>
-      ${currentRole!=='cse'?'<div style="font-size:11px;color:#856404;margin-bottom:6px">In sola lettura — modificabile solo dal CSE</div>':'<div style="font-size:11px;color:#856404;margin-bottom:6px">Osservazioni su presenze, DPI, anomalie</div>'}
-      <textarea class="form-control" id="nr_note_cse_edit" rows="3" ${currentRole!=='cse'?'readonly style="background:#f8f9fa"':''}>${esc(r.note_cse||'')}</textarea>
+      ${!isCSE()?'<div style="font-size:11px;color:#856404;margin-bottom:6px">In sola lettura — modificabile solo dal CSE</div>':'<div style="font-size:11px;color:#856404;margin-bottom:6px">Osservazioni su presenze, DPI, anomalie</div>'}
+      <textarea class="form-control" id="nr_note_cse_edit" rows="3" ${!isCSE()?'readonly style="background:#f8f9fa"':''}>${esc(r.note_cse||'')}</textarea>
     </div>`:''}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
@@ -5758,7 +5758,7 @@ async function salvaEditGiornale(id){
 }
 
 async function openModalAnnotazioneCSE(giornoId, data){
-  if(currentRole!=='cse'){ alert('Sezione riservata al Coordinatore per la Sicurezza in Esecuzione.'); return; }
+  if(!isCSE()){ alert('Sezione riservata al Coordinatore per la Sicurezza in Esecuzione.'); return; }
   let g = null;
   if(giornoId){
     const {data:rec} = await sb.from('giornale_lavori').select('*').eq('id',giornoId).single();
@@ -5789,7 +5789,7 @@ async function openModalAnnotazioneCSE(giornoId, data){
 }
 
 async function salvaAnnotazioneCSE(giornoId, data){
-  if(currentRole!=='cse'){ alert('Sezione riservata al CSE.'); return; }
+  if(!isCSE()){ alert('Sezione riservata al CSE.'); return; }
   const nota = document.getElementById('cse_nota').value.trim();
   if(!nota){ alert('Inserisci il testo dell\'annotazione.'); return; }
   const redattore = `${currentUser.nome||''} ${currentUser.cognome||''}`.trim() + ' (CSE)';
@@ -5812,7 +5812,7 @@ async function salvaAnnotazioneCSE(giornoId, data){
 }
 
 async function eliminaAnnotazioneCSE(giornoId){
-  if(currentRole!=='cse'){ alert('Sezione riservata al CSE.'); return; }
+  if(!isCSE()){ alert('Sezione riservata al CSE.'); return; }
   if(!confirm('Eliminare l\'annotazione di sicurezza di questa giornata?')) return;
   const {error} = await sb.from('giornale_lavori').update({note_cse:null}).eq('id',giornoId);
   if(error){ alert('Errore: '+error.message); return; }
@@ -6063,6 +6063,11 @@ async function salvaEditMembro(membroId, utenteId){
     alert('Nessuna riga aggiornata — verifica le policy RLS su Supabase.\n\nEsegui su SQL Editor:\ncreate policy cu_update on public.cantiere_utenti for update using (auth.uid() in (select utente_id from public.cantiere_utenti where cantiere_id = cantiere_utenti.cantiere_id and ruolo = \'dl\'));');
     return;
   }
+  // ruolo o incarico CSE cambiati: aggiorna subito i permessi in sessione
+  // (anche i propri, se il DL si e' appena assegnato il ruolo di CSE)
+  await loadMyCantieri();
+  const selC = document.getElementById('cantiereSel'); if(selC) selC.value = currentCantiere;
+  selectCantiere(currentCantiere, true);
   closeModal();
   showView('team');
 }
