@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.26a';
+const APP_VERSIONE = '2026.10.26b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -3343,7 +3343,7 @@ async function openModalNuovoVerbale(tipoIniziale){
   await caricaDitteCSE(currentCantiere);
   // redattore e presenti cambiano se si sceglie un verbale della sicurezza
   const redattoreCSE = (team.cse && team.cse.nome) || redattoreDefault;
-  const presentiCSE = formatPresentiCSE(team);
+  const presentiCSE = formatPresentiCSE(team, getCantiereObj());
   ODS_LIST_PER_VERBALE = odsListNuovo||[];
   openModal('Nuovo Verbale', `
     <div class="form-grid">
@@ -11887,11 +11887,15 @@ function anagraficaProfessionista(p, nomeRipiego){
   return s;
 }
 
-// Presenti proposti per i verbali del CSE: il coordinatore e il DT dell'impresa
-function formatPresentiCSE(team){
-  return [['cse','CSE - Coordinatore Sicurezza'],['dt_impresa','DT Impresa']]
-    .filter(([r])=>team[r] && team[r].nome)
-    .map(([r,l])=>team[r].nome+' ('+l+')').join('\n');
+// Presenti proposti per i verbali del CSE: il coordinatore e sempre un
+// responsabile della ditta esecutrice (il DT dell'impresa se e' nel team,
+// altrimenti una riga con il nome da completare)
+function formatPresentiCSE(team, c){
+  const righe = [];
+  if(team.cse && team.cse.nome) righe.push(team.cse.nome+' (CSE - Coordinatore Sicurezza)');
+  const ditta = (c && c.impresa) || 'impresa esecutrice';
+  righe.push(((team.dt_impresa && team.dt_impresa.nome) || '____________________')+' (Responsabile della ditta '+ditta+')');
+  return righe.join('\n');
 }
 
 // ---- campi del modulo ----
