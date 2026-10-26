@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.26e';
+const APP_VERSIONE = '2026.10.29a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -8427,7 +8427,9 @@ function prelievoTabellaCampioni(cols, righe){
     html += '<tr>'+cols.map(()=>'<td>&nbsp;</td>').join('')+'</tr>';
   } else {
     righe.forEach(r=>{
-      html += '<tr>'+cols.map(col=>'<td>'+esc(r[col.key]||'')+'</td>').join('')+'</tr>';
+      html += '<tr>'+cols.map(col=>'<td>'+(r[col.key]
+        ? esc(r[col.key])
+        : (col.vuoto ? '<em style="color:#6C757D">'+esc(col.vuoto)+'</em>' : ''))+'</td>').join('')+'</tr>';
     });
   }
   html += '</tbody></table>';
@@ -9000,9 +9002,11 @@ const PRELIEVO_TIPI = {
       {key:'fornitore', label:'Produttore (acciaieria) / Fornitore'},
       // laminati e profilati sono coperti da norma armonizzata (UNI EN 10025,
       // 10210, 10219): si controllano marcatura CE e DoP, non l'attestato STC
-      {key:'attestato_fornitore', label:'DoP e marcatura CE (n. DoP e data)', th:'DoP e marcatura CE',
-       placeholder:'es. DoP n. 123/2026 del 10/01/2026 — UNI EN 10025-2',
-       hint:'Prodotti con marcatura CE (caso normale). Se il prodotto non ha marcatura CE lasciare vuoto e compilare la casella seguente'},
+      // al prelievo in officina, all'arrivo del materiale, la DoP spesso non
+      // c'e' ancora: si lascia vuota e nel verbale risulta "da acquisire"
+      {key:'attestato_fornitore', label:'DoP e marcatura CE (n. DoP e data) — se già disponibile', th:'DoP e marcatura CE',
+       placeholder:'es. DoP n. 123/2026 del 10/01/2026 — UNI EN 10025-2', vuoto:'da acquisire',
+       hint:'Se il prelievo avviene in officina all\'arrivo del materiale e la DoP non è ancora disponibile, lascia vuoto: nel verbale comparirà "da acquisire" con la nota che va consegnata prima del collaudo. Per prodotti senza marcatura CE compila invece la casella seguente'},
       {key:'attestato_stc', label:'Attestato di qualificazione S.T.C. (solo prodotti senza marcatura CE)', th:'Attestato qualificazione STC (senza CE)',
        placeholder:'es. attestato n. 1234/22 del 05/04/2022', opzionale:true,
        hint:'Da compilare solo in alternativa alla DoP; se vuota la colonna non compare nel PDF'},
@@ -9298,6 +9302,17 @@ function bodyPrelievoStrutture(c, v, dp){
   }
 
   // sezioni aggiuntive specifiche per alcuni tipi
+  if(tipo==='acciaio_carpenteria'){
+    const campioni = dp.campioni || [];
+    const senzaDop = campioni.filter(r=>!String(r.attestato_fornitore||'').trim() && !String(r.attestato_stc||'').trim());
+    if(!campioni.length || senzaDop.length){
+      html += '<p style="font-size:11px"><strong>Nota.</strong> '
+        + (campioni.length && senzaDop.length < campioni.length ? 'Per i campioni indicati come &laquo;da acquisire&raquo;, la' : 'La')
+        + ' Dichiarazione di Prestazione (DoP) e la marcatura CE non sono disponibili alla data del prelievo, eseguito presso l\'officina all\'arrivo del materiale. '
+        + 'L\'Impresa esecutrice dovrà acquisirle e trasmetterle alla Direzione dei Lavori, unitamente ai certificati di controllo 3.1 UNI EN 10204 e, per i componenti '
+        + 'prodotti in officina, alla DoP e alla marcatura CE secondo la UNI EN 1090-1, prima del collaudo statico: in mancanza la fornitura non potrà essere accettata.</p>';
+    }
+  }
   if(tipo==='malta' && dp.composizione){
     html += '<p><strong>Composizione (confezionamento in cantiere/laboratorio):</strong></p>';
     html += paraP(dp.composizione);
