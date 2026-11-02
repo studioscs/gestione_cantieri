@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.10.29a';
+const APP_VERSIONE = '2026.11.02a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -7616,6 +7616,34 @@ function PDF_ENGINE_JS(firmatariIniziali){
     function clearAllSig(){
       document.querySelectorAll('.sig-canvas').forEach(function(c){ c._clear && c._clear(); });
     }
+    // Finestra di esito/domanda disegnata nella pagina (non stampata).
+    // tipo: 'ok' | 'errore' | 'domanda'; bottoni: [[valore, etichetta], ...]
+    function finestraEsito(tipo, titolo, testoHtml, bottoni){
+      return new Promise(function(resolve){
+        var col = tipo==='ok' ? '#198754' : (tipo==='errore' ? '#B02A37' : '#0B5394');
+        var ico = tipo==='ok' ? '&#9989;' : (tipo==='errore' ? '&#9888;&#65039;' : '&#10067;');
+        bottoni = bottoni || [['ok','OK']];
+        var ov = document.createElement('div');
+        ov.className = 'no-print';
+        ov.setAttribute('style','position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px');
+        var box = '<div style="background:#fff;border-radius:10px;max-width:440px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.35);overflow:hidden;font-family:Arial,sans-serif">'
+          + '<div style="background:'+col+';color:#fff;padding:14px 18px;font-size:17px;font-weight:700">'+ico+' '+titolo+'</div>'
+          + '<div style="padding:16px 18px;font-size:14px;line-height:1.5;color:#222">'+testoHtml+'</div>'
+          + '<div style="padding:0 18px 16px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">';
+        bottoni.forEach(function(b, i){
+          var primario = i===bottoni.length-1;
+          box += '<button data-v="'+b[0]+'" style="padding:10px 18px;font-size:14px;border-radius:6px;cursor:pointer;border:1px solid '+col+';'
+            + (primario ? 'background:'+col+';color:#fff' : 'background:#fff;color:'+col)+'">'+b[1]+'</button>';
+        });
+        box += '</div></div>';
+        ov.innerHTML = box;
+        ov.querySelectorAll('button').forEach(function(btn){
+          btn.addEventListener('click', function(){ ov.remove(); resolve(btn.getAttribute('data-v')); });
+        });
+        document.body.appendChild(ov);
+        var last = ov.querySelectorAll('button'); if(last.length) last[last.length-1].focus();
+      });
+    }
     async function salvaFirmeNelGestionale(){
       var firmatari = [];
       var nFirmati = 0;
@@ -7636,22 +7664,28 @@ function PDF_ENGINE_JS(firmatariIniziali){
         });
       });
       if(!window.opener || !window.opener.sb || !window.RECORD_TABLE || !window.RECORD_ID){
-        alert('Impossibile salvare: apri questo documento dal gestionale (non funziona se la finestra madre e\\' stata chiusa).');
+        await finestraEsito('errore', 'Impossibile salvare', 'Apri questo documento dal gestionale: il salvataggio non funziona se la finestra del gestionale &egrave; stata chiusa.');
         return;
       }
       if(nFirmati>0 && !window.__pdfGenerato){
-        if(!confirm('Le immagini delle firme non vengono archiviate: il documento firmato e\\' il PDF.\\n\\nHai gia\\' generato e salvato il PDF?\\n\\nOK = salva comunque   |   Annulla = genera prima il PDF')) return;
+        var scelta = await finestraEsito('domanda', 'Hai gi&agrave; generato il PDF?',
+          'Le immagini delle firme non vengono archiviate nel gestionale: il documento firmato &egrave; il PDF. Generalo e salvalo prima di registrare le firme.',
+          [['annulla','Genera prima il PDF'],['ok','Salva comunque']]);
+        if(scelta!=='ok') return;
       }
       // .select(): se le regole di accesso non consentono la modifica il
       // database non da' errore ma non aggiorna nulla; senza questo
       // controllo comparirebbe una conferma non vera
-      var res = await window.opener.sb.from(window.RECORD_TABLE).update({
-        firmatari: firmatari,
-        pdf_generato_at: new Date().toISOString()
-      }).eq('id', window.RECORD_ID).select('id');
-      if(res.error){ alert('Errore salvataggio: '+res.error.message); return; }
+      var res;
+      try{
+        res = await window.opener.sb.from(window.RECORD_TABLE).update({
+          firmatari: firmatari,
+          pdf_generato_at: new Date().toISOString()
+        }).eq('id', window.RECORD_ID).select('id');
+      }catch(err){ res = {error: {message: (err && err.message) || String(err)}}; }
+      if(res.error){ await finestraEsito('errore', 'Firme NON salvate', 'Errore durante il salvataggio: '+escHtml(res.error.message)); return; }
       if(!res.data || !res.data.length){
-        alert("Firme NON registrate: il tuo ruolo non consente di modificare questo documento (lo gestisce chi lo redige). Il PDF generato resta comunque valido.");
+        await finestraEsito('errore', 'Firme NON salvate', 'Il tuo ruolo non consente di modificare questo documento (lo gestisce chi lo redige). Il PDF generato resta comunque valido.');
         return;
       }
       var el = document.getElementById('saveConfirm');
@@ -7659,10 +7693,11 @@ function PDF_ENGINE_JS(firmatariIniziali){
         el.innerHTML = '&#10003; Registrate '+nFirmati+' firme su '+firmatari.length+' firmatari. '
           + 'Le immagini non sono archiviate: conserva il PDF generato.';
         el.style.display='block';
-        try{ window.scrollTo(0,0); }catch(e){}
       }
-      // conferma esplicita: il solo banner in cima alla pagina passava inosservato
-      alert('\\u2705 Firme salvate nel gestionale.\\n\\nRegistrate '+nFirmati+' firme su '+firmatari.length+' firmatari.\\nLe immagini delle firme non sono archiviate: conserva il PDF generato.');
+      // esito in una finestra disegnata nella pagina: Safari (iPad/Mac) puo'
+      // sopprimere alert/confirm nelle finestre aperte dal gestionale
+      await finestraEsito('ok', 'Firme salvate nel gestionale',
+        'Registrate <strong>'+nFirmati+'</strong> firme su <strong>'+firmatari.length+'</strong> firmatari.<br>Le immagini delle firme non sono archiviate: conserva il PDF generato.');
       // aggiorna l'elenco nel gestionale (badge FIRMATO) se non c'e' un modulo aperto
       try{
         var op = window.opener;
