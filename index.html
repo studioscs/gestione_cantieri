@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.02a';
+const APP_VERSIONE = '2026.11.05a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -617,6 +617,84 @@ const fmtEur = n => new Intl.NumberFormat('it-IT',{style:'currency',currency:'EU
 const today = () => new Date().toISOString().split('T')[0];
 function esc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+// ---- RITARDI SUL CRONOPROGRAMMA ----
+// Data locale AAAA-MM-GG (today() usa l'ora UTC: a cavallo della mezzanotte sbaglia giorno)
+function oggiLocale(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function giorniTra(a,b){ return Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/86400000); }
+// Una data con anno fuori misura (es. 0006-12-11, errore di battitura) non è una scadenza valida
+function dataFaseValida(d){ if(!d) return false; const y=parseInt(String(d).slice(0,4),10); return y>=2000 && y<=2100; }
+// Problemi di compilazione di una fase (date mancanti/errate, importo assente)
+function problemiFase(f){
+  const p=[];
+  if(!f.data_inizio_prev||!f.data_fine_prev) p.push('date previste mancanti');
+  else if(!dataFaseValida(f.data_inizio_prev)||!dataFaseValida(f.data_fine_prev)) p.push('anno della data prevista errato');
+  else if(f.data_fine_prev<f.data_inizio_prev) p.push('fine prevista precedente all\'inizio');
+  if(!(parseFloat(f.importo)>0)) p.push('importo stimato mancante');
+  return p;
+}
+// Ritardo di una fase rispetto al cronoprogramma (null = in regola).
+// - fine: la fine prevista è passata e la fase non è completata/verificata
+// - avvio: l'inizio previsto è passato e la fase non è ancora iniziata
+function ritardoFase(f, oggi){
+  oggi = oggi || oggiLocale();
+  const finita = f.stato==='completata' || f.stato==='verificata_dl' || !!f.data_fine_eff;
+  if(finita) return null;
+  if(dataFaseValida(f.data_fine_prev) && f.data_fine_prev < oggi)
+    return {tipo:'fine', giorni:giorniTra(f.data_fine_prev, oggi), data:f.data_fine_prev};
+  const iniziata = f.stato==='in_corso' || !!f.data_inizio_eff;
+  if(!iniziata && dataFaseValida(f.data_inizio_prev) && f.data_inizio_prev < oggi)
+    return {tipo:'avvio', giorni:giorniTra(f.data_inizio_prev, oggi), data:f.data_inizio_prev};
+  return null;
+}
+function fasiInRitardo(fasi){
+  const oggi=oggiLocale();
+  return (fasi||[]).map(f=>({f, r:ritardoFase(f,oggi)})).filter(x=>x.r)
+    .sort((a,b)=>b.r.giorni-a.r.giorni);
+}
+function testoRitardo(r){
+  return r.tipo==='fine'
+    ? `fine prevista il ${fmt(r.data)} — in ritardo di ${r.giorni} ${r.giorni===1?'giorno':'giorni'}`
+    : `avvio previsto il ${fmt(r.data)} — non ancora iniziata (${r.giorni} ${r.giorni===1?'giorno':'giorni'} di ritardo)`;
+}
+// Riquadro rosso con le fasi in ritardo e l'invito a emettere l'ODS
+// per l'aumento della manodopera. sospesa = sospensione lavori in corso.
+function boxRitardiHtml(cantiereId, ritardi, sospesa, puoEmettere){
+  if(!ritardi.length) return '';
+  const max=6;
+  return `<div class="alert alert-error" style="margin-bottom:16px;border-left:5px solid var(--red)">
+    <div style="font-weight:700;font-size:14px">⚠️ RITARDO SUL CRONOPROGRAMMA — ${ritardi.length} ${ritardi.length===1?'fase':'fasi'}</div>
+    <ul style="margin:6px 0 6px 18px;padding:0;font-size:12px">
+      ${ritardi.slice(0,max).map(x=>`<li><strong>${esc(x.f.nome)}</strong>: ${testoRitardo(x.r)}</li>`).join('')}
+      ${ritardi.length>max?`<li>… e altre ${ritardi.length-max}</li>`:''}
+    </ul>
+    ${sospesa
+      ? `<div style="font-size:12px">⏸️ I lavori risultano attualmente <strong>sospesi</strong>: alla ripresa le fasi non verificate vengono spostate in avanti.</div>`
+      : `<div style="font-weight:700;font-size:13px">➜ Emettere ordine di servizio all'impresa per l'aumento della manodopera (e dei mezzi) per il recupero del ritardo.</div>
+         ${puoEmettere?`<button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="emettiOdsRitardo('${cantiereId}')">📝 Emetti ODS aumento manodopera</button>`:''}`}
+  </div>`;
+}
+// Apre il nuovo ODS già compilato (modello "senza aumento dell'importo
+// contrattuale") con le fasi in ritardo nei riscontri.
+async function emettiOdsRitardo(cantiereId){
+  if(currentCantiere!==cantiereId){
+    document.getElementById('cantiereSel').value=cantiereId;
+    selectCantiere(cantiereId, true);
+  }
+  await showView('ods');
+  const {data:fasi}=await sb.from('fasi').select('*').eq('cantiere_id',cantiereId).order('ordine');
+  const ritardi=fasiInRitardo(fasi);
+  const riscontri=ritardi.map(x=>`La lavorazione "${x.f.nome}" risulta in ritardo rispetto al cronoprogramma: ${testoRitardo(x.r)}.`);
+  const disposizioni=[
+    'Si ordina all\'impresa di incrementare immediatamente la manodopera e i mezzi d\'opera impiegati in cantiere, in numero adeguato al recupero del ritardo accumulato sulle lavorazioni sopra indicate.',
+    'L\'impresa dovrà trasmettere alla Direzione Lavori, entro il termine indicato, il cronoprogramma aggiornato con le azioni di recupero e l\'elenco nominativo del personale impiegato.'
+  ];
+  await openModalNuovoODS({
+    tipo:'senza_aumento',
+    oggetto:'Aumento della manodopera per recupero del ritardo sul cronoprogramma dei lavori',
+    riscontri: riscontri.length?riscontri:[''], disposizioni
+  });
+}
+
 function statoFaseBadge(s){const m={attesa:['badge-grey','In attesa'],in_corso:['badge-yellow','In corso'],completata:['badge-blue','Completata'],verificata_dl:['badge-green','Verificata DL']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function odsStatoBadge(s){const m={bozza:['badge-grey','Bozza'],emessa:['badge-blue','Emessa'],ricevuta:['badge-yellow','Ricevuta'],accettata:['badge-green','Accettata'],contestata:['badge-red','Contestata']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function commTipoBadge(t){const m={nota:['badge-blue','📋 Nota'],richiesta:['badge-yellow','❓ Richiesta'],diffida:['badge-red','⚠️ Diffida']};const[c,l]=m[t]||['badge-grey',t];return`<span class="badge ${c}">${l}</span>`;}
@@ -876,7 +954,10 @@ async function renderDashboard(){
   const cantieri = myCantieri.map(r=>r.cantiere);
   const ids = cantieri.map(c=>c.id);
   let fasiInCorso=0, odsAperti=0, commNonLette=0;
+  const ritardiPer={};
   if(ids.length){
+    const {data:fasiRit}=await sb.from('fasi').select('cantiere_id,stato,data_inizio_prev,data_fine_prev,data_inizio_eff,data_fine_eff').in('cantiere_id',ids);
+    (fasiRit||[]).forEach(f=>{ if(ritardoFase(f)) ritardiPer[f.cantiere_id]=(ritardiPer[f.cantiere_id]||0)+1; });
     const [{count:f},{count:o},{count:cm}] = await Promise.all([
       sb.from('fasi').select('id',{count:'exact',head:true}).in('cantiere_id',ids).eq('stato','in_corso'),
       sb.from('ods').select('id',{count:'exact',head:true}).in('cantiere_id',ids).neq('stato','accettata'),
@@ -902,10 +983,12 @@ async function renderDashboard(){
   }
 
   html += `<div class="card"><div class="card-header"><span class="card-title">I miei cantieri</span></div>
-    <table><thead><tr><th>Codice commessa</th><th>Importo lavori</th><th>Mio ruolo</th><th></th></tr></thead><tbody>`;
+    <table><thead><tr><th>Codice commessa</th><th>Importo lavori</th><th>Mio ruolo</th><th>Cronoprogramma</th><th></th></tr></thead><tbody>`;
   myCantieri.forEach(r=>{const c=r.cantiere;
+    const nr=ritardiPer[c.id]||0;
     html += `<tr><td><strong>${esc(c.codice_commessa||c.nome)}</strong></td>
       <td>${fmtEur(c.importo)}</td><td>${roleBadge(r.ruolo)}</td>
+      <td>${nr?`<span class="badge" style="background:var(--red);color:#fff">⚠️ ${nr} ${nr===1?'fase':'fasi'} in ritardo</span>`:'<span class="badge badge-green">In linea</span>'}</td>
       <td><button class="btn btn-secondary btn-sm" onclick="jumpToCantiere('${c.id}')">Apri →</button></td></tr>`;
   });
   html += `</tbody></table></div>`;
@@ -937,10 +1020,14 @@ async function renderCantieri(){
 
   for(const r of myCantieri){
     const c = r.cantiere;
-    const [{data:fasi}, {data:varianti}] = await Promise.all([
-      sb.from('fasi').select('stato').eq('cantiere_id',c.id).is('parent_id',null),
-      sb.from('varianti').select('*').eq('cantiere_id',c.id).order('numero')
+    const [{data:fasiTutte}, {data:varianti}, {data:sospAperte}] = await Promise.all([
+      sb.from('fasi').select('id,parent_id,nome,stato,importo,ordine,data_inizio_prev,data_fine_prev,data_inizio_eff,data_fine_eff').eq('cantiere_id',c.id).order('ordine'),
+      sb.from('varianti').select('*').eq('cantiere_id',c.id).order('numero'),
+      sb.from('sospensioni').select('id,tipo_evento').eq('cantiere_id',c.id).is('data_ripresa',null)
     ]);
+    const fasi=(fasiTutte||[]).filter(f=>!f.parent_id);
+    const ritardi=fasiInRitardo(fasiTutte);
+    const sospesa=(sospAperte||[]).some(s=>(s.tipo_evento||'sospensione')==='sospensione');
     const tot=(fasi||[]).length, ver=(fasi||[]).filter(f=>f.stato==='verificata_dl').length;
     const perc = tot ? Math.round(ver/tot*100) : 0;
     const {lista:variantiLista, vigente:variantiVigente} = variantiRiepilogoDati(varianti);
@@ -952,6 +1039,7 @@ async function renderCantieri(){
         ${r.ruolo==='dl'||r.ruolo==='rup'?`<button class="btn btn-secondary btn-sm" onclick="openModalEditCantiere('${c.id}')">✏️</button>`:''}
         ${r.ruolo==='dl'?`<button class="btn btn-danger btn-sm" title="Elimina cantiere e tutti i dati collegati" onclick="openModalEliminaCantiere('${c.id}')">🗑️</button>`:''}
       </div></div>
+      ${boxRitardiHtml(c.id, ritardi, sospesa, !!(ROLE_PERMS[r.ruolo]||{}).ods)}
       <div class="form-grid-3" style="gap:12px;margin-bottom:16px">
         <div><div class="form-label">CIG</div><div style="font-size:13px;font-weight:600">${esc(c.cig||'—')}</div></div>
         <div><div class="form-label">CUP</div><div style="font-size:13px;font-weight:600">${esc(c.cup||'—')}</div></div>
@@ -995,14 +1083,36 @@ async function renderFasi(){
     ${can('write')?`<button class="btn btn-primary" onclick="openModalNuovaFase()">+ Nuova fase</button>`:''}</div>`;
   if(!macro.length) return html + `<div class="empty"><div class="empty-icon">📋</div><h3>Nessuna fase</h3><p>Aggiungi le macrofasi del cantiere.</p></div>`;
 
+  // Ritardi e controllo compilazione (date e importo stimato)
+  const oggiF = oggiLocale();
+  const ritardi = fasiInRitardo(allFasi);
+  const {data:sospAp} = await sb.from('sospensioni').select('tipo_evento').eq('cantiere_id',currentCantiere).is('data_ripresa',null);
+  const sospesa = (sospAp||[]).some(s=>(s.tipo_evento||'sospensione')==='sospensione');
+  html += boxRitardiHtml(currentCantiere, ritardi, sospesa, can('ods'));
+  const daCompletare = (allFasi||[]).filter(f=>problemiFase(f).length);
+  if(daCompletare.length){
+    html += `<div class="alert alert-warning" style="margin-bottom:16px;font-size:12px">
+      <strong>📅 Cronoprogramma da completare — ${daCompletare.length} ${daCompletare.length===1?'fase':'fasi'}</strong>: ogni fase deve avere data di inizio e fine prevista e un importo stimato.
+      <ul style="margin:6px 0 0 18px;padding:0">${daCompletare.slice(0,8).map(f=>`<li>${esc(f.nome)}: ${problemiFase(f).join(', ')}</li>`).join('')}${daCompletare.length>8?`<li>… e altre ${daCompletare.length-8}</li>`:''}</ul>
+    </div>`;
+  }
+  const totImporti = macro.reduce((a,f)=>a+(parseFloat(f.importo)||0),0);
+  if(c && c.importo){
+    const diff = totImporti-(parseFloat(c.importo)||0);
+    html += `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Somma importi stimati delle macrofasi: <strong style="color:var(--text)">${fmtEur(totImporti)}</strong> su importo lavori ${fmtEur(c.importo)}${Math.abs(diff)>=1?` (${diff>0?'+':''}${fmtEur(diff)})`:' ✓'}</div>`;
+  }
+  const rigaRitardo = f => { const r=ritardoFase(f,oggiF); return r?`<div style="color:var(--red);font-weight:700;font-size:12px;margin-top:4px">⚠️ ${testoRitardo(r)}</div>`:''; };
+  const rigaProblemi = f => { const p=problemiFase(f); return p.length?`<div style="color:#856404;font-size:11px;margin-top:2px">📅 ${p.join(', ')}</div>`:''; };
+
   macro.forEach(f=>{
     const subs = (allFasi||[]).filter(s=>s.parent_id===f.id).sort((a,b)=>a.ordine-b.ordine);
     const ver = subs.filter(s=>s.stato==='verificata_dl').length;
     const perc = subs.length ? Math.round(ver/subs.length*100) : (f.stato==='verificata_dl'?100:f.stato==='in_corso'?50:0);
-    html += `<div class="fase-item"><div class="fase-header"><div>
+    html += `<div class="fase-item"${ritardoFase(f,oggiF)?' style="border-left:4px solid var(--red)"':''}><div class="fase-header"><div>
       <div class="fase-name">${f.ordine}. ${esc(f.nome)}</div>
       <div class="fase-meta"><span>${fmtEur(f.importo)}</span><span>Prev: ${fmt(f.data_inizio_prev)} → ${fmt(f.data_fine_prev)}</span>
       ${f.data_inizio_eff?`<span style="color:var(--accent)">Eff: ${fmt(f.data_inizio_eff)} → ${f.data_fine_eff?fmt(f.data_fine_eff):'in corso'}</span>`:''}</div>
+      ${rigaRitardo(f)}${rigaProblemi(f)}
       <div style="margin-top:8px;max-width:300px"><div class="fase-progress"><div class="fase-progress-fill" style="width:${perc}%"></div></div></div></div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">${statoFaseBadge(f.stato)}
       ${can('write')?`<div class="btn-group">
@@ -1015,7 +1125,7 @@ async function renderFasi(){
       html += `<div class="subfase-list">`;
       subs.forEach(s=>{
         html += `<div class="subfase-item"><div><div style="font-size:13px;font-weight:500">${esc(s.nome)}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtEur(s.importo)} • ${fmt(s.data_inizio_prev)} → ${fmt(s.data_fine_prev)}</div></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtEur(s.importo)} • ${fmt(s.data_inizio_prev)} → ${fmt(s.data_fine_prev)}</div>${rigaRitardo(s)}${rigaProblemi(s)}</div>
           <div style="display:flex;align-items:center;gap:8px">${statoFaseBadge(s.stato)}
           ${can('write')?`<div class="btn-group">
             <button class="btn btn-secondary btn-sm" onclick="openModalStatoFase('${s.id}')">Stato</button>
@@ -5135,19 +5245,29 @@ async function salvaEditCantiere(id){
   closeModal();await loadMyCantieri();showView('cantieri');
 }
 
+// Controllo dei dati di cronoprogramma inseriti in una fase ('' = tutto ok)
+function controllaCronoFase(dip, dfp, importo){
+  if(!dip||!dfp) return 'Inserire la data di inizio e la data di fine prevista della fase.';
+  if(!dataFaseValida(dip)||!dataFaseValida(dfp)) return 'Controllare l\'anno delle date previste (es. 0006 invece di 2026).';
+  if(dfp<dip) return 'La data di fine prevista non può precedere la data di inizio.';
+  if(!(parseFloat(importo)>0)) return 'Inserire l\'importo economico stimato della fase.';
+  return '';
+}
 function openModalNuovaFase(parentId){
   openModal(parentId?'Nuova Subfase':'Nuova Macrofase',`<div class="form-grid">
     <div class="form-group span-2"><label class="form-label">Nome fase *</label><input class="form-control" id="ff_nome"></div>
-    <div class="form-group"><label class="form-label">Importo (€)</label><input class="form-control" type="number" id="ff_importo"></div>
+    <div class="form-group"><label class="form-label">Importo stimato (€) *</label><input class="form-control" type="number" step="0.01" id="ff_importo"></div>
     <div class="form-group"><label class="form-label">Ordine</label><input class="form-control" type="number" id="ff_ordine" value="1"></div>
-    <div class="form-group"><label class="form-label">Data inizio prevista</label><input class="form-control" type="date" id="ff_dip"></div>
-    <div class="form-group"><label class="form-label">Data fine prevista</label><input class="form-control" type="date" id="ff_dfp"></div>
+    <div class="form-group"><label class="form-label">Data inizio prevista *</label><input class="form-control" type="date" id="ff_dip"></div>
+    <div class="form-group"><label class="form-label">Data fine prevista *</label><input class="form-control" type="date" id="ff_dfp"></div>
     <div class="form-group span-2"><label class="form-label">Descrizione</label><textarea class="form-control" id="ff_desc" rows="3"></textarea></div></div>
     <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaFase('${parentId||''}')">Salva fase</button></div>`);
 }
 async function salvaFase(parentId){
   const nome=document.getElementById('ff_nome').value.trim();
   if(!nome){alert('Nome obbligatorio');return;}
+  const errF=controllaCronoFase(document.getElementById('ff_dip').value, document.getElementById('ff_dfp').value, document.getElementById('ff_importo').value);
+  if(errF){alert(errF);return;}
   const {error}=await sb.from('fasi').insert({
     cantiere_id:currentCantiere,parent_id:parentId||null,nome,
     importo:parseFloat(document.getElementById('ff_importo').value)||0,
@@ -5168,10 +5288,10 @@ async function openModalEditFase(id){
   openModal(`Modifica: ${esc(f.nome)}`, `
     <div class="form-grid">
       <div class="form-group span-2"><label class="form-label">Nome fase *</label><input class="form-control" id="ef_nome" value="${esc(f.nome)}"></div>
-      <div class="form-group"><label class="form-label">Importo (€)</label><input class="form-control" type="number" step="0.01" id="ef_importo" value="${f.importo||0}"></div>
+      <div class="form-group"><label class="form-label">Importo stimato (€) *</label><input class="form-control" type="number" step="0.01" id="ef_importo" value="${f.importo||0}"></div>
       <div class="form-group"><label class="form-label">Ordine</label><input class="form-control" type="number" id="ef_ordine" value="${f.ordine||1}"></div>
-      <div class="form-group"><label class="form-label">Data inizio prevista</label><input class="form-control" type="date" id="ef_dip" value="${f.data_inizio_prev||''}"></div>
-      <div class="form-group"><label class="form-label">Data fine prevista</label><input class="form-control" type="date" id="ef_dfp" value="${f.data_fine_prev||''}"></div>
+      <div class="form-group"><label class="form-label">Data inizio prevista *</label><input class="form-control" type="date" id="ef_dip" value="${f.data_inizio_prev||''}"></div>
+      <div class="form-group"><label class="form-label">Data fine prevista *</label><input class="form-control" type="date" id="ef_dfp" value="${f.data_fine_prev||''}"></div>
       <div class="form-group"><label class="form-label">Data inizio effettiva</label><input class="form-control" type="date" id="ef_die" value="${f.data_inizio_eff||''}"></div>
       <div class="form-group"><label class="form-label">Data fine effettiva</label><input class="form-control" type="date" id="ef_dfe" value="${f.data_fine_eff||''}"></div>
       <div class="form-group"><label class="form-label">Stato</label>
@@ -5194,6 +5314,8 @@ async function openModalEditFase(id){
 async function salvaEditFase(id){
   const nome = document.getElementById('ef_nome').value.trim();
   if(!nome){ alert('Nome obbligatorio'); return; }
+  const errF=controllaCronoFase(document.getElementById('ef_dip').value, document.getElementById('ef_dfp').value, document.getElementById('ef_importo').value);
+  if(errF){ alert(errF); return; }
   const {error} = await sb.from('fasi').update({
     nome,
     importo: parseFloat(document.getElementById('ef_importo').value)||0,
@@ -5419,12 +5541,23 @@ async function odsContesto(o){
   return {c, numStr, dlNome, rupNome, dittaDefault};
 }
 
-async function openModalNuovoODS(){
+async function openModalNuovoODS(pre){
   const ctx = await odsContesto(null);
   openModal('Nuovo Ordine di Servizio',
     odsFormHtml(null, ctx) +
     `<div class="alert alert-info" style="margin-top:12px;font-size:12px">L'ODS sarà emesso con tua firma. Il RUP/Committente riceverà per presa visione, l'impresa per accettazione.</div>
      <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button><button class="btn btn-primary" onclick="salvaODS()">Emetti ODS</button></div>`);
+  // Precompilazione (es. ODS per aumento manodopera da ritardo fasi)
+  if(pre && typeof pre==='object' && !(pre instanceof Event)){
+    const sel=document.getElementById('ods_tipo'); if(sel && pre.tipo) sel.value=pre.tipo;
+    const ogg=document.getElementById('ods_ogg'); if(ogg && pre.oggetto) ogg.value=pre.oggetto;
+    const ph='';
+    const riempi=(boxId,cls,righe)=>{ const b=document.getElementById(boxId); if(b && righe) b.innerHTML=righe.map(r=>odsRigaTestoHtml(cls,r,ph)).join(''); };
+    riempi('ods_riscontri','ods-riscontro',pre.riscontri);
+    riempi('ods_disposizioni','ods-disp',pre.disposizioni);
+    const corpo=document.getElementById('ods_corpo');
+    if(corpo && pre.riscontri) corpo.value=[...(pre.riscontri||[]),...(pre.disposizioni||[])].filter(Boolean).join('\n\n');
+  }
   toggleOdsTipo();
 }
 
