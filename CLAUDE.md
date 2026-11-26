@@ -115,7 +115,14 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
 - Controllo subappalti/subaffidamenti (livello `direzione` = capo cantiere/DT, non conteggiato): ditte sub con importo e lavorazioni
   comunicate (`ditte.importo_affidato`, `lavorazioni_affidate`); presenze nel
   giornale con livello, ore e lavorazione per riga (`maestranze` jsonb); costi
-  orari contrattuali sul cantiere (`costo_ora_*` comune/qualificato/specializzato/b1, `ore_giornaliere`).
+  orari contrattuali sul cantiere: `cantieri.costi_orari` jsonb {livello: €/h}
+  per tutti i livelli di `LIVELLI_GRUPPI` (operai edili 4° liv./specializzato/
+  qualificato/comune; operai metalmeccanici D1…C3, B1; impiegati D1…A1;
+  `direzione` non conteggiato), con spiegazione breve per ciascuno (legenda
+  `legendaLivelliHtml`, menu `opzioniLivelliHtml`). Nessun valore
+  predefinito (cambiano ogni anno). Le colonne storiche `costo_ora_*`
+  (comune/qualificato/specializzato/b1) restano allineate;
+  `costoOrarioLivello(c, liv)` legge prima il jsonb. `ore_giornaliere`.
   `controlloSubappalti()` + `boxSubappaltiHtml()` (cantieri, dashboard, ditte,
   giornale): lavorazioni non comunicate e costo manodopera oltre l'importo.
   Report stampabile per ditta: `stampaReportSubappalto(dittaId)` (pulsante
