@@ -142,8 +142,11 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   e `oneri_sicurezza_subappalto` dichiarati (art. 119 c.12: senza ribasso).
   Sicurezza: la sicurezza INCLUSA nei prezzi resta nei lordi delle categorie ed
   è ribassata; solo gli oneri della sicurezza SPECIALI (stimati a parte, PSC)
-  non sono ribassati (cantiere `oneri_sicurezza`, ditta `oneri_sicurezza_
-  subappalto` = sola quota di oneri speciali).
+  non sono ribassati (cantiere `oneri_sicurezza`). Ditta: `sicurezza_inclusa_
+  subappalto` = sicurezza compresa nei prezzi (il caso normale, facoltativa,
+  informativa, non entra nei calcoli); `oneri_sicurezza_subappalto` solo se si
+  subappaltano lavori relativi agli oneri speciali (spunta nel modulo): si
+  tolgono prima di riportare al lordo.
   `manodoperaMinimaDitta(d,c)` = Σ (importo categoria − quota oneri speciali) /
   (1−ribasso) × incidenza: se la dichiarata è inferiore → segnalazione grave
   (ribasso applicato alla manodopera). Anche la manodopera registrata nel
