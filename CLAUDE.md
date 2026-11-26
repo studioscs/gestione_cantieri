@@ -94,6 +94,12 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
 - Programma prove di collaudo (All. II.14 art. 1): `PROVE_COLLAUDO`, Parte A
   controlli NTC cap. 11, Parte B impianti, prove duplicabili.
 - RSU (relazione a struttura ultimata), collaudo statico e certificato art. 67.
+- Controllo subappalti/subaffidamenti: ditte sub con importo e lavorazioni
+  comunicate (`ditte.importo_affidato`, `lavorazioni_affidate`); presenze nel
+  giornale con livello, ore e lavorazione per riga (`maestranze` jsonb); costi
+  orari contrattuali sul cantiere (`costo_ora_*`, `ore_giornaliere`).
+  `controlloSubappalti()` + `boxSubappaltiHtml()` (cantieri, dashboard, ditte,
+  giornale): lavorazioni non comunicate e costo manodopera oltre l'importo.
 - Conteggio giorni contrattuali: sospensioni, riprese, proroghe (una proroga
   non sospende i lavori).
 

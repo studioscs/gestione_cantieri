@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.05a';
+const APP_VERSIONE = '2026.11.26a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -695,6 +695,159 @@ async function emettiOdsRitardo(cantiereId){
   });
 }
 
+// ============================================================
+// CONTROLLO SUBAPPALTI E SUBAFFIDAMENTI
+// ============================================================
+// Per ogni ditta subappaltatrice/subaffidataria si dichiarano importo e
+// lavorazioni autorizzate. Dal giornale dei lavori (presenze per ditta con
+// livello, ore e lavorazione svolta) si segnalano:
+//  - lavorazioni diverse da quelle comunicate
+//  - costo della manodopera (ore x costo orario contrattuale del livello)
+//    che supera l'importo comunicato (avviso preventivo dal 90%)
+//  - dati dell'affidamento mancanti
+const LIVELLI_OPERAIO = [['comune','Operaio comune'],['qualificato','Operaio qualificato'],['specializzato','Operaio specializzato']];
+const SOGLIA_AVVISO_SUB = 0.9;
+function dittaESub(d){ return !!d && (d.tipo==='subappaltatrice' || d.tipo==='subaffidataria'); }
+function righeLavorazioni(t){ return String(t||'').split(/\n|;/).map(s=>s.trim()).filter(Boolean); }
+function normLav(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9àèéìòù]+/g,' ').trim(); }
+// Lavorazione svolta compresa fra quelle autorizzate (uguale, oppure una
+// contenuta nell'altra: "intonaci" vale per "intonaci interni piano terra")
+function lavorazioneAutorizzata(lav, ditta){
+  const n = normLav(lav);
+  if(!n) return true;
+  return righeLavorazioni(ditta && ditta.lavorazioni_affidate).some(x=>{
+    const m = normLav(x); return !!m && (m===n || n.includes(m) || m.includes(n));
+  });
+}
+function costoOrarioLivello(c, livello){
+  const v = {comune:c&&c.costo_ora_comune, qualificato:c&&c.costo_ora_qualificato, specializzato:c&&c.costo_ora_specializzato}[livello||'comune'];
+  return parseFloat(v)||0;
+}
+function costiOrariImpostati(c){ return !!c && (parseFloat(c.costo_ora_comune)>0 || parseFloat(c.costo_ora_qualificato)>0 || parseFloat(c.costo_ora_specializzato)>0); }
+function oreGiornaliereCantiere(c){ return parseFloat(c && c.ore_giornaliere) || 8; }
+
+// c = cantiere, ditte = tutte le ditte, giornale = righe {data, maestranze}
+function controlloSubappalti(c, ditte, giornale){
+  const out = {problemi:[], perDitta:{}, costiMancanti:false};
+  const subs = (ditte||[]).filter(dittaESub);
+  if(!subs.length) return out;
+  const costi = costiOrariImpostati(c);
+  subs.forEach(d=>{
+    const r = {ditta:d, costo:0, ore:0, presenze:0, senzaLivello:0, lavFuori:[]};
+    (giornale||[]).forEach(g=>{
+      (g.maestranze||[]).forEach(m=>{
+        if(String(m.ditta_id||'')!==String(d.id)) return;
+        const num = parseFloat(m.num)||0;
+        const ore = (m.ore!=null && m.ore!=='') ? (parseFloat(m.ore)||0) : oreGiornaliereCantiere(c);
+        if(!m.livello) r.senzaLivello++;
+        r.presenze++;
+        r.ore += num*ore;
+        r.costo += num*ore*costoOrarioLivello(c, m.livello||'comune');
+        if(m.lavorazione && !lavorazioneAutorizzata(m.lavorazione, d)) r.lavFuori.push({data:g.data, lav:m.lavorazione});
+      });
+    });
+    const importo = parseFloat(d.importo_affidato)||0;
+    r.importo = importo;
+    r.perc = importo>0 ? r.costo/importo : null;
+    out.perDitta[d.id] = r;
+    const tipoL = d.tipo==='subaffidataria' ? 'subaffidamento' : 'subappalto';
+    if(!importo || !righeLavorazioni(d.lavorazioni_affidate).length){
+      out.problemi.push({livello:'avviso', ditta:d, testo:`dati del ${tipoL} incompleti: indicare ${[!importo?'importo':'', !righeLavorazioni(d.lavorazioni_affidate).length?'lavorazioni autorizzate':''].filter(Boolean).join(' e ')}`});
+    }
+    r.lavFuori.forEach(x=>out.problemi.push({livello:'grave', ditta:d,
+      testo:`il ${fmt(x.data)} risulta impegnata in «${x.lav}», lavorazione non compresa fra quelle comunicate`}));
+    if(r.presenze && !costi) out.costiMancanti = true;
+    if(importo>0 && costi && r.costo>importo){
+      out.problemi.push({livello:'grave', ditta:d,
+        testo:`costo della manodopera registrata ${fmtEur(r.costo)} (${Math.round(r.ore)} ore) superiore all'importo comunicato di ${fmtEur(importo)} (${Math.round(r.perc*100)}%)`});
+    } else if(importo>0 && costi && r.perc>=SOGLIA_AVVISO_SUB){
+      out.problemi.push({livello:'avviso', ditta:d,
+        testo:`costo della manodopera registrata ${fmtEur(r.costo)} pari al ${Math.round(r.perc*100)}% dell'importo comunicato di ${fmtEur(importo)}`});
+    }
+    if(r.senzaLivello && costi) r.notaLivello = `${r.senzaLivello} presenze senza livello, conteggiate come operaio comune`;
+  });
+  out.problemi.sort((a,b)=>(a.livello==='grave'?0:1)-(b.livello==='grave'?0:1));
+  return out;
+}
+
+// Riquadro come quello dei ritardi: rosso se ci sono anomalie gravi
+function boxSubappaltiHtml(esito, conLink){
+  if(!esito || (!esito.problemi.length && !esito.costiMancanti)) return '';
+  const gravi = esito.problemi.filter(p=>p.livello==='grave').length;
+  const max = 8;
+  const righe = esito.problemi.slice(0,max).map(p=>`<li${p.livello==='grave'?'':' style="color:#856404"'}><strong>${esc(p.ditta.nome)}</strong>: ${esc(p.testo)}</li>`).join('')
+    + (esito.problemi.length>max?`<li>… e altre ${esito.problemi.length-max} segnalazioni</li>`:'');
+  return `<div class="alert ${gravi?'alert-error':'alert-warning'}" style="margin-bottom:16px;border-left:5px solid ${gravi?'var(--red)':'#FFC107'}">
+    <div style="font-weight:700;font-size:14px">${gravi?'⚠️':'🔶'} SUBAPPALTI E SUBAFFIDAMENTI — ${esito.problemi.length} ${esito.problemi.length===1?'segnalazione':'segnalazioni'}</div>
+    ${righe?`<ul style="margin:6px 0 6px 18px;padding:0;font-size:12px">${righe}</ul>`:''}
+    ${esito.costiMancanti?`<div style="font-size:12px">💶 Per il controllo degli importi inserisci nella scheda del cantiere (✏️) il <strong>costo orario contrattuale</strong> degli operai comune, qualificato e specializzato.</div>`:''}
+    ${conLink?`<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="showView('ditte')">🏢 Vai alle ditte</button>`:''}
+  </div>`;
+}
+
+// Carica ditte e presenze del cantiere e restituisce l'esito del controllo
+async function caricaControlloSubappalti(c){
+  if(!c) return null;
+  const {data:ditte} = await sb.from('ditte').select('*').eq('cantiere_id', c.id);
+  if(!(ditte||[]).some(dittaESub)) return null;
+  const {data:giornale} = await sb.from('giornale_lavori').select('data,maestranze').eq('cantiere_id', c.id);
+  return controlloSubappalti(c, ditte, giornale||[]);
+}
+
+// ---- campi della ditta per subappalto / subaffidamento ----
+function dittaSubCampiHtml(prefix, d){
+  d = d || {};
+  return `<div id="${prefix}_sub_box" style="display:${dittaESub(d)?'block':'none'};border:1px solid #FFC107;background:#FFFBEA;border-radius:6px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-weight:700;color:#856404;font-size:13px;margin-bottom:6px">Subappalto / subaffidamento — dati comunicati</div>
+      <div class="form-hint" style="margin-bottom:8px">Obbligatori: servono al controllo automatico delle presenze registrate nel giornale dei lavori.</div>
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Importo comunicato / autorizzato (€) *</label>
+          <input class="form-control" type="number" step="0.01" id="${prefix}_importo_aff" value="${d.importo_affidato!=null?esc(d.importo_affidato):''}"></div>
+        <div class="form-group"><label class="form-label">Estremi autorizzazione / comunicazione</label>
+          <input class="form-control" id="${prefix}_estremi_aut" value="${cseA(d.estremi_autorizzazione||'')}" placeholder="Es. autorizzazione RUP prot. 1234 del 10/03/2026"></div>
+        <div class="form-group span-2"><label class="form-label">Lavorazioni comunicate / autorizzate * (una per riga)</label>
+          <textarea class="form-control" id="${prefix}_lav_aff" rows="3" placeholder="Es.&#10;Impianto elettrico&#10;Intonaci interni">${esc(d.lavorazioni_affidate||'')}</textarea></div>
+      </div>
+    </div>`;
+}
+function dittaSubToggle(prefix){
+  const t = document.getElementById(prefix+'_tipo')?.value;
+  const box = document.getElementById(prefix+'_sub_box');
+  if(box) box.style.display = (t==='subappaltatrice'||t==='subaffidataria') ? 'block' : 'none';
+}
+// null = dati non validi (avviso gia' mostrato)
+function dittaSubDati(prefix, tipo){
+  if(!(tipo==='subappaltatrice'||tipo==='subaffidataria'))
+    return {importo_affidato:null, lavorazioni_affidate:null, estremi_autorizzazione:null};
+  const imp = parseFloat(document.getElementById(prefix+'_importo_aff')?.value);
+  const lav = (document.getElementById(prefix+'_lav_aff')?.value||'').trim();
+  if(!(imp>0) || !lav){
+    alert('Per una ditta subappaltatrice o subaffidataria indica importo e lavorazioni comunicate: servono al controllo delle presenze nel giornale dei lavori.');
+    return null;
+  }
+  return {importo_affidato:imp, lavorazioni_affidate:lav,
+    estremi_autorizzazione:(document.getElementById(prefix+'_estremi_aut')?.value||'').trim()||null};
+}
+
+// ---- costi orari nella scheda del cantiere ----
+function cantiereCostiCampiHtml(prefix, c){
+  c = c || {};
+  const v = k => c[k]!=null ? esc(c[k]) : '';
+  return `<div class="form-group span-2" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+      <div style="font-weight:700;color:var(--primary);font-size:13px">Costo orario della manodopera da contratto</div>
+      <div class="form-hint">Serve al controllo dei subappalti: ore registrate nel giornale × costo orario, confrontate con l'importo comunicato.</div>
+    </div>
+    <div class="form-group"><label class="form-label">Operaio comune (€/h)</label><input class="form-control" type="number" step="0.01" id="${prefix}_costo_com" value="${v('costo_ora_comune')}"></div>
+    <div class="form-group"><label class="form-label">Operaio qualificato (€/h)</label><input class="form-control" type="number" step="0.01" id="${prefix}_costo_qua" value="${v('costo_ora_qualificato')}"></div>
+    <div class="form-group"><label class="form-label">Operaio specializzato (€/h)</label><input class="form-control" type="number" step="0.01" id="${prefix}_costo_spe" value="${v('costo_ora_specializzato')}"></div>
+    <div class="form-group"><label class="form-label">Ore lavorative giornaliere</label><input class="form-control" type="number" step="0.5" id="${prefix}_ore_gg" value="${c.ore_giornaliere!=null?esc(c.ore_giornaliere):8}">
+      <div class="form-hint">Proposte di default per ogni operaio nel giornale</div></div>`;
+}
+function cantiereCostiDati(prefix){
+  const n = id => { const x = parseFloat(document.getElementById(prefix+'_'+id)?.value); return isNaN(x) ? null : x; };
+  return {costo_ora_comune:n('costo_com'), costo_ora_qualificato:n('costo_qua'), costo_ora_specializzato:n('costo_spe'), ore_giornaliere:n('ore_gg')||8};
+}
+
 function statoFaseBadge(s){const m={attesa:['badge-grey','In attesa'],in_corso:['badge-yellow','In corso'],completata:['badge-blue','Completata'],verificata_dl:['badge-green','Verificata DL']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function odsStatoBadge(s){const m={bozza:['badge-grey','Bozza'],emessa:['badge-blue','Emessa'],ricevuta:['badge-yellow','Ricevuta'],accettata:['badge-green','Accettata'],contestata:['badge-red','Contestata']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
 function commTipoBadge(t){const m={nota:['badge-blue','📋 Nota'],richiesta:['badge-yellow','❓ Richiesta'],diffida:['badge-red','⚠️ Diffida']};const[c,l]=m[t]||['badge-grey',t];return`<span class="badge ${c}">${l}</span>`;}
@@ -954,10 +1107,21 @@ async function renderDashboard(){
   const cantieri = myCantieri.map(r=>r.cantiere);
   const ids = cantieri.map(c=>c.id);
   let fasiInCorso=0, odsAperti=0, commNonLette=0;
-  const ritardiPer={};
+  const ritardiPer={}, subPer={};
   if(ids.length){
     const {data:fasiRit}=await sb.from('fasi').select('cantiere_id,stato,data_inizio_prev,data_fine_prev,data_inizio_eff,data_fine_eff').in('cantiere_id',ids);
     (fasiRit||[]).forEach(f=>{ if(ritardoFase(f)) ritardiPer[f.cantiere_id]=(ritardiPer[f.cantiere_id]||0)+1; });
+    // controllo subappalti: solo per i cantieri con subappaltatori/subaffidatari
+    const {data:ditteAll}=await sb.from('ditte').select('*').in('cantiere_id',ids);
+    const idsSub=[...new Set((ditteAll||[]).filter(dittaESub).map(d=>d.cantiere_id))];
+    if(idsSub.length){
+      const {data:giornSub}=await sb.from('giornale_lavori').select('cantiere_id,data,maestranze').in('cantiere_id',idsSub);
+      idsSub.forEach(cid=>{
+        const c=cantieri.find(x=>x.id===cid);
+        const e=controlloSubappalti(c,(ditteAll||[]).filter(d=>d.cantiere_id===cid),(giornSub||[]).filter(g=>g.cantiere_id===cid));
+        subPer[cid]={n:e.problemi.length, gravi:e.problemi.filter(p=>p.livello==='grave').length};
+      });
+    }
     const [{count:f},{count:o},{count:cm}] = await Promise.all([
       sb.from('fasi').select('id',{count:'exact',head:true}).in('cantiere_id',ids).eq('stato','in_corso'),
       sb.from('ods').select('id',{count:'exact',head:true}).in('cantiere_id',ids).neq('stato','accettata'),
@@ -988,7 +1152,8 @@ async function renderDashboard(){
     const nr=ritardiPer[c.id]||0;
     html += `<tr><td><strong>${esc(c.codice_commessa||c.nome)}</strong></td>
       <td>${fmtEur(c.importo)}</td><td>${roleBadge(r.ruolo)}</td>
-      <td>${nr?`<span class="badge" style="background:var(--red);color:#fff">⚠️ ${nr} ${nr===1?'fase':'fasi'} in ritardo</span>`:'<span class="badge badge-green">In linea</span>'}</td>
+      <td>${nr?`<span class="badge" style="background:var(--red);color:#fff">⚠️ ${nr} ${nr===1?'fase':'fasi'} in ritardo</span>`:'<span class="badge badge-green">In linea</span>'}
+        ${subPer[c.id]&&subPer[c.id].n?`<div style="margin-top:3px"><span class="badge" style="background:${subPer[c.id].gravi?'var(--red)':'#FFC107'};color:${subPer[c.id].gravi?'#fff':'#212529'}">${subPer[c.id].gravi?'⚠️':'🔶'} Subappalti: ${subPer[c.id].n} ${subPer[c.id].n===1?'segnalazione':'segnalazioni'}</span></div>`:''}</td>
       <td><button class="btn btn-secondary btn-sm" onclick="jumpToCantiere('${c.id}')">Apri →</button></td></tr>`;
   });
   html += `</tbody></table></div>`;
@@ -1027,6 +1192,7 @@ async function renderCantieri(){
     ]);
     const fasi=(fasiTutte||[]).filter(f=>!f.parent_id);
     const ritardi=fasiInRitardo(fasiTutte);
+    const esitoSub=await caricaControlloSubappalti(c);
     const sospesa=(sospAperte||[]).some(s=>(s.tipo_evento||'sospensione')==='sospensione');
     const tot=(fasi||[]).length, ver=(fasi||[]).filter(f=>f.stato==='verificata_dl').length;
     const perc = tot ? Math.round(ver/tot*100) : 0;
@@ -1040,6 +1206,7 @@ async function renderCantieri(){
         ${r.ruolo==='dl'?`<button class="btn btn-danger btn-sm" title="Elimina cantiere e tutti i dati collegati" onclick="openModalEliminaCantiere('${c.id}')">🗑️</button>`:''}
       </div></div>
       ${boxRitardiHtml(c.id, ritardi, sospesa, !!(ROLE_PERMS[r.ruolo]||{}).ods)}
+      ${boxSubappaltiHtml(esitoSub, false)}
       <div class="form-grid-3" style="gap:12px;margin-bottom:16px">
         <div><div class="form-label">CIG</div><div style="font-size:13px;font-weight:600">${esc(c.cig||'—')}</div></div>
         <div><div class="form-label">CUP</div><div style="font-size:13px;font-weight:600">${esc(c.cup||'—')}</div></div>
@@ -1163,6 +1330,10 @@ async function renderGiornale(){
 
   const {data:entries,error} = await sb.from('giornale_lavori').select('*').eq('cantiere_id',currentCantiere).order('data',{ascending:true});
   if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
+  // controllo subappalti sulle presenze registrate
+  const {data:ditteGiorn} = await sb.from('ditte').select('*').eq('cantiere_id',currentCantiere);
+  const ditteMapGiorn = {}; (ditteGiorn||[]).forEach(d=>{ ditteMapGiorn[d.id]=d; });
+  if((ditteGiorn||[]).some(dittaESub)) html += boxSubappaltiHtml(controlloSubappalti(c, ditteGiorn, entries||[]), true);
 
   // Carica fasi — prende prima data assoluta e ultima data assoluta tra tutte le fasi
   const {data:fasiPeriodo} = await sb.from('fasi')
@@ -1285,9 +1456,12 @@ async function renderGiornale(){
       const maeHtml = mae.length ? mae.map(m=>{
         const dittaLabel = m.ditta_nome ? m.ditta_nome.replace(/^\[.*?\]\s*/,'') : '';
         const distLabel  = m.distacco ? ' <span style="color:#856404;font-size:9px">[dist.]</span>' : '';
+        const dM = ditteMapGiorn[m.ditta_id];
+        const fuori = dM && dittaESub(dM) && m.lavorazione && !lavorazioneAutorizzata(m.lavorazione, dM);
         return '<div style="margin-bottom:2px;font-size:11px">'+
-          '<strong>'+esc(m.figura||'')+'</strong> &times;'+( m.num||1)+distLabel+
-          (dittaLabel?'<br><span style="color:var(--muted);font-size:10px">'+esc(dittaLabel)+'</span>':'');
+          '<strong>'+esc(m.figura||'')+'</strong> &times;'+( m.num||1)+(m.ore?' <span style="color:var(--muted);font-size:10px">'+esc(m.ore)+' h</span>':'')+distLabel+
+          (dittaLabel?'<br><span style="color:var(--muted);font-size:10px">'+esc(dittaLabel)+'</span>':'')+
+          (m.lavorazione?'<br><span style="font-size:10px;'+(fuori?'color:var(--red);font-weight:700':'color:var(--muted)')+'">'+(fuori?'⚠️ non comunicata: ':'')+esc(m.lavorazione)+'</span>':'')+'</div>';
       }).join('') : '—';
       html += `<tr style="background:${isToday?'#EBF3FB':'white'}" title="${data}">
         <td style="border-left:3px solid var(--accent)">
@@ -1338,10 +1512,9 @@ async function copiaGiornoGiornale(id, dataSorgente){
   const {data:g} = await sb.from('giornale_lavori').select('*').eq('id',id).single();
   if(!g){ alert('Impossibile caricare il giorno sorgente'); return; }
 
-  const {data:ditteList} = await sb.from('ditte').select('id,nome,tipo').eq('cantiere_id',currentCantiere).order('nome');
-  const tipoLabel = {appaltatrice:'App.',subappaltatrice:'Sub.',subaffidataria:'Subaff.'};
-  const ditteOptsHtml = '<option value="">— ditta —</option>'+(ditteList||[]).map(d=>`<option value="${d.id}">[${tipoLabel[d.tipo]||''}] ${esc(d.nome)}</option>`).join('');
-  window._ditteOptsHtml = ditteOptsHtml;
+  const {data:ditteList} = await sb.from('ditte').select('id,nome,tipo,lavorazioni_affidate').eq('cantiere_id',currentCantiere).order('nome');
+  window._ditteGL = ditteList||[];
+  window._ditteOptsHtml = glDitteOptions(ditteList, null);
 
   // Prepara righe manodopera pre-compilate
   const mae = g.maestranze||[];
@@ -1349,14 +1522,7 @@ async function copiaGiornoGiornale(id, dataSorgente){
   window._maeRowCount = Math.max(mae.length, 1);
   window._mezzoRowCount = Math.max(mezzi.length, 1);
 
-  const maeRows = (mae.length ? mae : [{}]).map((m,i)=>`
-    <tr id="mae_row_${i}">
-      <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="mae_ditta_${i}">${ditteOptsHtml.replace(`value="${m.ditta_id}"`,`value="${m.ditta_id}" selected`)}</select></td>
-      <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_qual_${i}" value="${esc(m.figura||m.qualifica||'')}"></td>
-      <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px;text-align:center" type="number" min="1" id="mae_num_${i}" value="${m.num||1}"></td>
-      <td style="padding:3px;text-align:center"><input type="checkbox" id="mae_dist_${i}" ${m.distacco?'checked':''}></td>
-      <td style="padding:3px;text-align:center"><button type="button" class="btn btn-danger btn-sm" style="padding:2px 6px" onclick="rimuoviRigaMae(${i})">✕</button></td>
-    </tr>`).join('');
+  const maeRows = (mae.length ? mae : [{}]).map((m,i)=>glMaeRigaHtml(i, glDitteOptions(ditteList, m.ditta_id), Object.assign({}, m, {figura:m.figura||m.qualifica||''}))).join('');
 
   const mezziRows = (mezzi.length ? mezzi : ['']).map((m,i)=>`
     <div style="display:flex;gap:6px;margin-bottom:4px" id="mezzo_row_${i}">
@@ -1402,16 +1568,7 @@ async function copiaGiornoGiornale(id, dataSorgente){
         <label class="form-label" style="margin:0">Manodopera presente</label>
         <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiRigaMae()">+ Aggiungi riga</button>
       </div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:var(--primary);color:white">
-          <th style="padding:6px 8px;width:32%">Ditta</th>
-          <th style="padding:6px 8px;width:28%">Qualifica / Figura</th>
-          <th style="padding:6px 8px;text-align:center;width:10%">N. op.</th>
-          <th style="padding:6px 8px;text-align:center;width:18%">Distacco</th>
-          <th style="padding:6px 8px;width:8%"></th>
-        </tr></thead>
-        <tbody id="gl_mae_body">${maeRows}</tbody>
-      </table>
+      <div id="gl_mae_body">${maeRows}</div>
     </div>
 
     <div style="margin-top:12px">
@@ -2473,6 +2630,12 @@ async function renderDitte(){
   const {data:ditte, error} = await sb.from('ditte').select('*').eq('cantiere_id',currentCantiere).order('tipo').order('nome');
   if(error) return html + `<div class="alert alert-error">${error.message}</div>`;
 
+  let esitoSubD = null;
+  if((ditte||[]).some(dittaESub)){
+    const {data:giornD} = await sb.from('giornale_lavori').select('data,maestranze').eq('cantiere_id',currentCantiere);
+    esitoSubD = controlloSubappalti(c, ditte, giornD||[]);
+    html += boxSubappaltiHtml(esitoSubD, false);
+  }
   const tipoLabel = {appaltatrice:'Appaltatrice',subappaltatrice:'Subappaltatrice',subaffidataria:'Subaffidataria'};
   const tipoBadge = {
     appaltatrice:'badge-blue',
@@ -2486,7 +2649,7 @@ async function renderDitte(){
 
   html += `<div class="card" style="padding:0">
     <table>
-      <thead><tr><th>Ragione sociale</th><th>Partita IVA</th><th>Tipo</th><th></th></tr></thead>
+      <thead><tr><th>Ragione sociale</th><th>Partita IVA</th><th>Tipo</th><th>Subappalto / subaffidamento</th><th></th></tr></thead>
       <tbody>`;
 
   ditte.forEach(d=>{
@@ -2494,6 +2657,15 @@ async function renderDitte(){
       <td><strong>${esc(d.nome)}</strong>${(d.citta||d.indirizzo||d.pec||d.cap||d.provincia)?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${[d.indirizzo,dittaRigaCitta(d)].filter(Boolean).map(esc).join(' — ')}${d.pec?`<br>${esc(d.pec)}`:''}</div>`:`<div style="font-size:10px;color:#ADB5BD;margin-top:2px">sede legale non indicata</div>`}</td>
       <td><code style="font-size:12px">${esc(d.piva||'—')}</code></td>
       <td><span class="badge ${tipoBadge[d.tipo]||'badge-grey'}">${tipoLabel[d.tipo]||d.tipo}</span></td>
+      <td style="font-size:11px">${dittaESub(d) ? (()=>{
+        const r = esitoSubD && esitoSubD.perDitta[d.id];
+        const perc = r && r.perc!=null ? r.perc : null;
+        const col = perc==null ? 'var(--muted)' : perc>1 ? 'var(--red)' : perc>=SOGLIA_AVVISO_SUB ? '#B8860B' : 'var(--green)';
+        return `<div><strong>${d.importo_affidato?fmtEur(d.importo_affidato):'<span style="color:var(--red)">importo mancante</span>'}</strong>${d.estremi_autorizzazione?` <span style="color:var(--muted)">— ${esc(d.estremi_autorizzazione)}</span>`:''}</div>
+          <div style="color:var(--muted)">${righeLavorazioni(d.lavorazioni_affidate).map(esc).join(' · ')||'<span style="color:var(--red)">lavorazioni non indicate</span>'}</div>
+          ${r&&r.presenze?`<div style="color:${col};font-weight:600;margin-top:2px">Manodopera registrata: ${fmtEur(r.costo)} (${Math.round(r.ore)} h)${perc!=null?' — '+Math.round(perc*100)+'%':''}</div>`:''}
+          ${r&&r.notaLivello?`<div style="color:var(--muted);font-size:10px">${esc(r.notaLivello)}</div>`:''}`;
+      })() : '<span style="color:var(--muted)">—</span>'}</td>
       <td style="text-align:right">
         ${(currentRole==='dl'||currentRole==='do')?`
           <div class="btn-group" style="justify-content:flex-end">
@@ -2542,12 +2714,13 @@ function openModalNuovaDitta(){
     </div>
     <div class="form-group" style="margin-bottom:12px">
       <label class="form-label">Tipo *</label>
-      <select class="form-control" id="nd_tipo">
+      <select class="form-control" id="nd_tipo" onchange="dittaSubToggle('nd')">
         <option value="appaltatrice">Appaltatrice</option>
         <option value="subappaltatrice">Subappaltatrice</option>
         <option value="subaffidataria">Subaffidataria</option>
       </select>
     </div>
+    ${dittaSubCampiHtml('nd', null)}
     <div style="font-weight:700;color:var(--primary);font-size:13px;border-top:1px solid var(--border);padding-top:10px;margin-bottom:8px">Sede legale e recapiti</div>
     <div class="form-hint" style="margin-bottom:8px">Questi dati vengono ripresi automaticamente come destinatario negli Ordini di Servizio.</div>
     <div class="form-grid">
@@ -2571,18 +2744,21 @@ function openModalNuovaDitta(){
 async function salvaDitta(){
   const nome = document.getElementById('nd_nome').value.trim();
   if(!nome){ alert('Ragione sociale obbligatoria'); return; }
-  const {error} = await sb.from('ditte').insert({
+  const tipoNd = document.getElementById('nd_tipo').value;
+  const subNd = dittaSubDati('nd', tipoNd);
+  if(!subNd) return;
+  const {error} = await sb.from('ditte').insert(Object.assign({
     cantiere_id: currentCantiere,
     nome,
     piva: document.getElementById('nd_piva').value.trim()||null,
-    tipo: document.getElementById('nd_tipo').value,
+    tipo: tipoNd,
     citta: document.getElementById('nd_citta').value.trim()||null,
     provincia: document.getElementById('nd_provincia').value.trim().toUpperCase()||null,
     cap: document.getElementById('nd_cap').value.trim()||null,
     indirizzo: document.getElementById('nd_indirizzo').value.trim()||null,
     pec: document.getElementById('nd_pec').value.trim()||null,
     created_by: currentUser.id
-  });
+  }, subNd));
   if(error){ alert(error.message); return; }
   closeModal();
   showView('ditte');
@@ -2602,12 +2778,13 @@ async function openModalEditDitta(id){
     </div>
     <div class="form-group" style="margin-bottom:12px">
       <label class="form-label">Tipo *</label>
-      <select class="form-control" id="ed_tipo">
+      <select class="form-control" id="ed_tipo" onchange="dittaSubToggle('ed')">
         <option value="appaltatrice"${d.tipo==='appaltatrice'?' selected':''}>Appaltatrice</option>
         <option value="subappaltatrice"${d.tipo==='subappaltatrice'?' selected':''}>Subappaltatrice</option>
         <option value="subaffidataria"${d.tipo==='subaffidataria'?' selected':''}>Subaffidataria</option>
       </select>
     </div>
+    ${dittaSubCampiHtml('ed', d)}
     <div style="font-weight:700;color:var(--primary);font-size:13px;border-top:1px solid var(--border);padding-top:10px;margin-bottom:8px">Sede legale e recapiti</div>
     <div class="form-hint" style="margin-bottom:8px">Questi dati vengono ripresi automaticamente come destinatario negli Ordini di Servizio.</div>
     <div class="form-grid">
@@ -2629,16 +2806,19 @@ async function openModalEditDitta(id){
 }
 
 async function salvaEditDitta(id){
-  const {error} = await sb.from('ditte').update({
+  const tipoEd = document.getElementById('ed_tipo').value;
+  const subEd = dittaSubDati('ed', tipoEd);
+  if(!subEd) return;
+  const {error} = await sb.from('ditte').update(Object.assign({
     nome: document.getElementById('ed_nome').value.trim(),
     piva: document.getElementById('ed_piva').value.trim()||null,
-    tipo: document.getElementById('ed_tipo').value,
+    tipo: tipoEd,
     citta: document.getElementById('ed_citta').value.trim()||null,
     provincia: document.getElementById('ed_provincia').value.trim().toUpperCase()||null,
     cap: document.getElementById('ed_cap').value.trim()||null,
     indirizzo: document.getElementById('ed_indirizzo').value.trim()||null,
     pec: document.getElementById('ed_pec').value.trim()||null
-  }).eq('id',id);
+  }, subEd)).eq('id',id);
   if(error){ alert(error.message); return; }
   closeModal();
   showView('ditte');
@@ -4999,6 +5179,7 @@ function openModalNuovoCantiere(){
         <div class="form-hint" style="font-size:11px;color:#ADB5BD">Compare come intestazione "COMUNE DI …" nei verbali</div></div>
       <div class="form-group"><label class="form-label">Indirizzo / località cantiere</label><input class="form-control" id="f_indirizzo" placeholder="Es. Via Roma 12, fraz. Chiesanuova">
         <div class="form-hint" style="font-size:11px;color:#ADB5BD">Precompila il luogo nei verbali di sopralluogo, prelievo e collaudo</div></div>
+      ${cantiereCostiCampiHtml('f', null)}
       <div class="form-group"><label class="form-label">Importo contrattuale (€) *</label><input class="form-control" type="number" id="f_importo"></div>
       <div class="form-group"><label class="form-label">Stato</label><select class="form-control" id="f_stato"><option value="attivo">Attivo</option><option value="sospeso">Sospeso</option><option value="concluso">Concluso</option></select></div>
       <div class="form-group"><label class="form-label">Data consegna lavori</label><input class="form-control" type="date" id="f_dc"></div>
@@ -5036,12 +5217,13 @@ function openModalNuovoCantiere(){
 // Se la funzione non restituisce un id riconoscibile non fa nulla: i campi
 // restano compilabili dalla scheda del cantiere.
 async function salvaLuogoCantiere(rpcData, luogo){
-  if(!luogo || (!luogo.comune && !luogo.indirizzo)) return;
+  if(!luogo || !Object.values(luogo).some(v=>v!=null && v!=='')) return;
   const id = (typeof rpcData === 'string') ? rpcData
            : (rpcData && (rpcData.id || rpcData.cantiere_id)) || null;
   if(!id) return;
   try{
-    await sb.from('cantieri').update({comune:luogo.comune, indirizzo:luogo.indirizzo}).eq('id', id);
+    // comune, indirizzo e costi orari della manodopera
+    await sb.from('cantieri').update(luogo).eq('id', id);
   }catch(e){ console.error('salvaLuogoCantiere', e); }
 }
 
@@ -5058,6 +5240,7 @@ async function salvaCantiere(){
     comune: document.getElementById('f_comune').value.trim()||null,
     indirizzo: document.getElementById('f_indirizzo').value.trim()||null
   };
+  const costiNuovo = cantiereCostiDati('f');
   if(!nome){alert('Denominazione cantiere obbligatoria');return;}
   const btn=document.getElementById('saveCantBtn');btn.disabled=true;btn.textContent='Salvataggio…';
 
@@ -5092,7 +5275,7 @@ async function salvaCantiere(){
       // crea_cantiere: aggiungerli al payload la farebbe risultare
       // inesistente sui database che hanno ancora la versione precedente.
       // Si scrivono quindi subito dopo, se la funzione restituisce l'id.
-      await salvaLuogoCantiere(rpcData, luogoNuovo);
+      await salvaLuogoCantiere(rpcData, Object.assign({}, luogoNuovo, costiNuovo));
       closeModal();
       await loadMyCantieri();
       showView('cantieri');
@@ -5109,6 +5292,7 @@ async function salvaCantiere(){
       nome, codice_commessa:codice, descrizione:descr, cig,
       cup:payload.p_cup, stazione_appaltante:sa,
       comune:luogoNuovo.comune, indirizzo:luogoNuovo.indirizzo,
+      ...costiNuovo,
       impresa:payload.p_impresa, importo,
       stato:payload.p_stato,
       estremi_contratto:payload.p_estremi_contratto,
@@ -5171,6 +5355,7 @@ function openModalEditCantiere(id){
         <div class="form-hint" style="font-size:11px;color:#ADB5BD">Compare come intestazione "COMUNE DI …" nei verbali</div></div>
       <div class="form-group"><label class="form-label">Indirizzo / località cantiere</label><input class="form-control" id="e_indirizzo" value="${esc(c.indirizzo||'')}" placeholder="Es. Via Roma 12, fraz. Chiesanuova">
         <div class="form-hint" style="font-size:11px;color:#ADB5BD">Precompila il luogo nei verbali di sopralluogo, prelievo e collaudo</div></div>
+      ${cantiereCostiCampiHtml('e', c)}
       <div class="form-group"><label class="form-label">Importo (€)</label><input class="form-control" type="number" id="e_importo" value="${c.importo||0}"></div>
       <div class="form-group"><label class="form-label">Stato</label>
         <select class="form-control" id="e_stato">
@@ -5227,6 +5412,7 @@ async function salvaEditCantiere(id){
     impresa: document.getElementById('e_impresa').value.trim(),
     comune: document.getElementById('e_comune').value.trim()||null,
     indirizzo: document.getElementById('e_indirizzo').value.trim()||null,
+    ...cantiereCostiDati('e'),
     importo: parseFloat(document.getElementById('e_importo').value)||0,
     stato: document.getElementById('e_stato').value,
     data_consegna: document.getElementById('e_dc').value||null,
@@ -5686,16 +5872,46 @@ function glDitteOptions(ditteList, selectedId){
   return h;
 }
 
-// Celle della riga manodopera (usate sia per la riga iniziale che per
-// le righe aggiunte dinamicamente, cosi' restano sempre identiche)
-function glMaeCelleHtml(n, ditteOptsHtml, m){
+// Riga manodopera (usata per la riga iniziale, per le righe aggiunte e per
+// la copia del giorno, cosi' restano sempre identiche). Per il controllo dei
+// subappalti ogni riga registra livello, ore per operaio e lavorazione svolta.
+function glMaeRigaHtml(n, ditteOptsHtml, m){
   m = m || {};
-  return `
-    <td style="padding:3px"><select class="form-control" style="font-size:11px;padding:5px" id="mae_ditta_${n}">${ditteOptsHtml}</select></td>
-    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px" id="mae_qual_${n}" placeholder="es. Muratori" value="${esc(m.figura||'')}"></td>
-    <td style="padding:3px"><input class="form-control" style="font-size:11px;padding:5px;text-align:center" type="number" min="1" id="mae_num_${n}" value="${m.num!=null?m.num:1}"></td>
-    <td style="padding:3px;text-align:center"><label style="font-size:11px;display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer"><input type="checkbox" id="mae_dist_${n}" ${m.distacco?'checked':''}> Sì</label></td>
-    <td style="padding:3px;text-align:center"><button type="button" onclick="rimuoviRigaMae(${n})" class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:11px">✕</button></td>`;
+  const lab = 'display:flex;flex-direction:column;gap:2px;font-size:10px;color:var(--muted)';
+  const inp = 'font-size:11px;padding:5px';
+  const ore = (m.ore!=null && m.ore!=='') ? m.ore : oreGiornaliereCantiere(getCantiereObj());
+  const info = glInfoLavDitta(m.ditta_id);
+  return `<div id="mae_row_${n}" style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:6px;background:#fff">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end">
+      <label style="${lab};flex:2 1 170px">Ditta<select class="form-control" style="${inp}" id="mae_ditta_${n}" onchange="glAggiornaLavDitta(${n})">${ditteOptsHtml}</select></label>
+      <label style="${lab};flex:1 1 110px">Qualifica / figura<input class="form-control" style="${inp}" id="mae_qual_${n}" placeholder="es. Muratori" value="${esc(m.figura||'')}"></label>
+      <label style="${lab};flex:1 1 120px">Livello<select class="form-control" style="${inp}" id="mae_liv_${n}"><option value="">—</option>${LIVELLI_OPERAIO.map(([v,l])=>`<option value="${v}"${m.livello===v?' selected':''}>${l}</option>`).join('')}</select></label>
+      <label style="${lab};flex:0 0 64px;max-width:64px">N. op.<input class="form-control" style="${inp};text-align:center" type="number" min="1" id="mae_num_${n}" value="${m.num!=null?m.num:1}"></label>
+      <label style="${lab};flex:0 0 70px;max-width:70px">Ore/op.<input class="form-control" style="${inp};text-align:center" type="number" min="0" step="0.5" id="mae_ore_${n}" value="${esc(ore)}"></label>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-top:6px">
+      <label style="${lab};flex:3 1 220px">Lavorazione svolta<input class="form-control" style="${inp}" id="mae_lav_${n}" list="mae_lavdl_${n}" value="${cseA(m.lavorazione||'')}" placeholder="obbligatoria per subappaltatori e subaffidatari">
+        <datalist id="mae_lavdl_${n}">${info.opzioni}</datalist><span id="mae_lavinfo_${n}" style="font-size:10px">${info.testo}</span></label>
+      <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;padding-bottom:6px"><input type="checkbox" id="mae_dist_${n}" ${m.distacco?'checked':''}> Distacco</label>
+      <button type="button" onclick="rimuoviRigaMae(${n})" class="btn btn-danger btn-sm" style="padding:3px 8px;font-size:11px;margin-bottom:3px">✕</button>
+    </div>
+  </div>`;
+}
+// Lavorazioni comunicate della ditta scelta: suggerimenti e promemoria
+function glInfoLavDitta(dittaId){
+  const d = (window._ditteGL||[]).find(x=>String(x.id)===String(dittaId||''));
+  if(!dittaESub(d)) return {opzioni:'', testo:''};
+  const lav = righeLavorazioni(d.lavorazioni_affidate);
+  return {
+    opzioni: lav.map(l=>`<option value="${cseA(l)}">`).join(''),
+    testo: lav.length ? `<span style="color:#856404">Comunicate: ${lav.map(esc).join(' · ')}</span>`
+                      : `<span style="color:var(--red)">Lavorazioni comunicate non indicate nella scheda della ditta</span>`
+  };
+}
+function glAggiornaLavDitta(n){
+  const info = glInfoLavDitta(document.getElementById('mae_ditta_'+n)?.value);
+  const dl = document.getElementById('mae_lavdl_'+n); if(dl) dl.innerHTML = info.opzioni;
+  const sp = document.getElementById('mae_lavinfo_'+n); if(sp) sp.innerHTML = info.testo;
 }
 function glMezzoInternoHtml(n, val){
   return `<input class="form-control" style="font-size:12px" id="mezzo_${n}" placeholder="es. Gru a torre 40m — specifica tipo, portata, targa" value="${esc(val||'')}"><button type="button" onclick="rimuoviRigaMezzo(${n})" class="btn btn-danger btn-sm" style="flex-shrink:0;padding:4px 8px">✕</button>`;
@@ -5705,10 +5921,7 @@ function aggiungiRigaMae(){
   const n = window._maeRowCount||1;
   const tbody = document.getElementById('gl_mae_body');
   if(!tbody) return;
-  const tr = document.createElement('tr');
-  tr.id = 'mae_row_'+n;
-  tr.innerHTML = glMaeCelleHtml(n, window._ditteOptsHtml||'', {});
-  tbody.appendChild(tr);
+  tbody.insertAdjacentHTML('beforeend', glMaeRigaHtml(n, window._ditteOptsHtml||'', {}));
   window._maeRowCount = n+1;
 }
 function rimuoviRigaMae(n){ const r=document.getElementById('mae_row_'+n); if(r) r.remove(); }
@@ -5728,7 +5941,8 @@ function rimuoviRigaMezzo(n){ const r=document.getElementById('mezzo_row_'+n); i
 
 // Contesto comune ai due modali (elenco ditte del cantiere)
 async function glContesto(){
-  const {data:ditteList} = await sb.from('ditte').select('id,nome,tipo').eq('cantiere_id',currentCantiere).order('nome');
+  const {data:ditteList} = await sb.from('ditte').select('id,nome,tipo,lavorazioni_affidate').eq('cantiere_id',currentCantiere).order('nome');
+  window._ditteGL = ditteList||[];
   return {ditteList: ditteList||[]};
 }
 
@@ -5744,7 +5958,7 @@ function giornaleFormHtml(g, ctx){
   window._maeRowCount = righeMae.length;
   window._mezzoRowCount = righeMezzi.length;
 
-  const maeRowsHtml = righeMae.map((m,i)=>`<tr id="mae_row_${i}">${glMaeCelleHtml(i, glDitteOptions(ditteList, m.ditta_id), m)}</tr>`).join('');
+  const maeRowsHtml = righeMae.map((m,i)=>glMaeRigaHtml(i, glDitteOptions(ditteList, m.ditta_id), m)).join('');
   const mezziRowsHtml = righeMezzi.map((v,i)=>`<div style="display:flex;gap:6px;margin-bottom:5px" id="mezzo_row_${i}">${glMezzoInternoHtml(i,v)}</div>`).join('');
 
   const meteoOptions = ['Soleggiato','Parzialmente nuvoloso','Nuvoloso','Pioggia','Vento forte','Neve'];
@@ -5765,17 +5979,8 @@ function giornaleFormHtml(g, ctx){
         <label class="form-label" style="margin:0">Manodopera presente *</label>
         <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiRigaMae()">+ Aggiungi riga</button>
       </div>
-      <div class="alert alert-info" style="font-size:11px;margin-bottom:6px">Per ogni gruppo: seleziona ditta, indica qualifica, numero operai e se in distacco da altra impresa.</div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:var(--primary);color:white">
-          <th style="padding:6px 8px;text-align:left;width:32%">Ditta</th>
-          <th style="padding:6px 8px;text-align:left;width:28%">Qualifica / Figura</th>
-          <th style="padding:6px 8px;text-align:center;width:10%">N. op.</th>
-          <th style="padding:6px 8px;text-align:center;width:18%">Distacco</th>
-          <th style="padding:6px 8px;width:8%"></th>
-        </tr></thead>
-        <tbody id="gl_mae_body">${maeRowsHtml}</tbody>
-      </table>
+      <div class="alert alert-info" style="font-size:11px;margin-bottom:6px">Per ogni gruppo: ditta, qualifica, livello contrattuale, numero operai, ore per operaio e lavorazione svolta. Per subappaltatori e subaffidatari livello e lavorazione sono obbligatori: servono al controllo di importi e lavorazioni comunicate.</div>
+      <div id="gl_mae_body">${maeRowsHtml}</div>
       ${!ditteList||!ditteList.length ? '<div style="font-size:11px;color:var(--yellow);margin-top:4px">⚠️ Nessuna ditta registrata. Aggiungile dalla sezione <strong>Ditte presenti</strong> prima di compilare il giornale.</div>' : ''}
     </div>
 
@@ -5824,15 +6029,32 @@ function glRaccogliDati(){
     const dittaEl=document.getElementById('mae_ditta_'+i);
     const distEl=document.getElementById('mae_dist_'+i);
     const dittaNome=dittaEl&&dittaEl.selectedIndex>0?dittaEl.options[dittaEl.selectedIndex].text:'';
+    const oreV = parseFloat(document.getElementById('mae_ore_'+i)?.value);
     maestranze.push({
       figura:qual,
       num:parseInt(numEl?.value)||0,
       ditta_id:dittaEl?.value||null,
       ditta_nome:dittaNome,
-      distacco:distEl?.checked||false
+      distacco:distEl?.checked||false,
+      livello:document.getElementById('mae_liv_'+i)?.value||null,
+      ore:isNaN(oreV)?null:oreV,
+      lavorazione:(document.getElementById('mae_lav_'+i)?.value||'').trim()||null
     });
   }
   if(!maestranze.length){ alert('Inserire almeno una riga di manodopera'); return null; }
+  // subappaltatori e subaffidatari: livello e lavorazione obbligatori,
+  // lavorazioni diverse da quelle comunicate vengono segnalate
+  const fuori = [];
+  for(const m of maestranze){
+    const d = (window._ditteGL||[]).find(x=>String(x.id)===String(m.ditta_id||''));
+    if(!dittaESub(d)) continue;
+    if(!m.livello || !m.lavorazione){
+      alert(`Per la ditta ${d.nome} (${d.tipo==='subaffidataria'?'subaffidataria':'subappaltatrice'}) indica livello degli operai e lavorazione svolta: servono al controllo dell'importo e delle lavorazioni comunicate.`);
+      return null;
+    }
+    if(!lavorazioneAutorizzata(m.lavorazione, d)) fuori.push(`• ${d.nome}: «${m.lavorazione}»`);
+  }
+  if(fuori.length && !confirm('ATTENZIONE: lavorazioni diverse da quelle comunicate per il subappalto/subaffidamento:\n\n'+fuori.join('\n')+'\n\nLa presenza verrà registrata e segnalata nell\'avviso del cantiere. Salvare comunque?')) return null;
   const mezzi=[];
   for(let i=0;i<(window._mezzoRowCount||1);i++){
     const el=document.getElementById('mezzo_'+i);
