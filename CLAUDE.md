@@ -119,6 +119,14 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   `controlloSubappalti()` + `boxSubappaltiHtml()` (cantieri, dashboard, ditte,
   giornale): lavorazioni non comunicate e costo manodopera oltre l'importo.
   Report stampabile per ditta: `stampaReportSubappalto(dittaId)`.
+- Subappalti: limiti concessi a contratto nella scheda del cantiere
+  (`cantieri.subappalto_categorie` jsonb `[{categoria, descrizione, importo,
+  perc}]`, perc 0 = non subappaltabile; `subappalto_limite_perc` = limite
+  complessivo facoltativo) e `ditte.categoria_subappalto`. Verifica al
+  salvataggio della ditta (`verificaLimiteSubAlSalvataggio`, «Salva
+  comunque») e segnalazioni in `problemiLimitiSub` dentro
+  `controlloSubappalti`: importi autorizzati e manodopera registrata nel
+  giornale contro il limite. Contano solo le subappaltatrici.
 - Conteggio giorni contrattuali: sospensioni, riprese, proroghe (una proroga
   non sospende i lavori).
 
