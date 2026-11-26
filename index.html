@@ -294,7 +294,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.27k';
+const APP_VERSIONE = '2026.11.28a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -737,6 +737,7 @@ async function emettiOdsRitardo(cantiereId){
 // 'direzione' = capo cantiere, direttore tecnico: presenti ma non conteggiati nel costo
 const LIVELLI_OPERAIO = [['comune','Operaio comune'],['qualificato','Operaio qualificato'],['specializzato','Operaio specializzato'],['b1','Operaio specializzato B1 (impianti, fabbri — ditte non edili)'],['direzione','Direzione di cantiere (non conteggiato)']];
 const SOGLIA_AVVISO_SUB = 0.9;
+const SOGLIA_AVZ_MOLTO = 1.2; // ore oltre il 120% della manodopera di progetto eseguita: «supera di molto»
 function dittaESub(d){ return !!d && (d.tipo==='subappaltatrice' || d.tipo==='subaffidataria'); }
 function righeLavorazioni(t){ return String(t||'').split(/\n|;/).map(s=>s.trim()).filter(Boolean); }
 function normLav(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9àèéìòù]+/g,' ').trim(); }
@@ -875,6 +876,28 @@ function manodoperaMinimaDitta(d, c){
   });
   if(mancano.length===cd.length) return null;
   return {minima, righe, mancano, ribasso:r, oneri};
+}
+// Avanzamento della ditta al SAL: {sal_numero, data, righe:[{categoria, importo}]}
+// (importi eseguiti ai prezzi contrattuali). Manodopera di progetto della
+// quota eseguita = importo / (1 - ribasso) x incidenza della categoria.
+function avanzamentoDitta(d){
+  let a = d && d.avanzamento_subappalto;
+  if(typeof a==='string'){ try{ a=JSON.parse(a); }catch(e){ a=null; } }
+  if(!a || !Array.isArray(a.righe)) return null;
+  const righe = a.righe.filter(x=>x && x.categoria && parseFloat(x.importo)>0).map(x=>({categoria:String(x.categoria).toUpperCase(), importo:parseFloat(x.importo)}));
+  return righe.length ? {sal_numero:a.sal_numero||null, data:a.data||null, righe} : null;
+}
+function manodoperaAvanzamento(d, c){
+  const a = avanzamentoDitta(d); if(!a) return null;
+  const cats = categorieSub(c), r = ribassoCantiere(c);
+  let tot = 0; const mancano = [];
+  const righe = a.righe.map(x=>{
+    const inc = incidenzaManodopera(cats.find(k=>normCat(k.categoria)===normCat(x.categoria)));
+    const lordo = x.importo/(1-r);
+    if(inc==null){ mancano.push(x.categoria); return {...x, lordo, inc:null, mano:null}; }
+    const mano = lordo*inc/100; tot += mano; return {...x, lordo, inc, mano};
+  });
+  return {...a, righe, mano:tot, mancano, eseguito:a.righe.reduce((s,x)=>s+x.importo,0), ribasso:r};
 }
 function testoManodoperaMinima(m){
   if(!m) return '';
@@ -1153,9 +1176,60 @@ async function stampaReportSubappalto(dittaId){
     h += `<tr><td colspan="5" style="${td};text-align:right"><strong>Totale</strong></td><td style="${td};text-align:right"><strong>${n2(totOre)}</strong></td><td style="${td}"></td><td style="${td};text-align:right"><strong>${n2(totCosto)}</strong></td><td style="${td}"></td></tr></table>`;
     if(righe.some(r=>/\*$/.test(r.liv))) h += '<p style="font-size:9.5px">* livello non indicato nel giornale: conteggiato come operaio comune.</p>';
     h += `<p style="font-size:10px">Costi orari contrattuali del cantiere: comune ${fmtEur(c.costo_ora_comune)}, qualificato ${fmtEur(c.costo_ora_qualificato)}, specializzato ${fmtEur(c.costo_ora_specializzato)}, specializzato B1 ${fmtEur(c.costo_ora_b1)}. Ore giornaliere di riferimento: ${n2(oreGg)}. Il costo considera la sola manodopera, esclusi materiali e noli; il personale di direzione di cantiere non è conteggiato.</p>`;
+    // ---- Confronto per avanzamento: ore registrate fino al SAL contro la
+    // manodopera di progetto delle quantita' eseguite dalla ditta ----
+    let rilievoAvz = '';
+    if(d.tipo==='subappaltatrice'){
+      const av = manodoperaAvanzamento(d, c);
+      h += `<p style="margin-top:12px"><strong>Confronto per avanzamento</strong></p>`;
+      if(!av){
+        h += `<p style="font-size:10.5px">Non sono indicati i lavori eseguiti dalla ditta al SAL: il confronto delle ore con la manodopera di progetto delle quantità eseguite non è disponibile. Inserirli nella scheda della ditta (Ditte presenti → ✏️ → «Avanzamento dei lavori della ditta»).</p>`;
+      } else {
+        const fino = av.data;
+        const regAv = righe.filter(r=>!fino || r.data<=fino);
+        const oreAv = regAv.reduce((s,r)=>s+r.oreTot,0), costoAv = regAv.reduce((s,r)=>s+r.costo,0);
+        const rapp = av.mano>0 ? costoAv/av.mano : null;
+        h += `<p style="font-size:10.5px">Lavori eseguiti dalla ditta${av.sal_numero?' contabilizzati al <strong>SAL n. '+esc(av.sal_numero)+'</strong>':''}${fino?' fino al <strong>'+fmt(fino)+'</strong>':''}, confrontati con la manodopera registrata nel giornale nello stesso periodo. Manodopera di progetto della quota eseguita = importo eseguito riportato al lordo del ribasso (${(av.ribasso*100).toLocaleString('it-IT')}%) × incidenza della manodopera della categoria.</p>`;
+        h += `<table style="width:100%;border-collapse:collapse;font-size:11px;margin:6px 0"><tr>`
+          + ['Categoria','Eseguito (prezzi contrattuali)','Al lordo del ribasso','Incidenza','Manodopera di progetto'].map(x=>`<th style="${td};background:#1F3864;color:#fff;text-align:left">${x}</th>`).join('')+'</tr>'
+          + av.righe.map(x=>`<tr><td style="${td}">${esc(x.categoria)}</td><td style="${td};text-align:right">${fmtEur(x.importo)}</td><td style="${td};text-align:right">${fmtEur(x.lordo)}</td><td style="${td};text-align:right">${x.inc!=null?String(x.inc).replace('.',',')+'%':'<em>mancante</em>'}</td><td style="${td};text-align:right">${x.mano!=null?fmtEur(x.mano):'—'}</td></tr>`).join('')
+          + `<tr><td style="${td}"><strong>Totale</strong></td><td style="${td};text-align:right"><strong>${fmtEur(av.eseguito)}</strong></td><td style="${td}"></td><td style="${td}"></td><td style="${td};text-align:right"><strong>${fmtEur(av.mano)}</strong></td></tr></table>`;
+        h += `<table style="width:100%;border-collapse:collapse;font-size:11px;margin:6px 0">
+          <tr><td style="${td};width:40%"><strong>Manodopera registrata${fino?' fino al '+fmt(fino):''}</strong></td><td style="${td}">${n2(oreAv)} ore — <strong>${fmtEur(costoAv)}</strong></td></tr>
+          <tr><td style="${td}"><strong>Manodopera di progetto della quota eseguita</strong></td><td style="${td}"><strong>${fmtEur(av.mano)}</strong></td></tr>
+          <tr><td style="${td}"><strong>Rapporto registrata / progetto</strong></td><td style="${td}"><strong style="color:${rapp==null?'inherit':rapp>SOGLIA_AVZ_MOLTO?'#B02A37':rapp>1?'#9A6700':'#198754'}">${rapp!=null?Math.round(rapp*100)+'%':'—'}</strong></td></tr></table>`;
+        if(av.mancano.length) h += `<p style="font-size:10px">Manca l'incidenza della manodopera per ${esc(av.mancano.join(', '))} nella scheda del cantiere: la manodopera di progetto è calcolata solo in parte.</p>`;
+        if(rapp!=null && rapp>SOGLIA_AVZ_MOLTO) rilievoAvz = `la manodopera registrata${fino?' fino al '+fmt(fino):''} (${fmtEur(costoAv)}) supera di molto quella di progetto delle quantità eseguite${av.sal_numero?' al SAL n. '+av.sal_numero:''} (${fmtEur(av.mano)}, ${Math.round(rapp*100)}%)`;
+        if(rapp!=null && rapp>1){
+          // riscontri per le tre spiegazioni possibili
+          const fuoriAv = regAv.filter(r=>r.fuori);
+          const lavFuori = [...new Set(fuoriAv.map(r=>r.lav))];
+          const costoFuori = fuoriAv.reduce((s,r)=>s+r.costo,0);
+          const mMin = manodoperaMinimaDitta(d, c);
+          const dich = parseFloat(d.manodopera_subappalto)||0;
+          h += `<p><strong>${rapp>SOGLIA_AVZ_MOLTO?'La manodopera registrata supera di molto':'La manodopera registrata supera'} quella di progetto delle quantità eseguite (${Math.round(rapp*100)}%).</strong> Le spiegazioni possibili, nell'ordine in cui vanno verificate, sono:</p><ol style="font-size:10.5px;margin:4px 0 8px 18px;padding:0">`;
+          h += `<li style="margin-bottom:4px"><strong>Lavorazioni non autorizzate</strong> (da escludere per prima): gli operai della ditta potrebbero eseguire anche lavorazioni non comprese nel subappalto (ad esempio opere edili di altre categorie). `
+            + (fuoriAv.length
+              ? `<strong style="color:#B02A37">Riscontro: ${fuoriAv.length} ${fuoriAv.length===1?'registrazione':'registrazioni'} con lavorazioni non comprese fra quelle comunicate (${esc(lavFuori.join('; '))}), per ${fmtEur(costoFuori)} di manodopera.</strong> Senza queste il rapporto scende al ${av.mano>0?Math.round((costoAv-costoFuori)/av.mano*100):'—'}%.`
+              : `Riscontro: nel giornale non risultano registrazioni con lavorazioni diverse da quelle comunicate; va comunque verificato in cantiere che le lavorazioni annotate corrispondano a quelle effettivamente svolte.`)
+            + `</li>`;
+          h += `<li style="margin-bottom:4px"><strong>Dichiarazione della manodopera bassa</strong>: i costi della manodopera dichiarati nella richiesta di subappalto potrebbero essere inferiori a quelli di progetto. `
+            + (mMin && dich
+              ? (dich < mMin.minima-1
+                  ? `<strong style="color:#9A6700">Riscontro: dichiarati ${fmtEur(dich)} contro ${fmtEur(mMin.minima)} calcolati dal progetto (inferiori di ${fmtEur(mMin.minima-dich)}).</strong> Da verificare con la manodopera indicata in appalto (art. 119, c. 12, d.lgs. 36/2023).`
+                  : `Riscontro: dichiarati ${fmtEur(dich)}, non inferiori ai ${fmtEur(mMin.minima)} calcolati dal progetto.`)
+              : `Riscontro non disponibile: ${dich?'manca il calcolo della manodopera di progetto (incidenze o categorie)':'costi della manodopera non dichiarati'}.`)
+            + `</li>`;
+          h += `<li><strong>Bassa produttività dell'impresa</strong>: a parità di lavorazioni, l'impresa impiega più ore di quelle stimate nel progetto. È un aspetto organizzativo dell'impresa, che non riguarda la Direzione Lavori ai fini della verifica dell'art. 119, c. 12.</li></ol>`;
+        } else if(rapp!=null){
+          h += `<p style="font-size:10.5px">La manodopera registrata è coerente con la manodopera di progetto delle quantità eseguite.</p>`;
+        }
+      }
+    }
     const criticita = [];
     if(perc!=null && perc>1) criticita.push(`il costo della sola manodopera registrata (${fmtEur(totCosto)}) supera l'importo del ${tipoL} comunicato (${fmtEur(importo)})`);
     else if(perc!=null && perc>=SOGLIA_AVVISO_SUB) criticita.push(`il costo della sola manodopera registrata ha raggiunto il ${Math.round(perc*100)}% dell'importo del ${tipoL} comunicato`);
+    if(rilievoAvz) criticita.push(rilievoAvz);
     if(nFuori) criticita.push(`in ${nFuori} ${nFuori===1?'registrazione':'registrazioni'} la ditta risulta impegnata in lavorazioni non comprese fra quelle comunicate (righe evidenziate)`);
     if(!importo) criticita.push(`l'importo del ${tipoL} non risulta comunicato alla Direzione Lavori`);
     if(criticita.length){
@@ -1223,6 +1297,7 @@ function dittaSubCampiHtml(prefix, d){
           </div>
         </div>
         <div class="form-group span-2" id="${prefix}_mano_min" style="margin-top:-6px"></div>
+        <div class="form-group span-2" id="${prefix}_avz_wrap" style="display:${d.tipo==='subappaltatrice'?'block':'none'};border-top:1px solid #FFC107;padding-top:8px">${avanzamentoCampiHtml(prefix, d)}</div>
         <div class="form-group span-2" id="${prefix}_cat_box" style="display:${d.tipo==='subaffidataria'?'none':'block'}">${dittaCategoriaHtml(prefix, d)}</div>
       </div>
       <div id="${prefix}_lim_msg"></div>
@@ -1290,6 +1365,44 @@ function aggiornaImportoDitta(prefix){
     if(info) info.innerHTML = 'Importo comunicato = somma delle categorie: <strong>'+fmtEur(tot)+'</strong>';
   } else { inp.readOnly = false; inp.style.background = ''; if(info) info.textContent = 'L\'importo comunicato è la somma delle categorie.'; }
   aggiornaManodoperaMinima(prefix);
+  renderAvzRighe(prefix, null);
+}
+// ---- avanzamento della ditta al SAL (per il confronto con le ore) ----
+let SAL_DITTA = [];
+function avanzamentoCampiHtml(prefix, d){
+  const a = avanzamentoDitta(d) || {};
+  setTimeout(()=>renderAvzRighe(prefix, a.righe||[]), 0);
+  return `<div style="font-weight:700;color:#856404;font-size:12px">Avanzamento dei lavori della ditta — per il confronto con le ore registrate</div>
+    <div class="form-hint" style="margin-bottom:6px">Facoltativo. Lavori eseguiti dalla ditta e contabilizzati al SAL, per categoria, ai prezzi contrattuali. Il «Report ore» confronta le ore registrate fino alla data del SAL con la manodopera di progetto di queste quantità.</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">SAL di riferimento</label>
+        <select class="form-control" id="${prefix}_avz_sal" onchange="sceltaSalAvz('${prefix}')"><option value="">— scegli —</option>${(SAL_DITTA||[]).map(x=>`<option value="${x.numero}" data-data="${cseA(x.periodo_al||x.data||'')}"${String(a.sal_numero||'')===String(x.numero)?' selected':''}>SAL n. ${x.numero}${x.periodo_al||x.data?' al '+fmt(x.periodo_al||x.data):''}</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label">Lavori eseguiti fino al</label>
+        <input class="form-control" type="date" id="${prefix}_avz_data" value="${cseA(a.data||'')}"></div>
+    </div>
+    <div id="${prefix}_avz_righe"></div>`;
+}
+function sceltaSalAvz(prefix){
+  const sel=document.getElementById(prefix+'_avz_sal'), dt=document.getElementById(prefix+'_avz_data');
+  const o=sel && sel.selectedOptions[0];
+  if(o && o.dataset.data && dt) dt.value=o.dataset.data;
+}
+// Una riga per ogni categoria della ditta (si aggiorna quando cambiano)
+function renderAvzRighe(prefix, valori){
+  const box=document.getElementById(prefix+'_avz_righe'); if(!box) return;
+  const prima={}; (valori||[]).forEach(x=>{ prima[normCat(x.categoria)]=x.importo; });
+  box.querySelectorAll('.avz-imp').forEach(i=>{ if(i.value!=='') prima[normCat(i.dataset.cat)]=i.value; });
+  const cats=[...new Set(righeCatDitta(prefix).map(x=>x.categoria).filter(Boolean))];
+  box.innerHTML = cats.length ? cats.map(k=>`<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;font-size:12px">
+      <span style="flex:0 0 110px"><strong>${esc(k)}</strong> eseguito (€)</span>
+      <input class="form-control avz-imp" style="flex:1" type="number" step="0.01" data-cat="${cseA(k)}" value="${prima[normCat(k)]!=null?cseA(prima[normCat(k)]):''}"></div>`).join('')
+    : '<div class="form-hint">Scegli prima le categorie del subappalto.</div>';
+}
+function avanzamentoDati(prefix){
+  const righe=[...document.querySelectorAll('#'+prefix+'_avz_righe .avz-imp')].map(i=>({categoria:i.dataset.cat, importo:parseFloat(i.value)})).filter(x=>x.importo>0);
+  if(!righe.length) return null;
+  const sal=document.getElementById(prefix+'_avz_sal')?.value||null;
+  return {sal_numero: sal?parseInt(sal,10):null, data: document.getElementById(prefix+'_avz_data')?.value||null, righe};
 }
 // Manodopera minima di progetto calcolata mentre si compila la ditta
 function aggiornaManodoperaMinima(prefix){
@@ -1312,6 +1425,8 @@ function dittaSubToggle(prefix){
   if(box) box.style.display = (t==='subappaltatrice'||t==='subaffidataria') ? 'block' : 'none';
   const cb = document.getElementById(prefix+'_cat_box');
   if(cb) cb.style.display = t==='subappaltatrice' ? 'block' : 'none';
+  const av = document.getElementById(prefix+'_avz_wrap');
+  if(av) av.style.display = t==='subappaltatrice' ? 'block' : 'none';
   const lm = document.getElementById(prefix+'_lim_msg'); if(lm) lm.innerHTML='';
   const inp = document.getElementById(prefix+'_importo_aff');
   if(t!=='subappaltatrice' && inp){ inp.readOnly=false; inp.style.background=''; }
@@ -1320,7 +1435,7 @@ function dittaSubToggle(prefix){
 // null = dati non validi (avviso gia' mostrato)
 function dittaSubDati(prefix, tipo){
   if(!(tipo==='subappaltatrice'||tipo==='subaffidataria'))
-    return {importo_affidato:null, lavorazioni_affidate:null, estremi_autorizzazione:null, categoria_subappalto:null, subappalto_categorie:[], manodopera_subappalto:null, oneri_sicurezza_subappalto:null, sicurezza_inclusa_subappalto:null};
+    return {importo_affidato:null, lavorazioni_affidate:null, estremi_autorizzazione:null, categoria_subappalto:null, subappalto_categorie:[], manodopera_subappalto:null, oneri_sicurezza_subappalto:null, sicurezza_inclusa_subappalto:null, avanzamento_subappalto:null};
   const imp = parseFloat(document.getElementById(prefix+'_importo_aff')?.value);
   const lav = (document.getElementById(prefix+'_lav_aff')?.value||'').trim();
   if(!(imp>0) || !lav){
@@ -1344,7 +1459,9 @@ function dittaSubDati(prefix, tipo){
   const mano = numOpz('mano_sub'), sic = speciali ? numOpz('sic_sub') : null, sicInc = numOpz('sicinc_sub');
   if(speciali && !(sic>0)){ alert('Hai indicato lavori relativi agli oneri della sicurezza speciali: inserisci il loro importo, oppure togli la spunta.'); return null; }
   if((mano||0)+(sic||0)+(sicInc||0) > impTot+0.005){ alert('Manodopera e sicurezza (compresa nei prezzi e speciale) superano l\'importo del subappalto: controlla i valori.'); return null; }
-  return {importo_affidato: impTot, lavorazioni_affidate:lav, manodopera_subappalto:mano, oneri_sicurezza_subappalto:sic, sicurezza_inclusa_subappalto:sicInc,
+  const avz = tipo==='subappaltatrice' ? avanzamentoDati(prefix) : null;
+  if(avz && !avz.data){ alert('Per l\'avanzamento indica il SAL o la data fino alla quale sono stati eseguiti i lavori.'); return null; }
+  return {importo_affidato: impTot, lavorazioni_affidate:lav, manodopera_subappalto:mano, oneri_sicurezza_subappalto:sic, sicurezza_inclusa_subappalto:sicInc, avanzamento_subappalto:avz,
     estremi_autorizzazione:(document.getElementById(prefix+'_estremi_aut')?.value||'').trim()||null,
     categoria_subappalto: cats.length ? cats.map(x=>x.categoria).join(', ') : null,
     subappalto_categorie: cats};
@@ -3410,8 +3527,8 @@ function dittaRigaCitta(d){
 }
 
 async function openModalNuovaDitta(){
-  const {data:dl} = await sb.from('ditte').select('*').eq('cantiere_id', currentCantiere);
-  DITTE_LIMITI = dl || [];
+  const [{data:dl},{data:sl}] = await Promise.all([sb.from('ditte').select('*').eq('cantiere_id', currentCantiere), sb.from('sal').select('numero,data,periodo_al').eq('cantiere_id', currentCantiere).order('numero')]);
+  DITTE_LIMITI = dl || []; SAL_DITTA = sl || [];
   openModal('Aggiungi Ditta', `
     <div class="form-group" style="margin-bottom:12px">
       <label class="form-label">Ragione sociale *</label>
@@ -3478,8 +3595,8 @@ async function salvaDitta(){
 async function openModalEditDitta(id){
   const {data:d} = await sb.from('ditte').select('*').eq('id',id).single();
   if(!d) return;
-  const {data:dl} = await sb.from('ditte').select('*').eq('cantiere_id', d.cantiere_id);
-  DITTE_LIMITI = dl || [];
+  const [{data:dl},{data:sl}] = await Promise.all([sb.from('ditte').select('*').eq('cantiere_id', d.cantiere_id), sb.from('sal').select('numero,data,periodo_al').eq('cantiere_id', d.cantiere_id).order('numero')]);
+  DITTE_LIMITI = dl || []; SAL_DITTA = sl || [];
   openModal('Modifica Ditta', `
     <div class="form-group" style="margin-bottom:12px">
       <label class="form-label">Ragione sociale *</label>
