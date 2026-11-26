@@ -294,7 +294,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.28f';
+const APP_VERSIONE = '2026.11.28g';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -8157,9 +8157,8 @@ async function stampaODS(id){
   <div class="body-text">${esc(o.corpo)}</div>
   ${(o.dati_ods && o.dati_ods.giorni_termine) ? `<p>L'Impresa dovrà adempiere a quanto sopra entro e non oltre giorni <strong>${esc(o.dati_ods.giorni_termine)}</strong> dal ricevimento del presente Ordine di Servizio.</p>` : ''}
   ${odsFraseVerifica(o.dati_ods)}
-  <div class="firma-grid">${firme.map(f=>`<div class="firma-box"><div class="label">${ROLE_LABELS[f.ruolo]||f.ruolo}</div>
-    <div style="margin-top:8px;font-size:12px">${esc(f.nome)}</div>
-    <div style="font-size:11px;color:#6C757D;margin-top:4px">${f.stato==='firmato'?'✅ Firmato '+fmt(f.data):f.stato==='presa_visione'?'👁️ Presa visione '+fmt(f.data):'⏳ In attesa'}</div></div>`).join('')}</div>
+  <div style="margin-top:28px">${firme.filter(f=>f.ruolo==='dl'||f.ruolo==='rup').map(f=>`<div style="margin:10px 0"><div class="label">${f.ruolo==='rup'?'Visto il RUP':'Il Direttore dei Lavori'}</div><strong style="text-transform:uppercase">${esc(f.nome)}</strong></div>`).join('')}</div>
+  <p style="font-size:9px;color:#6C757D;margin-top:18px">${odsDicituraFirmaDigitale()}</p>
   <script>window.onload=()=>{var _r=function(){try{if(document.body&&document.body.children.length===0&&window.opener&&window.opener.ripristinaPopup)window.opener.ripristinaPopup(window);}catch(e){}};window.addEventListener('afterprint',_r);requestAnimationFrame(function(){requestAnimationFrame(function(){window.print();setTimeout(_r,800);});});}<\/script></body></html>`);
 }
 
@@ -8889,13 +8888,15 @@ function apriDocumentoFirmabile(opts){
        +  ';window.SOLA_LETTURA='+(opts.solaLettura?'true':'false')+';<\/script>';
   html += '<div class="no-print toolbar">';
   html += '<button class="tb-ghost" onclick="window.close()">&#10005; Chiudi</button>';
-  if(!opts.solaLettura){
+  // firmaDigitale: documento da inviare via PEC firmato digitalmente (ODS):
+  // niente riquadri per la firma a mano, solo nomi e qualifiche
+  if(!opts.solaLettura && !opts.firmaDigitale){
     html += '<button class="tb-secondary" onclick="addFirmatario(\'\',\'\')">+ Aggiungi firmatario</button>';
     html += '<button class="tb-secondary" onclick="clearAllSig()">&#129529; Cancella firme</button>';
     html += (opts.recordTable ? '<button class="tb-secondary" onclick="salvaFirmeNelGestionale()">&#128190; Salva firme nel gestionale</button>' : '');
   }
   html += '<button class="tb-secondary" onclick="apriPannelloInvio()">&#9993;&#65039; Invia via email</button>';
-  html += '<button class="tb-primary" onclick="stampaEsegna()">&#128424;&#65039; '+(opts.solaLettura?'Stampa / Salva PDF':'Genera PDF (firma e stampa)')+'</button>';
+  html += '<button class="tb-primary" onclick="stampaEsegna()">&#128424;&#65039; '+(opts.firmaDigitale?'Genera PDF (da firmare digitalmente)':opts.solaLettura?'Stampa / Salva PDF':'Genera PDF (firma e stampa)')+'</button>';
   html += '</div>';
   if(opts.solaLettura){
     html += '<div class="no-print" style="background:#FFF3CD;color:#856404;padding:8px 16px;font-size:12px;text-align:center">'
@@ -8916,7 +8917,12 @@ function apriDocumentoFirmabile(opts){
   html += '<tfoot><tr><td>'+footerHtml+'</td></tr></tfoot>';
   html += '<tbody><tr><td>';
   html += titleHtml + metaHtml + '<div class="corpo">'+opts.corpoHtml+'</div>' + luogoDataHtml;
-  html += '<div id="firmeContainer" class="firme-wrap"></div>';
+  if(opts.firmaDigitale){
+    html += '<div style="margin-top:18px">' + firmatariIniziali.map(f=>'<div style="margin:10px 0"><span style="font-size:10px;font-weight:700;color:#6C757D;text-transform:uppercase;letter-spacing:.05em">'+esc(f.ruolo||'')+'</span><br><strong style="text-transform:uppercase">'+esc(f.nome||'')+'</strong></div>').join('') + '</div>';
+    html += '<div id="firmeContainer" class="firme-wrap" style="display:none"></div>';
+  } else {
+    html += '<div id="firmeContainer" class="firme-wrap"></div>';
+  }
   if(opts.notaFinale) html += '<div class="nota-finale">'+opts.notaFinale+'</div>';
   if(opts.allegatiHtml) html += opts.allegatiHtml;
   html += '</td></tr></tbody></table></div>';
@@ -11755,6 +11761,7 @@ async function apriODSFirmabile(id, solaLettura){
         {nome: dx.rup_nome||'',  ruolo:'Visto il RUP'}
       ],
       notaFinale: odsDicituraFirmaDigitale(),
+      firmaDigitale: true,
       solaLettura: !!solaLettura,
       dataGenerazione: o.pdf_generato_at||null,
       recordTable: 'ods',
