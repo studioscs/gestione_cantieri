@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GestioneCantiere — SCS</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1F3864">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cantieri SCS">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
 :root{
   --primary:#1F3864;--accent:#2E75B6;--accent-light:#D1ECF1;--surface:#F8F9FA;
@@ -274,6 +282,7 @@ textarea.form-control{resize:vertical;min-height:80px}
         <div class="nav-item" onclick="showView('report')" data-view="report"><span class="nav-icon">📊</span> Report SA</div>
         <div class="nav-item" onclick="showView('studio')" data-view="studio"><span class="nav-icon">🏛️</span> Il mio studio</div>
         <div class="nav-item" id="navCopia" style="display:none" onclick="showView('copia')" data-view="copia"><span class="nav-icon">💾</span> Copia di sicurezza <span id="badgeCopia" class="badge" style="display:none;background:var(--red);color:#fff;margin-left:auto">!</span></div>
+        <div class="nav-item" id="navInstalla" onclick="mostraInstallaApp()"><span class="nav-icon">📲</span> Installa app</div>
       </div>
     </nav>
     <main class="main" id="mainContent"></main>
@@ -294,7 +303,52 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.28g';
+const APP_VERSIONE = '2026.11.28h';
+
+// ---- App installabile (PWA): Windows, Mac, iPhone/iPad ----
+let _promptInstalla = null;
+function appInstallata(){
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+}
+if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); _promptInstalla = e; });
+window.addEventListener('appinstalled', ()=>{ _promptInstalla = null; const n=document.getElementById('navInstalla'); if(n) n.style.display='none'; });
+document.addEventListener('DOMContentLoaded', ()=>{
+  if(appInstallata()){ const n=document.getElementById('navInstalla'); if(n) n.style.display='none'; }
+});
+async function installaOra(){
+  if(!_promptInstalla) return;
+  _promptInstalla.prompt();
+  try{ await _promptInstalla.userChoice; }catch(e){}
+  _promptInstalla = null;
+  closeModal();
+}
+function mostraInstallaApp(){
+  if(typeof closeSidebar==='function') closeSidebar();
+  const ua = navigator.userAgent || '';
+  const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  const safariMac = !ios && /Macintosh/.test(ua) && /Safari/.test(ua) && !/Chrome|Chromium|Edg|Firefox/.test(ua);
+  let html = '';
+  if(appInstallata()){
+    html += '<div class="alert alert-success" style="margin-bottom:12px">✅ Stai già usando il gestionale come app installata.</div>';
+  } else if(_promptInstalla){
+    html += '<p style="margin-bottom:12px">Il gestionale si può installare su questo computer come un\'app: si apre in una finestra sua, con l\'icona nel menu Start / nel Dock.</p>'
+         +  '<button class="btn btn-primary" onclick="installaOra()">📲 Installa adesso</button>';
+  } else if(ios){
+    html += '<div class="alert alert-info" style="margin-bottom:12px">Su iPhone/iPad l\'app si installa da <strong>Safari</strong>.</div>';
+  } else if(safariMac){
+    html += '<div class="alert alert-info" style="margin-bottom:12px">Su Mac con Safari: menu <strong>File → Aggiungi al Dock…</strong></div>';
+  }
+  html += '<h3 style="margin:16px 0 6px">Come si installa</h3><ul style="margin-left:18px;line-height:1.7">'
+       +  '<li><strong>iPhone / iPad</strong>: aprire il gestionale in <strong>Safari</strong> → pulsante <strong>Condividi</strong> (il quadrato con la freccia) → <strong>Aggiungi alla schermata Home</strong> → Aggiungi.</li>'
+       +  '<li><strong>Mac</strong>: in <strong>Safari</strong> menu <strong>File → Aggiungi al Dock…</strong>; oppure in Chrome/Edge l\'icona di installazione a destra nella barra dell\'indirizzo.</li>'
+       +  '<li><strong>Windows</strong>: in <strong>Edge</strong> o <strong>Chrome</strong> l\'icona di installazione a destra nella barra dell\'indirizzo (oppure menu ⋯ → App → Installa).</li>'
+       +  '</ul>'
+       +  '<p style="margin-top:12px;font-size:12px;color:var(--muted)">L\'app usa gli stessi dati di sempre e si aggiorna da sola: la versione si controlla come ora in alto a destra. La prima volta va fatto di nuovo l\'accesso con email e password. Serve la connessione a Internet.</p>';
+  openModal('📲 Installa il gestionale come app', html);
+}
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';

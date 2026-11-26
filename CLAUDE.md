@@ -210,6 +210,17 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
 - Conteggio giorni contrattuali: sospensioni, riprese, proroghe (una proroga
   non sospende i lavori).
 
+### App installabile (PWA)
+- `manifest.webmanifest`, `sw.js` e `icons/` nella radice (pubblicati con
+  Pages). Il service worker usa PRIMA LA RETE (ogni versione arriva subito),
+  la copia salvata solo senza connessione; non tocca Supabase né altri siti.
+  Se si aggiungono file locali da tenere offline, metterli in `FILE_BASE`.
+- Menu Sistema → «📲 Installa app» (`mostraInstallaApp`): pulsante
+  «Installa adesso» su Chrome/Edge (`beforeinstallprompt`), istruzioni per
+  iPhone/iPad (Safari → Condividi → Aggiungi alla schermata Home), Mac
+  (Safari → File → Aggiungi al Dock) e Windows. Voce nascosta se l'app è già
+  installata (`appInstallata()`).
+
 ### Copia di sicurezza (menu Sistema → 💾 Copia di sicurezza, solo DL)
 - Scarica `gestione-cantieri-copia-AAAA-MM-GG.json` con tutte le tabelle dei
   cantieri di cui l'utente è DL (+ profili, solo consultazione). «!» rosso e
