@@ -294,7 +294,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.27h';
+const APP_VERSIONE = '2026.11.27i';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -852,6 +852,8 @@ function limiteCategoria(cat, c){
 function incidenzaManodopera(cat){ const x=parseFloat(cat && cat.inc_mano); return isNaN(x) ? null : x; }
 // Manodopera minima di un subappalto (art. 119, c. 12: senza ribasso):
 // importo di ogni categoria della ditta, tolta la quota di oneri della
+// sicurezza SPECIALI (gli unici non ribassati; la sicurezza inclusa nei prezzi
+// resta e si riporta al lordo come il resto) — campo oneri_sicurezza_subappalto —
 // sicurezza, riportato al lordo del ribasso e moltiplicato per l'incidenza
 // della manodopera della categoria nel progetto.
 function manodoperaMinimaDitta(d, c){
@@ -872,11 +874,11 @@ function manodoperaMinimaDitta(d, c){
     return {categoria:x.categoria, lordo, inc, mano};
   });
   if(mancano.length===cd.length) return null;
-  return {minima, righe, mancano, ribasso:r};
+  return {minima, righe, mancano, ribasso:r, oneri};
 }
 function testoManodoperaMinima(m){
   if(!m) return '';
-  return m.righe.filter(x=>x.inc!=null).map(x=>`${x.categoria}: ${fmtEur(x.lordo)} al lordo × ${x.inc}% = ${fmtEur(x.mano)}`).join(' · ');
+  return m.righe.filter(x=>x.inc!=null).map(x=>`${x.categoria}: ${fmtEur(x.lordo)} al lordo × ${x.inc}% = ${fmtEur(x.mano)}`).join(' · ') + (m.oneri>0?` (tolti ${fmtEur(m.oneri)} di oneri della sicurezza speciali)`:'');
 }
 function limiteComplessivoSub(c){
   const p = parseFloat(c && c.subappalto_limite_perc);
@@ -984,7 +986,7 @@ function tabellaLimitiSubHtml(c, ditte, perDitta){
     <div style="padding:12px 16px;font-weight:700;color:var(--primary)">Limiti del subappalto da contratto</div>
     <table><thead><tr><th>Categoria</th><th style="text-align:right">Importo lordo</th><th style="text-align:right">Importo contrattuale (netto)</th><th style="text-align:right">Incidenza manodopera</th><th style="text-align:right">Limite</th><th style="text-align:right">Autorizzato</th><th style="text-align:right">Manodopera registrata</th><th style="text-align:right">Residuo</th></tr></thead>
     <tbody>${righe}${tot}</tbody></table>
-    <div style="padding:8px 16px;font-size:11px;color:var(--muted)">Importo lordo = computo di progetto/variante senza oneri della sicurezza; importo contrattuale = lordo al netto del ribasso del ${(ribassoCantiere(c)*100).toLocaleString('it-IT')}%. Il limite si applica all'importo contrattuale, omogeneo con gli importi dei subappalti. Contano le sole ditte subappaltatrici (i subaffidamenti no). Manodopera registrata = ore del giornale × costo orario del livello, senza ribasso (art. 119, c. 12, d.lgs. 36/2023).</div>
+    <div style="padding:8px 16px;font-size:11px;color:var(--muted)">Importo lordo = computo di progetto/variante prima del ribasso (compresa la sicurezza inclusa nei prezzi, esclusi gli oneri della sicurezza speciali); importo contrattuale = lordo al netto del ribasso del ${(ribassoCantiere(c)*100).toLocaleString('it-IT')}%. Il limite si applica all'importo contrattuale, omogeneo con gli importi dei subappalti. Contano le sole ditte subappaltatrici (i subaffidamenti no). Manodopera registrata = ore del giornale × costo orario del livello, senza ribasso (art. 119, c. 12, d.lgs. 36/2023).</div>
   </div>`;
 }
 
@@ -1116,7 +1118,7 @@ async function stampaReportSubappalto(dittaId){
     h += `<table style="width:100%;border-collapse:collapse;font-size:11px;margin:8px 0">
       <tr><td style="${td};width:40%"><strong>Importo del ${tipoL} comunicato</strong></td><td style="${td}">${importo?fmtEur(importo):'<em>non indicato</em>'}</td></tr>
       ${d.manodopera_subappalto?`<tr><td style="${td}"><strong>di cui costi della manodopera dichiarati</strong></td><td style="${td}">${fmtEur(d.manodopera_subappalto)} &mdash; da corrispondere senza ribasso (art. 119, c. 12, d.lgs. 36/2023)${totCosto?` &mdash; manodopera registrata pari al <strong>${Math.round(totCosto/d.manodopera_subappalto*100)}%</strong>`:''}</td></tr>`:''}
-      ${d.oneri_sicurezza_subappalto?`<tr><td style="${td}"><strong>di cui costi della sicurezza</strong></td><td style="${td}">${fmtEur(d.oneri_sicurezza_subappalto)}</td></tr>`:''}
+      ${d.oneri_sicurezza_subappalto?`<tr><td style="${td}"><strong>di cui oneri della sicurezza speciali (non ribassati)</strong></td><td style="${td}">${fmtEur(d.oneri_sicurezza_subappalto)}</td></tr>`:''}
       ${(()=>{ const mm=d.tipo==='subappaltatrice'?manodoperaMinimaDitta(d,c):null; if(!mm) return '';
         const sotto = d.manodopera_subappalto && d.manodopera_subappalto < mm.minima-1;
         return `<tr><td style="${td}"><strong>Manodopera minima di progetto</strong></td><td style="${td}"><strong>${fmtEur(mm.minima)}</strong> &mdash; importo riportato al lordo del ribasso (${(mm.ribasso*100).toLocaleString('it-IT')}%) × incidenza della manodopera della categoria (${esc(testoManodoperaMinima(mm))})${sotto?` &mdash; <strong style="color:#B02A37">la manodopera dichiarata è inferiore di ${fmtEur(mm.minima-d.manodopera_subappalto)}</strong>`:''}</td></tr>`; })()}
@@ -1200,9 +1202,9 @@ function dittaSubCampiHtml(prefix, d){
         <div class="form-group"><label class="form-label">di cui costi della manodopera (€)</label>
           <input class="form-control" type="number" step="0.01" id="${prefix}_mano_sub" value="${d.manodopera_subappalto!=null?cseA(d.manodopera_subappalto):''}" oninput="aggiornaManodoperaMinima('${prefix}')">
           <div class="form-hint">Dichiarati nella richiesta: vanno corrisposti al subappaltatore senza ribasso (art. 119, c. 12)</div></div>
-        <div class="form-group"><label class="form-label">di cui costi della sicurezza (€)</label>
+        <div class="form-group"><label class="form-label">di cui oneri della sicurezza speciali (€)</label>
           <input class="form-control" type="number" step="0.01" id="${prefix}_sic_sub" value="${d.oneri_sicurezza_subappalto!=null?cseA(d.oneri_sicurezza_subappalto):''}" oninput="aggiornaManodoperaMinima('${prefix}')">
-          <div class="form-hint">Senza ribasso (art. 119, c. 12)</div></div>
+          <div class="form-hint">Solo la quota degli oneri stimati a parte (PSC), non soggetti a ribasso. <strong>Non</strong> indicare qui la sicurezza compresa nei prezzi delle lavorazioni (è soggetta a ribasso)</div></div>
         <div class="form-group span-2" id="${prefix}_mano_min" style="margin-top:-6px"></div>
         <div class="form-group span-2" id="${prefix}_cat_box" style="display:${d.tipo==='subaffidataria'?'none':'block'}">${dittaCategoriaHtml(prefix, d)}</div>
       </div>
@@ -1322,7 +1324,7 @@ function dittaSubDati(prefix, tipo){
   const impTot = cats.length ? totCat : imp;
   const numOpz = id => { const v=(document.getElementById(prefix+'_'+id)?.value||'').trim(); const x=parseFloat(v); return v===''||isNaN(x)?null:x; };
   const mano = numOpz('mano_sub'), sic = numOpz('sic_sub');
-  if((mano||0)+(sic||0) > impTot+0.005){ alert('Costi della manodopera e della sicurezza superano l\'importo del subappalto: controlla i valori.'); return null; }
+  if((mano||0)+(sic||0) > impTot+0.005){ alert('Costi della manodopera e oneri della sicurezza speciali superano l\'importo del subappalto: controlla i valori.'); return null; }
   return {importo_affidato: impTot, lavorazioni_affidate:lav, manodopera_subappalto:mano, oneri_sicurezza_subappalto:sic,
     estremi_autorizzazione:(document.getElementById(prefix+'_estremi_aut')?.value||'').trim()||null,
     categoria_subappalto: cats.length ? cats.map(x=>x.categoria).join(', ') : null,
@@ -1384,7 +1386,7 @@ function subCatRigaHtml(prefix, x){
   return `<div class="subcat-row" style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">
     <label style="flex:1 1 100%;min-width:0;font-size:11px">Categoria<select class="form-control sc-cat" style="width:100%;max-width:100%" onchange="sceltaCategoriaSoa(this,'${prefix}')">${opzioniCategorieSoa(x.categoria)}</select></label>
     <label style="flex:3 1 180px;font-size:11px">Descrizione<input class="form-control sc-desc" value="${v('descrizione')}" placeholder="Edifici civili e industriali"></label>
-    <label style="flex:2 1 130px;font-size:11px"><strong>Importo LORDO</strong> senza sicurezza (€)<input class="form-control sc-imp" type="number" step="0.01" value="${v('importo')}" title="Dal computo di progetto o di variante, senza oneri della sicurezza" oninput="aggiornaLimitiSub('${prefix}')"></label>
+    <label style="flex:2 1 130px;font-size:11px"><strong>Importo LORDO</strong> (€)<input class="form-control sc-imp" type="number" step="0.01" value="${v('importo')}" title="Dal computo di progetto o di variante, prima del ribasso: comprende la sicurezza inclusa nei prezzi, non gli oneri della sicurezza speciali" oninput="aggiornaLimitiSub('${prefix}')"></label>
     <label style="flex:1 1 90px;font-size:11px">% subappaltabile<input class="form-control sc-perc" type="number" step="0.01" min="0" max="100" value="${v('perc')}" placeholder="0 = no" oninput="aggiornaLimitiSub('${prefix}')"></label>
     <label style="flex:1 1 110px;font-size:11px"><strong>% incidenza manodopera</strong> *<input class="form-control sc-inc" type="number" step="0.01" min="0" max="100" value="${v('inc_mano')}" placeholder="es. 29" title="Dalla stima di incidenza della manodopera del progetto (riepilogo per categorie)" oninput="aggiornaLimitiSub('${prefix}')"></label>
     <div class="sc-lim" style="flex:1 1 110px;font-size:11px;padding-bottom:8px;color:var(--muted)"></div>
@@ -1415,19 +1417,19 @@ function limitiSubCampiHtml(prefix, c){
       <div class="alert alert-info" style="font-size:12px;margin:6px 0 10px;line-height:1.55">
         <strong>Come compilare</strong>
         <ol style="margin:4px 0 0 18px;padding:0">
-          <li>Per ogni categoria inserisci l'<strong>importo LORDO</strong>, cioè quello del computo di progetto o di variante <strong>prima del ribasso</strong> e <strong>SENZA gli oneri della sicurezza</strong>.</li>
+          <li>Per ogni categoria inserisci l'<strong>importo LORDO</strong>, cioè quello del computo di progetto o di variante <strong>prima del ribasso</strong>. Comprende la <strong>sicurezza inclusa nei prezzi</strong> delle lavorazioni, che <strong>è soggetta a ribasso</strong>; <strong>non comprende gli oneri della sicurezza speciali</strong> (a parte, punto 3).</li>
           <li>Per ogni categoria inserisci la <strong>% di incidenza della manodopera</strong> (obbligatoria): la trovi nella stima di incidenza della manodopera del progetto, riepilogo per categorie.</li>
-          <li>Inserisci a parte gli <strong>oneri della sicurezza</strong>, che <strong>non sono soggetti a ribasso</strong>, e il <strong>ribasso offerto</strong>.</li>
-          <li>Gli <strong>importi netti</strong> (contrattuali) li calcola l'app: lordo × (1 − ribasso). Su questi si applicano i limiti dei subappalti; con lordo e incidenza si calcola la manodopera minima di ogni subappalto (art. 119, c. 12).</li>
+          <li>Inserisci a parte gli <strong>oneri della sicurezza speciali</strong> (stimati a parte, PSC), gli <strong>unici non soggetti a ribasso</strong>, e il <strong>ribasso offerto</strong>.</li>
+          <li>Gli <strong>importi netti</strong> (contrattuali) li calcola l'app: lordo × (1 − ribasso), ribassando anche la sicurezza inclusa nei prezzi; gli oneri speciali restano interi e si sommano solo al totale del contratto. Su questi si applicano i limiti dei subappalti; con lordo e incidenza si calcola la manodopera minima di ogni subappalto (art. 119, c. 12).</li>
         </ol>
       </div>
       <div class="form-grid" style="margin-bottom:8px">
         <div class="form-group"><label class="form-label">Ribasso offerto (%) *</label>
           <input class="form-control" type="number" step="0.001" id="${prefix}_sub_ribasso" value="${c.ribasso_percentuale!=null?cseA(c.ribasso_percentuale):''}" placeholder="Es. 19.452" oninput="syncCampoSub('${prefix}','ribasso',this.value)">
           <div class="form-hint">Si applica solo agli importi lordi dei lavori</div></div>
-        <div class="form-group"><label class="form-label">Oneri della sicurezza (€) * — non soggetti a ribasso</label>
+        <div class="form-group"><label class="form-label">Oneri della sicurezza speciali (€) * — non soggetti a ribasso</label>
           <input class="form-control" type="number" step="0.01" id="${prefix}_sub_oneri" value="${c.oneri_sicurezza!=null?cseA(c.oneri_sicurezza):''}" placeholder="Es. 30210.66" oninput="syncCampoSub('${prefix}','oneri',this.value)">
-          <div class="form-hint" id="${prefix}_sub_oneri_info">Da contratto. Restano a parte: non entrano negli importi delle categorie</div></div>
+          <div class="form-hint" id="${prefix}_sub_oneri_info">Da contratto. Solo gli oneri stimati a parte (PSC): la sicurezza inclusa nei prezzi resta nelle categorie</div></div>
       </div>
       <div id="${prefix}_subcat_box" data-cantiere="${cseA(c.id||'')}">${cats.map(x=>subCatRigaHtml(prefix,x)).join('')}</div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiSubCat('${prefix}')">+ Categoria</button>
@@ -1465,8 +1467,8 @@ function aggiornaLimitiSub(prefix){
   const cidO=document.getElementById(prefix+'_subcat_box')?.dataset.cantiere;
   const oi=document.getElementById(prefix+'_sub_oneri_info');
   if(oi) oi.innerHTML = (cidO && ONERI_VIGENTI[cidO]!=null)
-    ? 'Da contratto. Con le varianti gli oneri vigenti sono <strong>'+fmtEur(ONERI_VIGENTI[cidO])+'</strong> (usati nel controllo). Restano a parte: non entrano nelle categorie'
-    : 'Da contratto. Restano a parte: non entrano negli importi delle categorie';
+    ? 'Da contratto. Con le varianti gli oneri speciali vigenti sono <strong>'+fmtEur(ONERI_VIGENTI[cidO])+'</strong> (usati nel controllo). La sicurezza inclusa nei prezzi resta nelle categorie'
+    : 'Da contratto. Solo gli oneri stimati a parte (PSC): la sicurezza inclusa nei prezzi resta nelle categorie';
   document.querySelectorAll('#'+prefix+'_subcat_box .subcat-row').forEach(r=>{
     const imp=parseFloat(r.querySelector('.sc-imp').value), p=parseFloat(r.querySelector('.sc-perc').value);
     const out=r.querySelector('.sc-lim');
