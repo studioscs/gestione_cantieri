@@ -148,8 +148,9 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   subappaltano lavori relativi agli oneri speciali (spunta nel modulo): si
   tolgono prima di riportare al lordo.
   `manodoperaMinimaDitta(d,c)` = Σ (importo categoria − quota oneri speciali) /
-  (1−ribasso) × incidenza: se la dichiarata è inferiore → segnalazione grave
-  (ribasso applicato alla manodopera). Anche la manodopera registrata nel
+  (1−ribasso) × incidenza: se la dichiarata è inferiore o superiore → solo
+  avviso GIALLO «da verificare con la manodopera indicata in appalto» (scelta
+  dell'utente: non è grave, il DL verifica con l'appalto). Anche la manodopera registrata nel
   giornale si confronta con la dichiarata. I costi orari del cantiere non
   vanno ribassati. Verifica al
   salvataggio della ditta (`verificaLimiteSubAlSalvataggio`, «Salva

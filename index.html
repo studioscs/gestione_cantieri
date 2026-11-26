@@ -294,7 +294,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.27j';
+const APP_VERSIONE = '2026.11.27k';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -1035,9 +1035,14 @@ function controlloSubappalti(c, ditte, giornale){
     r.manodoperaMinima = mMin;
     if(d.tipo==='subappaltatrice' && importo>0 && !manDich)
       out.problemi.push({livello:'avviso', ditta:d, testo:'indicare i costi della manodopera compresi nel subappalto (art. 119, c. 12, d.lgs. 36/2023: vanno corrisposti al subappaltatore senza ribasso)'+(mMin?` — manodopera minima di progetto ${fmtEur(mMin.minima)}`:'')});
+    // Solo un avviso (giallo): il DL verifica poi la manodopera con quella
+    // indicata nell'appalto
     if(mMin && manDich>0 && manDich < mMin.minima-1)
-      out.problemi.push({livello:'grave', ditta:d,
-        testo:`manodopera dichiarata ${fmtEur(manDich)} inferiore alla manodopera di progetto ${fmtEur(mMin.minima)} (${testoManodoperaMinima(mMin)}): mancano ${fmtEur(mMin.minima-manDich)}, il ribasso sembra applicato anche alla manodopera (art. 119, c. 12, d.lgs. 36/2023)`});
+      out.problemi.push({livello:'avviso', ditta:d,
+        testo:`manodopera dichiarata ${fmtEur(manDich)} inferiore di ${fmtEur(mMin.minima-manDich)} a quella calcolata dal progetto ${fmtEur(mMin.minima)} (${testoManodoperaMinima(mMin)}): da verificare con la manodopera indicata in appalto (art. 119, c. 12, d.lgs. 36/2023)`});
+    else if(mMin && manDich>0 && manDich > mMin.minima+1)
+      out.problemi.push({livello:'avviso', ditta:d,
+        testo:`manodopera dichiarata ${fmtEur(manDich)} superiore di ${fmtEur(manDich-mMin.minima)} a quella calcolata dal progetto ${fmtEur(mMin.minima)}: da verificare con la manodopera indicata in appalto`});
     if(mMin && mMin.mancano.length)
       out.problemi.push({livello:'avviso', ditta:d, testo:`manca l'incidenza della manodopera per ${mMin.mancano.join(', ')} nella scheda del cantiere: la manodopera minima è calcolata solo in parte`});
     if(manDich>0 && costi && r.costo>manDich){
@@ -1121,8 +1126,9 @@ async function stampaReportSubappalto(dittaId){
       ${d.sicurezza_inclusa_subappalto?`<tr><td style="${td}"><strong>di cui sicurezza compresa nei prezzi</strong></td><td style="${td}">${fmtEur(d.sicurezza_inclusa_subappalto)} &mdash; soggetta a ribasso con le lavorazioni</td></tr>`:''}
       ${d.oneri_sicurezza_subappalto?`<tr><td style="${td}"><strong>di cui lavori relativi agli oneri della sicurezza speciali (non ribassati)</strong></td><td style="${td}">${fmtEur(d.oneri_sicurezza_subappalto)}</td></tr>`:''}
       ${(()=>{ const mm=d.tipo==='subappaltatrice'?manodoperaMinimaDitta(d,c):null; if(!mm) return '';
-        const sotto = d.manodopera_subappalto && d.manodopera_subappalto < mm.minima-1;
-        return `<tr><td style="${td}"><strong>Manodopera minima di progetto</strong></td><td style="${td}"><strong>${fmtEur(mm.minima)}</strong> &mdash; importo riportato al lordo del ribasso (${(mm.ribasso*100).toLocaleString('it-IT')}%) × incidenza della manodopera della categoria (${esc(testoManodoperaMinima(mm))})${sotto?` &mdash; <strong style="color:#B02A37">la manodopera dichiarata è inferiore di ${fmtEur(mm.minima-d.manodopera_subappalto)}</strong>`:''}</td></tr>`; })()}
+        const dd = d.manodopera_subappalto ? d.manodopera_subappalto - mm.minima : 0;
+        const diff = Math.abs(dd)>1 ? ` &mdash; <strong style="color:#9A6700">la manodopera dichiarata è ${dd<0?'inferiore':'superiore'} di ${fmtEur(Math.abs(dd))}: da verificare con la manodopera indicata in appalto</strong>` : '';
+        return `<tr><td style="${td}"><strong>Manodopera calcolata dal progetto</strong></td><td style="${td}"><strong>${fmtEur(mm.minima)}</strong> &mdash; importo riportato al lordo del ribasso (${(mm.ribasso*100).toLocaleString('it-IT')}%) × incidenza della manodopera della categoria (${esc(testoManodoperaMinima(mm))})${diff}</td></tr>`; })()}
       <tr><td style="${td}"><strong>Estremi autorizzazione / comunicazione</strong></td><td style="${td}">${esc(d.estremi_autorizzazione||'—')}</td></tr>
       <tr><td style="${td}"><strong>Lavorazioni comunicate</strong></td><td style="${td}">${righeLavorazioni(d.lavorazioni_affidate).map(esc).join('; ')||'<em>non indicate</em>'}</td></tr>
       <tr><td style="${td}"><strong>Giornate di presenza registrate</strong></td><td style="${td}">${new Set(righe.map(r=>r.data)).size}${righe.length?' (dal '+fmt(righe[0].data)+' al '+fmt(righe[righe.length-1].data)+')':''}</td></tr>
@@ -1294,10 +1300,10 @@ function aggiornaManodoperaMinima(prefix){
   const m = tipo==='subappaltatrice' && cats.length ? manodoperaMinimaDitta({subappalto_categorie:cats, oneri_sicurezza_subappalto:sic}, getCantiereObj()) : null;
   if(!m){ box.innerHTML=''; return; }
   const dich = parseFloat(document.getElementById(prefix+'_mano_sub')?.value)||0;
-  const sotto = dich>0 && dich < m.minima-1;
-  box.innerHTML = `<div class="alert ${sotto?'alert-error':'alert-info'}" style="font-size:12px;margin:6px 0 0">
-    <strong>Manodopera minima di progetto: ${fmtEur(m.minima)}</strong> — importo riportato al lordo del ribasso (${(m.ribasso*100).toLocaleString('it-IT')}%) × incidenza della categoria: ${esc(testoManodoperaMinima(m))}${m.mancano.length?` <em>(manca l'incidenza per ${esc(m.mancano.join(', '))})</em>`:''}
-    ${sotto?`<br><strong>La manodopera dichiarata (${fmtEur(dich)}) è inferiore di ${fmtEur(m.minima-dich)}</strong>: il ribasso non si applica alla manodopera (art. 119, c. 12).`:dich>0?'<br>La manodopera dichiarata copre quella di progetto.':''}
+  const dd = dich>0 ? dich - m.minima : 0, diverso = Math.abs(dd)>1;
+  box.innerHTML = `<div class="alert ${diverso?'alert-warning':'alert-info'}" style="font-size:12px;margin:6px 0 0">
+    <strong>Manodopera calcolata dal progetto: ${fmtEur(m.minima)}</strong> — importo riportato al lordo del ribasso (${(m.ribasso*100).toLocaleString('it-IT')}%) × incidenza della categoria: ${esc(testoManodoperaMinima(m))}${m.mancano.length?` <em>(manca l'incidenza per ${esc(m.mancano.join(', '))})</em>`:''}
+    ${diverso?`<br><strong>La manodopera dichiarata (${fmtEur(dich)}) è ${dd<0?'inferiore':'superiore'} di ${fmtEur(Math.abs(dd))}</strong>: da verificare con la manodopera indicata in appalto (art. 119, c. 12).`:dich>0?'<br>La manodopera dichiarata corrisponde a quella calcolata dal progetto.':''}
   </div>`;
 }
 function dittaSubToggle(prefix){
@@ -3362,7 +3368,8 @@ async function renderDitte(){
         return `<div>${categorieDitta(d).map(x=>`<span class="badge badge-blue" style="margin-right:4px" title="${cseA(descrCategoriaSoa(x.categoria))}">${esc(x.categoria)}${categorieDitta(d).length>1?' '+fmtEur(x.importo):''}</span>`).join('')}<strong>${d.importo_affidato?fmtEur(d.importo_affidato):'<span style="color:var(--red)">importo mancante</span>'}</strong>${d.estremi_autorizzazione?` <span style="color:var(--muted)">— ${esc(d.estremi_autorizzazione)}</span>`:''}</div>
           <div style="color:var(--muted)">${righeLavorazioni(d.lavorazioni_affidate).map(esc).join(' · ')||'<span style="color:var(--red)">lavorazioni non indicate</span>'}</div>
           ${d.manodopera_subappalto?`<div style="color:var(--muted)">di cui manodopera dichiarata ${fmtEur(d.manodopera_subappalto)}${d.sicurezza_inclusa_subappalto?' · sicurezza nei prezzi '+fmtEur(d.sicurezza_inclusa_subappalto):''}${d.oneri_sicurezza_subappalto?' · oneri sicurezza speciali '+fmtEur(d.oneri_sicurezza_subappalto):''}</div>`:''}
-          ${r&&r.manodoperaMinima?`<div style="color:${d.manodopera_subappalto&&d.manodopera_subappalto<r.manodoperaMinima.minima-1?'var(--red)':'var(--muted)'};${d.manodopera_subappalto&&d.manodopera_subappalto<r.manodoperaMinima.minima-1?'font-weight:600':''}">manodopera minima di progetto ${fmtEur(r.manodoperaMinima.minima)}${d.manodopera_subappalto&&d.manodopera_subappalto<r.manodoperaMinima.minima-1?' — dichiarata inferiore di '+fmtEur(r.manodoperaMinima.minima-d.manodopera_subappalto):''}</div>`:''}
+          ${r&&r.manodoperaMinima?(()=>{ const dd=d.manodopera_subappalto?d.manodopera_subappalto-r.manodoperaMinima.minima:0, dv=Math.abs(dd)>1;
+            return `<div style="color:${dv?'#9A6700':'var(--muted)'};${dv?'font-weight:600':''}">manodopera calcolata dal progetto ${fmtEur(r.manodoperaMinima.minima)}${dv?' — dichiarata '+(dd<0?'inferiore':'superiore')+' di '+fmtEur(Math.abs(dd))+' (da verificare)':''}</div>`; })():''}
           ${r&&r.presenze?`<div style="color:${col};font-weight:600;margin-top:2px">Manodopera registrata: ${fmtEur(r.costo)} (${Math.round(r.ore)} h)${perc!=null?' — '+Math.round(perc*100)+'% dell\'importo':''}${d.manodopera_subappalto?' — '+Math.round(r.costo/d.manodopera_subappalto*100)+'% della manodopera dichiarata':''}</div>`:''}
           ${r&&r.notaLivello?`<div style="color:var(--muted);font-size:10px">${esc(r.notaLivello)}</div>`:''}
           ${r&&r.presenze?`<button class="btn btn-secondary btn-sm" style="margin-top:4px;font-size:11px;padding:2px 8px" onclick="stampaReportSubappalto('${d.id}')">🖨️ Report ore</button>`:''}`;
