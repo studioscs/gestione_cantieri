@@ -132,9 +132,16 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   contrattuali; si inserisce nella scheda della ditta), `manodoperaAvanzamento
   (d,c)` = importo/(1−ribasso) × incidenza; ore registrate fino alla data del
   SAL a confronto. Se superano (oltre `SOGLIA_AVZ_MOLTO` = 120%: «di molto»)
-  il report elenca le tre spiegazioni con i riscontri: 1) lavorazioni non
-  autorizzate (da escludere per prima), 2) manodopera dichiarata bassa,
-  3) bassa produttività (non riguarda la DL).
+  il report contiene una **«Richiesta di chiarimenti»** all'impresa (testo da
+  inviare, niente commenti interni): a) minore produttività per
+  l'organizzazione aziendale; b) costi della manodopera del subappalto o del
+  contratto inferiori a quelli reali → motivazioni e nuova incidenza;
+  c) lavorazioni non autorizzate → chiarire ed eventualmente nuova richiesta
+  di subappalto. Seguono gli «Elementi rilevati dalla DL» (lavorazioni non
+  autorizzate, presenze senza lavorazione, manodopera dichiarata/calcolata).
+  Presenze di ditte sub senza «lavorazione svolta» (campo nato il 26/11/2026):
+  avviso + pulsante «🧩 Completa lavorazioni» (`completaLavorazioniMancanti`)
+  che scrive una lavorazione autorizzata in tutte le presenze vuote.
 - Subappalti: limiti concessi a contratto nella scheda del cantiere
   (`cantieri.subappalto_categorie` jsonb `[{categoria, descrizione, importo,
   perc}]`, perc 0 = non subappaltabile; `subappalto_limite_perc` = limite

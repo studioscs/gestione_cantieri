@@ -294,7 +294,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.28c';
+const APP_VERSIONE = '2026.11.28d';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -1081,6 +1081,7 @@ function controlloSubappalti(c, ditte, giornale){
         r.ore += num*ore;
         r.costo += num*ore*costoOrarioLivello(c, m.livello||'comune');
         if(m.lavorazione && !lavorazioneAutorizzata(m.lavorazione, d)) r.lavFuori.push({data:g.data, lav:m.lavorazione});
+        if(!String(m.lavorazione||'').trim()) r.senzaLav = (r.senzaLav||0) + 1;
       });
     });
     const importo = parseFloat(d.importo_affidato)||0;
@@ -1088,6 +1089,9 @@ function controlloSubappalti(c, ditte, giornale){
     r.perc = importo>0 ? r.costo/importo : null;
     out.perDitta[d.id] = r;
     const tipoL = d.tipo==='subaffidataria' ? 'subaffidamento' : 'subappalto';
+    if(r.senzaLav) out.problemi.push({livello:'avviso', ditta:d,
+      testo:`${r.senzaLav} ${r.senzaLav===1?'presenza registrata':'presenze registrate'} nel giornale senza la lavorazione svolta: senza questo dato non si può verificare che la ditta esegua solo le lavorazioni autorizzate`,
+      azione:{tipo:'completa_lav', dittaId:d.id, n:r.senzaLav}});
     if(!importo || !righeLavorazioni(d.lavorazioni_affidate).length){
       out.problemi.push({livello:'avviso', ditta:d, testo:`dati del ${tipoL} incompleti: indicare ${[!importo?'importo':'', !righeLavorazioni(d.lavorazioni_affidate).length?'lavorazioni autorizzate':''].filter(Boolean).join(' e ')}`});
     }
@@ -1151,10 +1155,53 @@ function boxSubappaltiHtml(esito, conLink){
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
       ${[...new Map(esito.problemi.filter(p=>p.ditta && (p.livello==='grave'||/costo della manodopera/.test(p.testo))).map(p=>[p.ditta.id,p.ditta])).values()]
         .map(d=>`<button class="btn btn-secondary btn-sm" onclick="stampaReportSubappalto('${d.id}')">🖨️ Report ore ${esc(d.nome)}</button>`).join('')}
+      ${can('write') ? esito.problemi.filter(p=>p.azione && p.azione.tipo==='completa_lav').map(p=>`<button class="btn btn-secondary btn-sm" onclick="completaLavorazioniMancanti('${p.azione.dittaId}')">🧩 Completa lavorazioni ${esc(p.ditta.nome)} (${p.azione.n})</button>`).join('') : ''}
       ${can('write') ? esito.problemi.filter(p=>p.azione && p.azione.tipo==='compila_mano').map(p=>`<button class="btn btn-primary btn-sm" onclick="compilaManodoperaDaContratto('${p.azione.dittaId}', ${p.azione.valore})">✍️ Compila manodopera ${esc(p.ditta.nome)}: ${fmtEur(p.azione.valore)}</button>`).join('') : ''}
       ${conLink?`<button class="btn btn-secondary btn-sm" onclick="showView('ditte')">🏢 Vai alle ditte</button>`:''}
     </div>
   </div>`;
+}
+// Completa la «lavorazione svolta» nelle presenze di una ditta che ne sono
+// prive (registrazioni fatte prima che il campo esistesse o lasciate vuote):
+// si sceglie una delle lavorazioni autorizzate e si scrive in tutte.
+async function completaLavorazioniMancanti(dittaId){
+  const {data:d} = await sb.from('ditte').select('*').eq('id', dittaId).single();
+  if(!d) return;
+  const {data:giornale} = await sb.from('giornale_lavori').select('id,data,maestranze').eq('cantiere_id', d.cantiere_id).order('data');
+  const vuote = [];
+  (giornale||[]).forEach(g=>(g.maestranze||[]).forEach(m=>{ if(String(m.ditta_id||'')===String(d.id) && !String(m.lavorazione||'').trim()) vuote.push(g.data); }));
+  const lav = righeLavorazioni(d.lavorazioni_affidate);
+  if(!vuote.length){ openModal('Lavorazioni mancanti', '<div class="alert alert-success">Tutte le presenze della ditta riportano la lavorazione svolta.</div>'); return; }
+  openModal('Completa le lavorazioni mancanti — '+d.nome, `
+    <div class="alert alert-info" style="font-size:12px"><strong>${vuote.length}</strong> ${vuote.length===1?'presenza':'presenze'} della ditta nel giornale (dal ${fmt(vuote[0])} al ${fmt(vuote[vuote.length-1])}) non ${vuote.length===1?'riporta':'riportano'} la lavorazione svolta. Di solito sono registrazioni fatte prima che il campo esistesse.</div>
+    <div class="form-group"><label class="form-label">Lavorazione da inserire</label>
+      ${lav.length ? `<select class="form-control" id="cl_lav">${lav.map(x=>`<option value="${cseA(x)}">${esc(x)}</option>`).join('')}<option value="__altra">altra (scrivila sotto)…</option></select>` : ''}
+      <input class="form-control" id="cl_altra" style="margin-top:6px;${lav.length?'display:none':''}" placeholder="Lavorazione svolta">
+      <div class="form-hint">Lavorazioni autorizzate per la ditta: ${lav.length?lav.map(esc).join(' · '):'<em>non indicate nella scheda della ditta</em>'}. Se la ditta ha svolto lavorazioni diverse in giorni diversi, correggi poi le singole registrazioni dal giornale.</div></div>
+    <div id="cl_esito"></div>
+    <div class="form-actions"><button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn btn-primary" id="cl_btn" onclick="eseguiCompletaLavorazioni('${d.id}','${d.cantiere_id}')">Inserisci in ${vuote.length} ${vuote.length===1?'presenza':'presenze'}</button></div>`);
+  const sel=document.getElementById('cl_lav');
+  if(sel) sel.onchange=()=>{ document.getElementById('cl_altra').style.display = sel.value==='__altra'?'block':'none'; };
+}
+async function eseguiCompletaLavorazioni(dittaId, cantiereId){
+  const sel=document.getElementById('cl_lav');
+  const lav = (sel && sel.value!=='__altra') ? sel.value : (document.getElementById('cl_altra').value||'').trim();
+  if(!lav){ document.getElementById('cl_esito').innerHTML='<div class="alert alert-warning">Indica la lavorazione.</div>'; return; }
+  const btn=document.getElementById('cl_btn'); btn.disabled=true;
+  const {data:giornale} = await sb.from('giornale_lavori').select('id,data,maestranze').eq('cantiere_id', cantiereId);
+  let fatte=0, righe=0; const errori=[];
+  for(const g of (giornale||[])){
+    let cambiate=0;
+    const mae=(g.maestranze||[]).map(m=>{ if(String(m.ditta_id||'')===String(dittaId) && !String(m.lavorazione||'').trim()){ cambiate++; return {...m, lavorazione:lav}; } return m; });
+    if(!cambiate) continue;
+    const {data, error} = await sb.from('giornale_lavori').update({maestranze:mae}).eq('id', g.id).select('id');
+    if(error || !data || !data.length) errori.push(fmt(g.data)); else { fatte++; righe+=cambiate; }
+  }
+  document.getElementById('modalBody').innerHTML = (errori.length
+    ? `<div class="alert alert-warning">Inserita in ${righe} presenze (${fatte} giornate). Non è stato possibile aggiornare: ${errori.join(', ')}.</div>`
+    : `<div class="alert alert-success">✅ Lavorazione «${esc(lav)}» inserita in ${righe} presenze (${fatte} giornate del giornale).</div>`)
+    + `<div class="form-actions"><button class="btn btn-primary" onclick="closeModal();showView(document.querySelector('.nav-item.active')?.dataset.view||'ditte')">Chiudi</button></div>`;
 }
 // Compila la manodopera non dichiarata con quella calcolata dalle percentuali
 // di incidenza del contratto (scheda cantiere), segnandola come calcolata
@@ -1242,7 +1289,7 @@ async function stampaReportSubappalto(dittaId){
     h += `<p style="font-size:10px">Costi orari contrattuali del cantiere: ${LIVELLI_OPERAIO.filter(([k])=>costoOrarioLivello(c,k)>0).map(([k,l])=>l+' '+fmtEur(costoOrarioLivello(c,k))).join(', ')||'non indicati'}. Ore giornaliere di riferimento: ${n2(oreGg)}. Il costo considera la sola manodopera, esclusi materiali e noli; il personale di direzione di cantiere non è conteggiato.</p>`;
     // ---- Confronto per avanzamento: ore registrate fino al SAL contro la
     // manodopera di progetto delle quantita' eseguite dalla ditta ----
-    let rilievoAvz = '';
+    let rilievoAvz = '', richiestaFatta = false;
     if(d.tipo==='subappaltatrice'){
       const av = manodoperaAvanzamento(d, c);
       h += `<p style="margin-top:12px"><strong>Confronto per avanzamento</strong></p>`;
@@ -1271,22 +1318,21 @@ async function stampaReportSubappalto(dittaId){
           const costoFuori = fuoriAv.reduce((s,r)=>s+r.costo,0);
           const mMin = manodoperaMinimaDitta(d, c);
           const dich = parseFloat(d.manodopera_subappalto)||0;
-          h += `<p><strong>${rapp>SOGLIA_AVZ_MOLTO?'La manodopera registrata supera di molto':'La manodopera registrata supera'} quella di progetto delle quantità eseguite (${Math.round(rapp*100)}%).</strong> Le spiegazioni possibili, nell'ordine in cui vanno verificate, sono:</p><ol style="font-size:10.5px;margin:4px 0 8px 18px;padding:0">`;
-          h += `<li style="margin-bottom:4px"><strong>Lavorazioni non autorizzate</strong> (da escludere per prima): gli operai della ditta potrebbero eseguire anche lavorazioni non comprese nel subappalto (ad esempio opere edili di altre categorie). `
-            + (fuoriAv.length
-              ? `<strong style="color:#B02A37">Riscontro: ${fuoriAv.length} ${fuoriAv.length===1?'registrazione':'registrazioni'} con lavorazioni non comprese fra quelle comunicate (${esc(lavFuori.join('; '))}), per ${fmtEur(costoFuori)} di manodopera.</strong> Senza queste il rapporto scende al ${av.mano>0?Math.round((costoAv-costoFuori)/av.mano*100):'—'}%.`
-              : `Riscontro: nel giornale non risultano registrazioni con lavorazioni diverse da quelle comunicate; va comunque verificato in cantiere che le lavorazioni annotate corrispondano a quelle effettivamente svolte.`)
-            + `</li>`;
-          h += `<li style="margin-bottom:4px"><strong>Dichiarazione della manodopera bassa</strong>: i costi della manodopera dichiarati nella richiesta di subappalto potrebbero essere inferiori a quelli di progetto. `
-            + (d.manodopera_calcolata
-              ? `Riscontro: la ditta non ha dichiarato i costi della manodopera; è stato usato il valore calcolato da contratto (${fmtEur(dich)}). Da acquisire la dichiarazione della ditta.`
-              : mMin && dich
-              ? (dich < mMin.minima-1
-                  ? `<strong style="color:#9A6700">Riscontro: dichiarati ${fmtEur(dich)} contro ${fmtEur(mMin.minima)} calcolati dal progetto (inferiori di ${fmtEur(mMin.minima-dich)}).</strong> Da verificare con la manodopera indicata in appalto (art. 119, c. 12, d.lgs. 36/2023).`
-                  : `Riscontro: dichiarati ${fmtEur(dich)}, non inferiori ai ${fmtEur(mMin.minima)} calcolati dal progetto.`)
-              : `Riscontro non disponibile: ${dich?'manca il calcolo della manodopera di progetto (incidenze o categorie)':'costi della manodopera non dichiarati'}.`)
-            + `</li>`;
-          h += `<li><strong>Bassa produttività dell'impresa</strong>: a parità di lavorazioni, l'impresa impiega più ore di quelle stimate nel progetto. È un aspetto organizzativo dell'impresa, che non riguarda la Direzione Lavori ai fini della verifica dell'art. 119, c. 12.</li></ol>`;
+          richiestaFatta = true;
+          const senzaLavAv = regAv.filter(r=>!r.lav).length;
+          const impresa = app ? esc(app.nome) : 'appaltatrice';
+          // Richiesta di chiarimenti all'impresa (testo da inviare): tre ipotesi
+          h += `<p><strong>Richiesta di chiarimenti.</strong> La manodopera registrata${fino?' fino al '+fmt(fino):''} ${rapp>SOGLIA_AVZ_MOLTO?'supera di molto':'supera'} quella di progetto delle quantità eseguite (${Math.round(rapp*100)}%). Si chiede all'impresa appaltatrice <strong>${impresa}</strong> di chiarire se il maggiore impiego di manodopera della ditta <strong>${esc(d.nome)}</strong> sia dovuto:</p><ol type="a" style="font-size:10.5px;margin:4px 0 8px 18px;padding:0">`;
+          h += `<li style="margin-bottom:4px">a una <strong>minore produttività</strong> dipendente dall'organizzazione aziendale dell'impresa;</li>`;
+          h += `<li style="margin-bottom:4px">a <strong>costi della manodopera</strong> indicati nel contratto di subappalto o nel contratto d'appalto <strong>inferiori a quelli reali</strong>: in tal caso si chiede di fornire le motivazioni e il dettaglio della nuova incidenza della manodopera;</li>`;
+          h += `<li>all'esecuzione di <strong>lavorazioni non autorizzate</strong>, non comprese fra quelle del subappalto: in tal caso si chiede di chiarirne natura ed entità e, se del caso, di presentare nuova richiesta di autorizzazione al subappalto per le lavorazioni interessate (art. 119, d.lgs. 36/2023).</li></ol>`;
+          // elementi rilevati dalla DL, a supporto della richiesta
+          const elementi = [];
+          if(fuoriAv.length) elementi.push(`nel giornale dei lavori risultano ${fuoriAv.length} ${fuoriAv.length===1?'registrazione':'registrazioni'} con lavorazioni non comprese fra quelle autorizzate (${esc(lavFuori.join('; '))}), per ${fmtEur(costoFuori)} di manodopera; senza di esse il rapporto sarebbe del ${av.mano>0?Math.round((costoAv-costoFuori)/av.mano*100):'—'}%`);
+          if(senzaLavAv) elementi.push(`${senzaLavAv} ${senzaLavAv===1?'registrazione non riporta':'registrazioni non riportano'} la lavorazione svolta`);
+          if(d.manodopera_calcolata) elementi.push(`la ditta non ha dichiarato i costi della manodopera: è stato considerato il valore calcolato con le incidenze di contratto (${fmtEur(dich)})`);
+          else if(mMin && dich) elementi.push(`costi della manodopera dichiarati nel subappalto ${fmtEur(dich)}, manodopera calcolata con le incidenze di contratto ${fmtEur(mMin.minima)}`);
+          if(elementi.length) h += `<p style="font-size:10.5px"><strong>Elementi rilevati dalla Direzione Lavori:</strong> ${elementi.join('; ')}.</p>`;
         } else if(rapp!=null){
           h += `<p style="font-size:10.5px">La manodopera registrata è coerente con la manodopera di progetto delle quantità eseguite.</p>`;
         }
@@ -1300,7 +1346,7 @@ async function stampaReportSubappalto(dittaId){
     if(!importo) criticita.push(`l'importo del ${tipoL} non risulta comunicato alla Direzione Lavori`);
     if(criticita.length){
       h += `<p><strong>Rilievi.</strong> Dall'esame dei dati sopra riportati emerge che ${criticita.join('; ')}.</p>`;
-      h += `<p>Si chiede pertanto all'impresa appaltatrice${app?' <strong>'+esc(app.nome)+'</strong>':''} di fornire alla Direzione Lavori i necessari chiarimenti e, ove ne ricorrano i presupposti, la documentazione relativa all'eventuale variazione dell'importo o delle lavorazioni del ${tipoL}, ai sensi della normativa vigente in materia di subappalto.</p>`;
+      h += richiestaFatta ? `<p>Si resta in attesa dei chiarimenti sopra richiesti e, ove ne ricorrano i presupposti, della documentazione relativa all'eventuale variazione dell'importo o delle lavorazioni del subappalto, ai sensi della normativa vigente in materia di subappalto.</p>` : `<p>Si chiede pertanto all'impresa appaltatrice${app?' <strong>'+esc(app.nome)+'</strong>':''} di fornire alla Direzione Lavori i necessari chiarimenti e, ove ne ricorrano i presupposti, la documentazione relativa all'eventuale variazione dell'importo o delle lavorazioni del ${tipoL}, ai sensi della normativa vigente in materia di subappalto.</p>`;
     }
     const team = await getTeamRoster(d.cantiere_id);
     apriDocumentoFirmabile({
