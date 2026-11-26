@@ -133,11 +133,15 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   (d,c)` = importo/(1−ribasso) × incidenza; ore registrate fino alla data del
   SAL a confronto. Se superano (oltre `SOGLIA_AVZ_MOLTO` = 120%: «di molto»)
   il report contiene una **«Richiesta di chiarimenti»** all'impresa (testo da
-  inviare, niente commenti interni): a) minore produttività per
-  l'organizzazione aziendale; b) costi della manodopera del subappalto o del
-  contratto inferiori a quelli reali → motivazioni e nuova incidenza;
-  c) lavorazioni non autorizzate → chiarire ed eventualmente nuova richiesta
-  di subappalto. Seguono gli «Elementi rilevati dalla DL» (lavorazioni non
+  inviare, niente commenti interni) con SOLO due punti: a) costi della
+  manodopera del subappalto o del contratto inferiori a quelli reali →
+  motivazioni e nuova incidenza; b) lavorazioni non autorizzate → chiarire ed
+  eventualmente nuova richiesta di subappalto. La «minore produttività per
+  l'organizzazione aziendale» NON va nel report (scelta dell'utente: la ditta
+  potrebbe attribuirla alla DL): le tre cause (produttività, costi bassi,
+  lavorazioni non autorizzate) con i riscontri compaiono solo DENTRO il
+  gestionale, come avviso «nota interna» in `controlloSubappalti` (r.avanzamento)
+  e nella riga della ditta. Seguono gli «Elementi rilevati dalla DL» (lavorazioni non
   autorizzate, presenze senza lavorazione, manodopera dichiarata/calcolata).
   Presenze di ditte sub senza «lavorazione svolta» (campo nato il 26/11/2026):
   avviso + pulsante «🧩 Completa lavorazioni» (`completaLavorazioniMancanti`)

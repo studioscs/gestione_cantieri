@@ -294,7 +294,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.28d';
+const APP_VERSIONE = '2026.11.28e';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -1068,7 +1068,7 @@ function controlloSubappalti(c, ditte, giornale){
   if(!subs.length) return out;
   const costi = costiOrariImpostati(c);
   subs.forEach(d=>{
-    const r = {ditta:d, costo:0, ore:0, presenze:0, senzaLivello:0, lavFuori:[]};
+    const r = {ditta:d, costo:0, ore:0, presenze:0, senzaLivello:0, lavFuori:[], righeData:[]};
     (giornale||[]).forEach(g=>{
       (g.maestranze||[]).forEach(m=>{
         if(String(m.ditta_id||'')!==String(d.id)) return;
@@ -1082,6 +1082,8 @@ function controlloSubappalti(c, ditte, giornale){
         r.costo += num*ore*costoOrarioLivello(c, m.livello||'comune');
         if(m.lavorazione && !lavorazioneAutorizzata(m.lavorazione, d)) r.lavFuori.push({data:g.data, lav:m.lavorazione});
         if(!String(m.lavorazione||'').trim()) r.senzaLav = (r.senzaLav||0) + 1;
+        r.righeData.push({data:g.data, costo:num*ore*costoOrarioLivello(c, m.livello||'comune'),
+          fuori:!!m.lavorazione && !lavorazioneAutorizzata(m.lavorazione, d), senzaLav:!String(m.lavorazione||'').trim()});
       });
     });
     const importo = parseFloat(d.importo_affidato)||0;
@@ -1089,6 +1091,23 @@ function controlloSubappalti(c, ditte, giornale){
     r.perc = importo>0 ? r.costo/importo : null;
     out.perDitta[d.id] = r;
     const tipoL = d.tipo==='subaffidataria' ? 'subaffidamento' : 'subappalto';
+    // Confronto per avanzamento (nota INTERNA per la DL, con le tre cause
+    // possibili: nel report all'impresa si chiedono chiarimenti solo su b e c)
+    const av = d.tipo==='subappaltatrice' && costi ? manodoperaAvanzamento(d, c) : null;
+    if(av && av.mano>0){
+      const ra = r.righeData.filter(x=>!av.data || x.data<=av.data);
+      const costoAv = ra.reduce((s,x)=>s+x.costo,0), rapp = costoAv/av.mano;
+      r.avanzamento = {rapp, costoAv, mano:av.mano, sal_numero:av.sal_numero, data:av.data};
+      if(rapp>1){
+        const nFuori = ra.filter(x=>x.fuori).length, nVuote = ra.filter(x=>x.senzaLav).length;
+        const mMin = manodoperaMinimaDitta(d, c), dich = parseFloat(d.manodopera_subappalto)||0;
+        const rb = d.manodopera_calcolata ? 'la ditta non ha dichiarato la manodopera (usato il valore calcolato da contratto)'
+          : (mMin && dich) ? (dich < mMin.minima-1 ? `manodopera dichiarata ${fmtEur(dich)} inferiore a quella calcolata da contratto ${fmtEur(mMin.minima)}` : `manodopera dichiarata ${fmtEur(dich)} non inferiore a quella calcolata da contratto ${fmtEur(mMin.minima)}`) : 'dato non disponibile';
+        const rc = nFuori ? `${nFuori} ${nFuori===1?'registrazione':'registrazioni'} con lavorazioni non autorizzate` : (nVuote ? `nessuna lavorazione non autorizzata registrata, ma ${nVuote} presenze senza lavorazione` : 'nessuna lavorazione non autorizzata registrata: da verificare in cantiere');
+        out.problemi.push({livello:'avviso', ditta:d,
+          testo:`manodopera registrata${av.data?' fino al '+fmt(av.data):''} ${fmtEur(costoAv)} pari al ${Math.round(rapp*100)}% di quella di progetto delle quantità eseguite${av.sal_numero?' al SAL n. '+av.sal_numero:''} (${fmtEur(av.mano)}). Possibili cause (nota interna, non riportata nel report all'impresa): a) minore produttività per l'organizzazione aziendale dell'impresa; b) costi della manodopera del subappalto o del contratto inferiori a quelli reali — ${rb}; c) lavorazioni non autorizzate — ${rc}`});
+      }
+    }
     if(r.senzaLav) out.problemi.push({livello:'avviso', ditta:d,
       testo:`${r.senzaLav} ${r.senzaLav===1?'presenza registrata':'presenze registrate'} nel giornale senza la lavorazione svolta: senza questo dato non si può verificare che la ditta esegua solo le lavorazioni autorizzate`,
       azione:{tipo:'completa_lav', dittaId:d.id, n:r.senzaLav}});
@@ -1323,7 +1342,8 @@ async function stampaReportSubappalto(dittaId){
           const impresa = app ? esc(app.nome) : 'appaltatrice';
           // Richiesta di chiarimenti all'impresa (testo da inviare): tre ipotesi
           h += `<p><strong>Richiesta di chiarimenti.</strong> La manodopera registrata${fino?' fino al '+fmt(fino):''} ${rapp>SOGLIA_AVZ_MOLTO?'supera di molto':'supera'} quella di progetto delle quantità eseguite (${Math.round(rapp*100)}%). Si chiede all'impresa appaltatrice <strong>${impresa}</strong> di chiarire se il maggiore impiego di manodopera della ditta <strong>${esc(d.nome)}</strong> sia dovuto:</p><ol type="a" style="font-size:10.5px;margin:4px 0 8px 18px;padding:0">`;
-          h += `<li style="margin-bottom:4px">a una <strong>minore produttività</strong> dipendente dall'organizzazione aziendale dell'impresa;</li>`;
+          // (la minore produttivita' non si cita nel documento all'impresa:
+          // e' fra le cause valutate solo dentro il gestionale)
           h += `<li style="margin-bottom:4px">a <strong>costi della manodopera</strong> indicati nel contratto di subappalto o nel contratto d'appalto <strong>inferiori a quelli reali</strong>: in tal caso si chiede di fornire le motivazioni e il dettaglio della nuova incidenza della manodopera;</li>`;
           h += `<li>all'esecuzione di <strong>lavorazioni non autorizzate</strong>, non comprese fra quelle del subappalto: in tal caso si chiede di chiarirne natura ed entità e, se del caso, di presentare nuova richiesta di autorizzazione al subappalto per le lavorazioni interessate (art. 119, d.lgs. 36/2023).</li></ol>`;
           // elementi rilevati dalla DL, a supporto della richiesta
@@ -3622,6 +3642,7 @@ async function renderDitte(){
         return `<div>${categorieDitta(d).map(x=>`<span class="badge badge-blue" style="margin-right:4px" title="${cseA(descrCategoriaSoa(x.categoria))}">${esc(x.categoria)}${categorieDitta(d).length>1?' '+fmtEur(x.importo):''}</span>`).join('')}<strong>${d.importo_affidato?fmtEur(d.importo_affidato):'<span style="color:var(--red)">importo mancante</span>'}</strong>${d.estremi_autorizzazione?` <span style="color:var(--muted)">— ${esc(d.estremi_autorizzazione)}</span>`:''}</div>
           <div style="color:var(--muted)">${righeLavorazioni(d.lavorazioni_affidate).map(esc).join(' · ')||'<span style="color:var(--red)">lavorazioni non indicate</span>'}</div>
           ${d.manodopera_subappalto?`<div style="color:var(--muted)">di cui manodopera ${d.manodopera_calcolata?'<strong>calcolata da contratto</strong> (non dichiarata)':'dichiarata'} ${fmtEur(d.manodopera_subappalto)}${d.sicurezza_inclusa_subappalto?' · sicurezza nei prezzi '+fmtEur(d.sicurezza_inclusa_subappalto):''}${d.oneri_sicurezza_subappalto?' · oneri sicurezza speciali '+fmtEur(d.oneri_sicurezza_subappalto):''}</div>`:''}
+          ${r&&r.avanzamento?`<div style="color:${r.avanzamento.rapp>SOGLIA_AVZ_MOLTO?'var(--red)':r.avanzamento.rapp>1?'#9A6700':'var(--green)'};font-weight:600">Avanzamento${r.avanzamento.sal_numero?' SAL n. '+r.avanzamento.sal_numero:''}: manodopera registrata ${Math.round(r.avanzamento.rapp*100)}% di quella di progetto eseguita</div>`:''}
           ${r&&r.manodoperaMinima?(()=>{ const dd=d.manodopera_subappalto?d.manodopera_subappalto-r.manodoperaMinima.minima:0, dv=Math.abs(dd)>1;
             return `<div style="color:${dv?'#9A6700':'var(--muted)'};${dv?'font-weight:600':''}">manodopera calcolata dal progetto ${fmtEur(r.manodoperaMinima.minima)}${dv?' — dichiarata '+(dd<0?'inferiore':'superiore')+' di '+fmtEur(Math.abs(dd))+' (da verificare)':''}</div>`; })():''}
           ${r&&r.presenze?`<div style="color:${col};font-weight:600;margin-top:2px">Manodopera registrata: ${fmtEur(r.costo)} (${Math.round(r.ore)} h)${perc!=null?' — '+Math.round(perc*100)+'% dell\'importo':''}${d.manodopera_subappalto?' — '+Math.round(r.costo/d.manodopera_subappalto*100)+'% della manodopera dichiarata':''}</div>`:''}
