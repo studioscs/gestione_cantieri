@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.26b';
+const APP_VERSIONE = '2026.11.27a';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -706,7 +706,7 @@ async function emettiOdsRitardo(cantiereId){
 //    che supera l'importo comunicato (avviso preventivo dal 90%)
 //  - dati dell'affidamento mancanti
 // 'direzione' = capo cantiere, direttore tecnico: presenti ma non conteggiati nel costo
-const LIVELLI_OPERAIO = [['comune','Operaio comune'],['qualificato','Operaio qualificato'],['specializzato','Operaio specializzato'],['direzione','Direzione di cantiere (non conteggiato)']];
+const LIVELLI_OPERAIO = [['comune','Operaio comune'],['qualificato','Operaio qualificato'],['specializzato','Operaio specializzato'],['b1','Operaio specializzato B1 (impianti, fabbri — ditte non edili)'],['direzione','Direzione di cantiere (non conteggiato)']];
 const SOGLIA_AVVISO_SUB = 0.9;
 function dittaESub(d){ return !!d && (d.tipo==='subappaltatrice' || d.tipo==='subaffidataria'); }
 function righeLavorazioni(t){ return String(t||'').split(/\n|;/).map(s=>s.trim()).filter(Boolean); }
@@ -721,10 +721,10 @@ function lavorazioneAutorizzata(lav, ditta){
   });
 }
 function costoOrarioLivello(c, livello){
-  const v = {comune:c&&c.costo_ora_comune, qualificato:c&&c.costo_ora_qualificato, specializzato:c&&c.costo_ora_specializzato}[livello||'comune'];
+  const v = {comune:c&&c.costo_ora_comune, qualificato:c&&c.costo_ora_qualificato, specializzato:c&&c.costo_ora_specializzato, b1:c&&c.costo_ora_b1}[livello||'comune'];
   return parseFloat(v)||0;
 }
-function costiOrariImpostati(c){ return !!c && (parseFloat(c.costo_ora_comune)>0 || parseFloat(c.costo_ora_qualificato)>0 || parseFloat(c.costo_ora_specializzato)>0); }
+function costiOrariImpostati(c){ return !!c && (parseFloat(c.costo_ora_comune)>0 || parseFloat(c.costo_ora_qualificato)>0 || parseFloat(c.costo_ora_specializzato)>0 || parseFloat(c.costo_ora_b1)>0); }
 function oreGiornaliereCantiere(c){ return parseFloat(c && c.ore_giornaliere) || 8; }
 
 // c = cantiere, ditte = tutte le ditte, giornale = righe {data, maestranze}
@@ -782,7 +782,7 @@ function boxSubappaltiHtml(esito, conLink){
   return `<div class="alert ${gravi?'alert-error':'alert-warning'}" style="margin-bottom:16px;border-left:5px solid ${gravi?'var(--red)':'#FFC107'}">
     <div style="font-weight:700;font-size:14px">${gravi?'⚠️':'🔶'} SUBAPPALTI E SUBAFFIDAMENTI — ${esito.problemi.length} ${esito.problemi.length===1?'segnalazione':'segnalazioni'}</div>
     ${righe?`<ul style="margin:6px 0 6px 18px;padding:0;font-size:12px">${righe}</ul>`:''}
-    ${esito.costiMancanti?`<div style="font-size:12px">💶 Per il controllo degli importi inserisci nella scheda del cantiere (✏️) il <strong>costo orario contrattuale</strong> degli operai comune, qualificato e specializzato.</div>`:''}
+    ${esito.costiMancanti?`<div style="font-size:12px">💶 Per il controllo degli importi inserisci nella scheda del cantiere (✏️) il <strong>costo orario contrattuale</strong> degli operai comune, qualificato, specializzato e specializzato B1.</div>`:''}
     ${conLink?`<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="showView('ditte')">🏢 Vai alle ditte</button>`:''}
   </div>`;
 }
@@ -842,12 +842,14 @@ function cantiereCostiCampiHtml(prefix, c){
     <div class="form-group"><label class="form-label">Operaio comune (€/h)</label><input class="form-control" type="number" step="0.01" id="${prefix}_costo_com" value="${v('costo_ora_comune')}"></div>
     <div class="form-group"><label class="form-label">Operaio qualificato (€/h)</label><input class="form-control" type="number" step="0.01" id="${prefix}_costo_qua" value="${v('costo_ora_qualificato')}"></div>
     <div class="form-group"><label class="form-label">Operaio specializzato (€/h)</label><input class="form-control" type="number" step="0.01" id="${prefix}_costo_spe" value="${v('costo_ora_specializzato')}"></div>
+    <div class="form-group"><label class="form-label">Operaio specializzato B1 (€/h)</label><input class="form-control" type="number" step="0.01" id="${prefix}_costo_b1" value="${v('costo_ora_b1')}">
+      <div class="form-hint">Impianti, fabbri: ditte non edili</div></div>
     <div class="form-group"><label class="form-label">Ore lavorative giornaliere</label><input class="form-control" type="number" step="0.5" id="${prefix}_ore_gg" value="${c.ore_giornaliere!=null?esc(c.ore_giornaliere):8}">
       <div class="form-hint">Proposte di default per ogni operaio nel giornale</div></div>`;
 }
 function cantiereCostiDati(prefix){
   const n = id => { const x = parseFloat(document.getElementById(prefix+'_'+id)?.value); return isNaN(x) ? null : x; };
-  return {costo_ora_comune:n('costo_com'), costo_ora_qualificato:n('costo_qua'), costo_ora_specializzato:n('costo_spe'), ore_giornaliere:n('ore_gg')||8};
+  return {costo_ora_comune:n('costo_com'), costo_ora_qualificato:n('costo_qua'), costo_ora_specializzato:n('costo_spe'), costo_ora_b1:n('costo_b1'), ore_giornaliere:n('ore_gg')||8};
 }
 
 function statoFaseBadge(s){const m={attesa:['badge-grey','In attesa'],in_corso:['badge-yellow','In corso'],completata:['badge-blue','Completata'],verificata_dl:['badge-green','Verificata DL']};const[c,l]=m[s]||['badge-grey',s];return`<span class="badge ${c}">${l}</span>`;}
