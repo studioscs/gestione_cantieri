@@ -118,7 +118,16 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   orari contrattuali sul cantiere (`costo_ora_*` comune/qualificato/specializzato/b1, `ore_giornaliere`).
   `controlloSubappalti()` + `boxSubappaltiHtml()` (cantieri, dashboard, ditte,
   giornale): lavorazioni non comunicate e costo manodopera oltre l'importo.
-  Report stampabile per ditta: `stampaReportSubappalto(dittaId)`.
+  Report stampabile per ditta: `stampaReportSubappalto(dittaId)` (pulsante
+  «🖨️ Report ore» in Ditte presenti). Contiene il **confronto per
+  avanzamento**: `ditte.avanzamento_subappalto` jsonb `{sal_numero, data,
+  righe:[{categoria, importo}]}` (lavori eseguiti dalla ditta al SAL, prezzi
+  contrattuali; si inserisce nella scheda della ditta), `manodoperaAvanzamento
+  (d,c)` = importo/(1−ribasso) × incidenza; ore registrate fino alla data del
+  SAL a confronto. Se superano (oltre `SOGLIA_AVZ_MOLTO` = 120%: «di molto»)
+  il report elenca le tre spiegazioni con i riscontri: 1) lavorazioni non
+  autorizzate (da escludere per prima), 2) manodopera dichiarata bassa,
+  3) bassa produttività (non riguarda la DL).
 - Subappalti: limiti concessi a contratto nella scheda del cantiere
   (`cantieri.subappalto_categorie` jsonb `[{categoria, descrizione, importo,
   perc}]`, perc 0 = non subappaltabile; `subappalto_limite_perc` = limite
