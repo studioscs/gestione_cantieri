@@ -166,7 +166,13 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   `manodoperaMinimaDitta(d,c)` = Σ (importo categoria − quota oneri speciali) /
   (1−ribasso) × incidenza: se la dichiarata è inferiore o superiore → solo
   avviso GIALLO «da verificare con la manodopera indicata in appalto» (scelta
-  dell'utente: non è grave, il DL verifica con l'appalto). Anche la manodopera registrata nel
+  dell'utente: non è grave, il DL verifica con l'appalto). Se la ditta NON
+  dichiara la manodopera: avviso con pulsante «✍️ Compila manodopera …»
+  (riquadro subappalti, `compilaManodoperaDaContratto`) e nel modulo ditta
+  «Compila con la manodopera da contratto»: valore = manodopera calcolata con
+  le incidenze della scheda cantiere, salvato con `ditte.manodopera_calcolata`
+  = true (indicato in tabella e report; niente confronto dichiarata/calcolata;
+  se il DL scrive a mano un valore torna «dichiarata»). Anche la manodopera registrata nel
   giornale si confronta con la dichiarata. I costi orari del cantiere non
   vanno ribassati. Verifica al
   salvataggio della ditta (`verificaLimiteSubAlSalvataggio`, «Salva
