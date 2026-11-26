@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.27a';
+const APP_VERSIONE = '2026.11.27b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -783,8 +783,110 @@ function boxSubappaltiHtml(esito, conLink){
     <div style="font-weight:700;font-size:14px">${gravi?'⚠️':'🔶'} SUBAPPALTI E SUBAFFIDAMENTI — ${esito.problemi.length} ${esito.problemi.length===1?'segnalazione':'segnalazioni'}</div>
     ${righe?`<ul style="margin:6px 0 6px 18px;padding:0;font-size:12px">${righe}</ul>`:''}
     ${esito.costiMancanti?`<div style="font-size:12px">💶 Per il controllo degli importi inserisci nella scheda del cantiere (✏️) il <strong>costo orario contrattuale</strong> degli operai comune, qualificato, specializzato e specializzato B1.</div>`:''}
-    ${conLink?`<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="showView('ditte')">🏢 Vai alle ditte</button>`:''}
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+      ${[...new Map(esito.problemi.filter(p=>p.livello==='grave'||/costo della manodopera/.test(p.testo)).map(p=>[p.ditta.id,p.ditta])).values()]
+        .map(d=>`<button class="btn btn-secondary btn-sm" onclick="stampaReportSubappalto('${d.id}')">🖨️ Report ore ${esc(d.nome)}</button>`).join('')}
+      ${conLink?`<button class="btn btn-secondary btn-sm" onclick="showView('ditte')">🏢 Vai alle ditte</button>`:''}
+    </div>
   </div>`;
+}
+
+// ---- Report stampabile per singola ditta: presenze, ore e costo della
+// manodopera confrontati con l'importo del subappalto/subaffidamento.
+// Serve a chiedere chiarimenti all'impresa appaltatrice.
+async function stampaReportSubappalto(dittaId){
+  // finestra aperta subito al click: Safari blocca i popup aperti dopo un await
+  const w = window.open('about:blank', '_blank');
+  if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per generare il report.'); return; }
+  try{
+    const {data:d} = await sb.from('ditte').select('*').eq('id', dittaId).single();
+    if(!d){ w.close(); alert('Ditta non trovata'); return; }
+    const c = getCantiereObj(d.cantiere_id) || {};
+    const [{data:giornale}, {data:ditte}] = await Promise.all([
+      sb.from('giornale_lavori').select('data,maestranze').eq('cantiere_id', d.cantiere_id).order('data'),
+      sb.from('ditte').select('*').eq('cantiere_id', d.cantiere_id)
+    ]);
+    const app = (ditte||[]).find(x=>x.tipo==='appaltatrice');
+    const tipoL = d.tipo==='subaffidataria' ? 'subaffidamento' : 'subappalto';
+    const oreGg = oreGiornaliereCantiere(c);
+    const livL = Object.fromEntries(LIVELLI_OPERAIO.map(([v,l])=>[v,l]));
+    const righe = [], perLiv = {};
+    let totOre = 0, totCosto = 0, nFuori = 0;
+    (giornale||[]).forEach(g=>(g.maestranze||[]).forEach(m=>{
+      if(String(m.ditta_id||'')!==String(d.id)) return;
+      const num = parseFloat(m.num)||0;
+      const ore = (m.ore!=null && m.ore!=='') ? (parseFloat(m.ore)||0) : oreGg;
+      const escl = m.livello==='direzione';
+      const liv = m.livello || 'comune';
+      const cOra = escl ? 0 : costoOrarioLivello(c, liv);
+      const oreTot = escl ? 0 : num*ore;
+      const costo = oreTot*cOra;
+      const fuori = !!m.lavorazione && !lavorazioneAutorizzata(m.lavorazione, d);
+      if(fuori) nFuori++;
+      totOre += oreTot; totCosto += costo;
+      if(!escl){ perLiv[liv] = perLiv[liv] || {ore:0, costo:0, cOra}; perLiv[liv].ore += oreTot; perLiv[liv].costo += costo; }
+      righe.push({data:g.data, figura:m.figura||'', liv: escl ? 'Direzione (non conteggiato)' : (livL[liv]||liv)+(m.livello?'':' *'), num, ore, oreTot, cOra, costo, lav:m.lavorazione||'', fuori});
+    }));
+    const importo = parseFloat(d.importo_affidato)||0;
+    const perc = importo>0 ? totCosto/importo : null;
+    const td = 'border:1px solid #999;padding:3px 5px';
+    const n2 = x => new Intl.NumberFormat('it-IT',{minimumFractionDigits:2, maximumFractionDigits:2}).format(x||0);
+    let h = '';
+    h += `<p>Riepilogo delle presenze registrate nel giornale dei lavori per la ditta <strong>${esc(d.nome)}</strong>${d.piva?' (P.IVA '+esc(d.piva)+')':''}, ${d.tipo==='subaffidataria'?'subaffidataria':'subappaltatrice'}${app?' dell\'impresa appaltatrice <strong>'+esc(app.nome)+'</strong>':''}, con il costo della manodopera calcolato sulle ore registrate e sui costi orari contrattuali, confrontato con l'importo del ${tipoL} comunicato.</p>`;
+    h += `<table style="width:100%;border-collapse:collapse;font-size:11px;margin:8px 0">
+      <tr><td style="${td};width:40%"><strong>Importo del ${tipoL} comunicato</strong></td><td style="${td}">${importo?fmtEur(importo):'<em>non indicato</em>'}</td></tr>
+      <tr><td style="${td}"><strong>Estremi autorizzazione / comunicazione</strong></td><td style="${td}">${esc(d.estremi_autorizzazione||'—')}</td></tr>
+      <tr><td style="${td}"><strong>Lavorazioni comunicate</strong></td><td style="${td}">${righeLavorazioni(d.lavorazioni_affidate).map(esc).join('; ')||'<em>non indicate</em>'}</td></tr>
+      <tr><td style="${td}"><strong>Giornate di presenza registrate</strong></td><td style="${td}">${new Set(righe.map(r=>r.data)).size}${righe.length?' (dal '+fmt(righe[0].data)+' al '+fmt(righe[righe.length-1].data)+')':''}</td></tr>
+      <tr><td style="${td}"><strong>Ore di manodopera conteggiate</strong></td><td style="${td}">${n2(totOre)}</td></tr>
+      <tr><td style="${td}"><strong>Costo della manodopera registrata</strong></td><td style="${td}"><strong>${fmtEur(totCosto)}</strong>${perc!=null?` &mdash; <strong style="color:${perc>1?'#B02A37':perc>=SOGLIA_AVVISO_SUB?'#9A6700':'#198754'}">${Math.round(perc*100)}% dell'importo comunicato</strong>`:''}</td></tr>
+    </table>`;
+    const livKeys = Object.keys(perLiv);
+    if(livKeys.length){
+      h += '<p><strong>Costo per livello contrattuale</strong></p><table style="width:100%;border-collapse:collapse;font-size:11px"><tr>'
+        + ['Livello','Costo orario','Ore','Costo'].map(x=>`<th style="${td};background:#1F3864;color:#fff;text-align:left">${x}</th>`).join('')+'</tr>'
+        + livKeys.map(k=>`<tr><td style="${td}">${esc(livL[k]||k)}</td><td style="${td}">${fmtEur(perLiv[k].cOra)}/h</td><td style="${td}">${n2(perLiv[k].ore)}</td><td style="${td}">${fmtEur(perLiv[k].costo)}</td></tr>`).join('')
+        + '</table>';
+    }
+    h += `<p style="margin-top:10px"><strong>Dettaglio delle presenze</strong></p>`;
+    h += `<table style="width:100%;border-collapse:collapse;font-size:9.5px"><tr>`
+      + ['Data','Figura','Livello','N. op.','Ore/op.','Ore','€/h','Costo','Lavorazione svolta'].map(x=>`<th style="${td};background:#1F3864;color:#fff;text-align:left">${x}</th>`).join('')+'</tr>';
+    h += righe.map(r=>`<tr${r.fuori?' style="background:#F8D7DA"':''}><td style="${td};white-space:nowrap">${fmt(r.data)}</td><td style="${td}">${esc(r.figura)}</td><td style="${td}">${esc(r.liv)}</td>
+      <td style="${td};text-align:center">${r.num}</td><td style="${td};text-align:center">${n2(r.ore)}</td><td style="${td};text-align:right">${n2(r.oreTot)}</td>
+      <td style="${td};text-align:right">${r.cOra?n2(r.cOra):'—'}</td><td style="${td};text-align:right">${n2(r.costo)}</td>
+      <td style="${td}">${r.fuori?'<strong>NON COMUNICATA:</strong> ':''}${esc(r.lav||'—')}</td></tr>`).join('')
+      || `<tr><td colspan="9" style="${td};text-align:center">Nessuna presenza registrata</td></tr>`;
+    h += `<tr><td colspan="5" style="${td};text-align:right"><strong>Totale</strong></td><td style="${td};text-align:right"><strong>${n2(totOre)}</strong></td><td style="${td}"></td><td style="${td};text-align:right"><strong>${n2(totCosto)}</strong></td><td style="${td}"></td></tr></table>`;
+    if(righe.some(r=>/\*$/.test(r.liv))) h += '<p style="font-size:9.5px">* livello non indicato nel giornale: conteggiato come operaio comune.</p>';
+    h += `<p style="font-size:10px">Costi orari contrattuali del cantiere: comune ${fmtEur(c.costo_ora_comune)}, qualificato ${fmtEur(c.costo_ora_qualificato)}, specializzato ${fmtEur(c.costo_ora_specializzato)}, specializzato B1 ${fmtEur(c.costo_ora_b1)}. Ore giornaliere di riferimento: ${n2(oreGg)}. Il costo considera la sola manodopera, esclusi materiali e noli; il personale di direzione di cantiere non è conteggiato.</p>`;
+    const criticita = [];
+    if(perc!=null && perc>1) criticita.push(`il costo della sola manodopera registrata (${fmtEur(totCosto)}) supera l'importo del ${tipoL} comunicato (${fmtEur(importo)})`);
+    else if(perc!=null && perc>=SOGLIA_AVVISO_SUB) criticita.push(`il costo della sola manodopera registrata ha raggiunto il ${Math.round(perc*100)}% dell'importo del ${tipoL} comunicato`);
+    if(nFuori) criticita.push(`in ${nFuori} ${nFuori===1?'registrazione':'registrazioni'} la ditta risulta impegnata in lavorazioni non comprese fra quelle comunicate (righe evidenziate)`);
+    if(!importo) criticita.push(`l'importo del ${tipoL} non risulta comunicato alla Direzione Lavori`);
+    if(criticita.length){
+      h += `<p><strong>Rilievi.</strong> Dall'esame dei dati sopra riportati emerge che ${criticita.join('; ')}.</p>`;
+      h += `<p>Si chiede pertanto all'impresa appaltatrice${app?' <strong>'+esc(app.nome)+'</strong>':''} di fornire alla Direzione Lavori i necessari chiarimenti e, ove ne ricorrano i presupposti, la documentazione relativa all'eventuale variazione dell'importo o delle lavorazioni del ${tipoL}, ai sensi della normativa vigente in materia di subappalto.</p>`;
+    }
+    const team = await getTeamRoster(d.cantiere_id);
+    apriDocumentoFirmabile({
+      titolo: 'Report presenze e costo manodopera — ' + tipoL,
+      normativa: '',
+      comune: comuneCantiere(c), provincia: '',
+      metaRows: [['LAVORI', esc(c.descrizione||c.nome||'')], ['IMPRESA APPALTATRICE', esc(app?app.nome:(c.impresa||''))], ['DITTA', esc(d.nome)]],
+      corpoHtml: h,
+      luogo: comuneCantiere(c) || c.nome || '',
+      dataDoc: today(),
+      fileName: nomeFileVerbale(c, today(), 'REP_SUB_'+sanitizzaNomeFile(d.nome).slice(0,20)),
+      firmatari: [{nome:(team.dl&&team.dl.nome)||'', ruolo:'Il Direttore dei Lavori'}],
+      solaLettura: false,
+      existingWindow: w
+    });
+  }catch(e){
+    console.error('stampaReportSubappalto', e);
+    try{ w.close(); }catch(e2){}
+    alert('Errore nella generazione del report: '+(e?.message||e));
+  }
 }
 
 // Carica ditte e presenze del cantiere e restituisce l'esito del controllo
@@ -2668,7 +2770,8 @@ async function renderDitte(){
         return `<div><strong>${d.importo_affidato?fmtEur(d.importo_affidato):'<span style="color:var(--red)">importo mancante</span>'}</strong>${d.estremi_autorizzazione?` <span style="color:var(--muted)">— ${esc(d.estremi_autorizzazione)}</span>`:''}</div>
           <div style="color:var(--muted)">${righeLavorazioni(d.lavorazioni_affidate).map(esc).join(' · ')||'<span style="color:var(--red)">lavorazioni non indicate</span>'}</div>
           ${r&&r.presenze?`<div style="color:${col};font-weight:600;margin-top:2px">Manodopera registrata: ${fmtEur(r.costo)} (${Math.round(r.ore)} h)${perc!=null?' — '+Math.round(perc*100)+'%':''}</div>`:''}
-          ${r&&r.notaLivello?`<div style="color:var(--muted);font-size:10px">${esc(r.notaLivello)}</div>`:''}`;
+          ${r&&r.notaLivello?`<div style="color:var(--muted);font-size:10px">${esc(r.notaLivello)}</div>`:''}
+          ${r&&r.presenze?`<button class="btn btn-secondary btn-sm" style="margin-top:4px;font-size:11px;padding:2px 8px" onclick="stampaReportSubappalto('${d.id}')">🖨️ Report ore</button>`:''}`;
       })() : '<span style="color:var(--muted)">—</span>'}</td>
       <td style="text-align:right">
         ${(currentRole==='dl'||currentRole==='do')?`
