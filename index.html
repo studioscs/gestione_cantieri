@@ -273,6 +273,7 @@ textarea.form-control{resize:vertical;min-height:80px}
         <div class="nav-label">Sistema</div>
         <div class="nav-item" onclick="showView('report')" data-view="report"><span class="nav-icon">📊</span> Report SA</div>
         <div class="nav-item" onclick="showView('studio')" data-view="studio"><span class="nav-icon">🏛️</span> Il mio studio</div>
+        <div class="nav-item" id="navCopia" style="display:none" onclick="showView('copia')" data-view="copia"><span class="nav-icon">💾</span> Copia di sicurezza <span id="badgeCopia" class="badge" style="display:none;background:var(--red);color:#fff;margin-left:auto">!</span></div>
       </div>
     </nav>
     <main class="main" id="mainContent"></main>
@@ -293,7 +294,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.27b';
+const APP_VERSIONE = '2026.11.27c';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -550,6 +551,7 @@ async function loadMyCantieri(){
   let opts = '<option value="">— Seleziona cantiere —</option>';
   myCantieri.forEach(r => opts += `<option value="${r.cantiere.id}">${r.cantiere.nome}${r.cantiere.codice_commessa?' — '+r.cantiere.codice_commessa:''}</option>`);
   sel.innerHTML = opts;
+  aggiornaVoceCopia();
 }
 
 async function doLogout(){
@@ -597,7 +599,7 @@ async function showView(view){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active', el.dataset.view===view));
   const main = document.getElementById('mainContent');
   main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  const views = {dashboard:renderDashboard,cantieri:renderCantieri,fasi:renderFasi,sospensioni:renderSospensioni,varianti:renderVarianti,giornale:renderGiornale,ods:renderODS,comunicazioni:renderComunicazioni,verbali:renderVerbali,prelievi:renderPrelievi,materiali:renderMateriali,provecollaudo:()=>renderVerbali('programma_prove_collaudo'),liste:renderListe,sal:renderSAL,ditte:renderDitte,team:renderTeam,report:renderReport,studio:renderStudio};
+  const views = {dashboard:renderDashboard,cantieri:renderCantieri,fasi:renderFasi,sospensioni:renderSospensioni,varianti:renderVarianti,giornale:renderGiornale,ods:renderODS,comunicazioni:renderComunicazioni,verbali:renderVerbali,prelievi:renderPrelievi,materiali:renderMateriali,provecollaudo:()=>renderVerbali('programma_prove_collaudo'),liste:renderListe,sal:renderSAL,ditte:renderDitte,team:renderTeam,report:renderReport,studio:renderStudio,copia:renderCopia};
   try {
     const out = await views[view]();
     if(myToken !== _viewToken) return; // nel frattempo e' partita una navigazione piu' recente: non sovrascrivere
@@ -1244,7 +1246,7 @@ async function renderDashboard(){
     <div class="kpi"><div class="kpi-label">Fasi in corso</div><div class="kpi-value">${fasiInCorso}</div><div class="kpi-sub">lavorazioni attive</div></div>
     <div class="kpi"><div class="kpi-label">ODS da evadere</div><div class="kpi-value" style="color:${odsAperti>0?'#856404':'#155724'}">${odsAperti}</div><div class="kpi-sub">ordini aperti</div></div>
     <div class="kpi"><div class="kpi-label">Comunicazioni</div><div class="kpi-value" style="color:${commNonLette>0?'#721C24':'#155724'}">${commNonLette}</div><div class="kpi-sub">non lette</div></div>
-  </div>`;
+  </div>` + avvisoCopiaHtml();
 
   if(!cantieri.length){
     html += `<div class="card"><div class="empty"><div class="empty-icon">🏗️</div><h3>Nessun cantiere assegnato</h3>
@@ -5137,6 +5139,304 @@ async function renderReport(){
       <button class="btn btn-secondary" onclick="generaReportGiornale('${c.id}')">📓 Stampa Giornale</button></div></div>`;
   }
   return html;
+}
+
+// ============================================================
+// COPIA DI SICUREZZA E RIPRISTINO
+// Il piano gratuito di Supabase non fa copie: un dato cancellato per
+// sbaglio non si recupera. Il DL scarica qui un file JSON con tutti i dati
+// dei cantieri di cui e' DL, da salvare sul server dello studio, e lo puo'
+// rimettere con «Ripristina da copia».
+// Il ripristino non cancella mai niente: rimette le righe mancanti (e, se
+// richiesto, riporta quelle modificate come erano nella copia). Le righe le
+// scrive il database con ripristina_righe (sql/2026-11-26-copia-sicurezza-
+// ripristino.sql), che controlla che chi ripristina sia DL del cantiere e
+// tiene spenti i trigger di registro (giornale_log, ods_log, sal_log).
+//
+// !! OGNI NUOVA TABELLA DEL GESTIONALE VA AGGIUNTA QUI (ORDINE_RIPRISTINO e
+// !! NOMI_TABELLE_COPIA) E IN ripristina_righe (elenco «consentite»),
+// !! altrimenti la copia non la contiene e il ripristino non la rimette.
+// !! Controllo automatico: node test/controllo-copia.js
+// ============================================================
+const TIPO_COPIA = 'gestione-cantieri-copia';
+const CHIAVE_COPIA = 'gc_ultima_copia';
+const GIORNI_COPIA = 7;
+const PASSO_COPIA = 1000;
+// Ordine dei collegamenti: prima chi e' richiamato dagli altri.
+const ORDINE_RIPRISTINO = ['cantieri', 'cantiere_utenti', 'ditte', 'fasi', 'sospensioni',
+  'varianti', 'giornale_lavori', 'giornale_log', 'ods', 'ods_log', 'sal', 'sal_log', 'comunicazioni',
+  'verbali', 'verbali_prelievo', 'liste_settimanali', 'liste_righe', 'accettazione_materiali'];
+// profiles: solo nella copia, per riferimento (gli utenti non si ripristinano)
+const TABELLE_COPIA = ORDINE_RIPRISTINO.concat(['profiles']);
+const NOMI_TABELLE_COPIA = {
+  cantieri:'Cantieri', cantiere_utenti:'Team dei cantieri', ditte:'Ditte', fasi:'Fasi lavori',
+  sospensioni:'Sospensioni e proroghe', varianti:'Varianti', giornale_lavori:'Giornale lavori',
+  giornale_log:'Registro modifiche giornale', ods:'Ordini di servizio', ods_log:'Registro modifiche ODS',
+  sal:'SAL', sal_log:'Registro modifiche SAL', comunicazioni:'Comunicazioni', verbali:'Verbali',
+  verbali_prelievo:'Verbali di prelievo', liste_settimanali:'Liste settimanali', liste_righe:'Righe delle liste',
+  accettazione_materiali:'Accettazione materiali', profiles:'Utenti (solo consultazione)'
+};
+let RIPR = null;
+
+function cantieriDlIds(){ return myCantieri.filter(r=>r.ruolo==='dl').map(r=>r.cantiere.id); }
+function giorniDallaCopia(){
+  let u=null; try{ u=localStorage.getItem(CHIAVE_COPIA); }catch(e){}
+  if(!u) return null;
+  return Math.floor((Date.now()-new Date(u).getTime())/86400000);
+}
+function copiaDaFare(){ const g=giorniDallaCopia(); return cantieriDlIds().length>0 && (g===null || g>=GIORNI_COPIA); }
+function testoUltimaCopia(){
+  const g=giorniDallaCopia();
+  return g===null ? 'nessuna copia scaricata da questo dispositivo' : 'ultima copia: '+(g===0?'oggi':g===1?'ieri':g+' giorni fa');
+}
+// Voce di menu (solo per chi e' DL di almeno un cantiere) e «!» se la copia e' vecchia
+function aggiornaVoceCopia(){
+  const nav=document.getElementById('navCopia'); if(!nav) return;
+  nav.style.display = cantieriDlIds().length ? '' : 'none';
+  const b=document.getElementById('badgeCopia'); if(b) b.style.display = copiaDaFare() ? '' : 'none';
+  nav.title = testoUltimaCopia();
+}
+function avvisoCopiaHtml(){
+  if(!copiaDaFare()) return '';
+  return `<div class="alert alert-warning" style="margin-bottom:16px">💾 <strong>Copia di sicurezza</strong>: ${testoUltimaCopia()}.
+    <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="showView('copia')">Scarica una copia</button></div>`;
+}
+
+async function leggiTabellaCopia(t, ids, utenti){
+  const righe=[];
+  for(let da=0; ; da+=PASSO_COPIA){
+    let q=sb.from(t).select('*');
+    if(t==='cantieri') q=q.in('id',ids);
+    else if(t==='profiles') q=q.in('id',utenti);
+    else q=q.in('cantiere_id',ids);
+    const {data,error}=await q.order('id').range(da, da+PASSO_COPIA-1);
+    if(error) throw error;
+    righe.push(...(data||[]));
+    if(!data || data.length<PASSO_COPIA) return righe;
+  }
+}
+// Legge tutte le tabelle dei cantieri indicati; avanza(i,n) per il tasto
+async function leggiDatiCopia(ids, avanza){
+  const tabelle={}, conteggi={}, errori={};
+  for(let i=0;i<TABELLE_COPIA.length;i++){
+    const t=TABELLE_COPIA[i];
+    if(avanza) avanza(i+1, TABELLE_COPIA.length);
+    try{
+      const utenti = t==='profiles' ? [...new Set((tabelle.cantiere_utenti||[]).map(r=>r.utente_id))] : null;
+      tabelle[t] = (ids.length && (t!=='profiles' || utenti.length)) ? await leggiTabellaCopia(t, ids, utenti) : [];
+      conteggi[t]=tabelle[t].length;
+    }catch(e){ errori[t]=(e&&e.message)||String(e); }
+  }
+  return {tabelle, conteggi, errori};
+}
+function scaricaFileCopia(dati, suffisso){
+  const ora=new Date();
+  const copia={
+    tipo:TIPO_COPIA, versione_app:APP_VERSIONE, creata_il:ora.toISOString(),
+    creata_da:`${currentUser?.nome||''} ${currentUser?.cognome||''}`.trim() || (currentUser?.email||''),
+    cantieri:(dati.tabelle.cantieri||[]).map(c=>({id:c.id, nome:c.nome, codice_commessa:c.codice_commessa||null})),
+    conteggi:dati.conteggi, errori:dati.errori, tabelle:dati.tabelle
+  };
+  const nome='gestione-cantieri-copia-'+oggiLocale()+(suffisso||'')+'.json';
+  const blob=new Blob([JSON.stringify(copia)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=nome;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+  if(!suffisso && !Object.keys(dati.errori).length){ try{ localStorage.setItem(CHIAVE_COPIA, ora.toISOString()); }catch(e){} }
+  return nome;
+}
+function esitoCopia(html, tipo){
+  const box=document.getElementById('copiaEsito');
+  if(box) box.innerHTML=`<div class="alert alert-${tipo||'success'}" style="margin-top:12px">${html}</div>`;
+}
+async function conTasto(id, etichetta, fn){
+  const btn=document.getElementById(id);
+  if(btn && btn.disabled) return;
+  const testo=btn?btn.innerHTML:'';
+  if(btn) btn.disabled=true;
+  try{ return await fn((i,n)=>{ if(btn) btn.innerHTML=etichetta+' '+i+'/'+n; }); }
+  finally{ if(btn){ btn.innerHTML=testo; btn.disabled=false; } aggiornaVoceCopia(); }
+}
+
+async function renderCopia(){
+  const ids=cantieriDlIds();
+  if(!ids.length) return `<div class="empty"><div class="empty-icon">🔒</div><h3>Riservato al Direttore dei Lavori</h3><p>La copia di sicurezza la scarica il DL dei suoi cantieri.</p></div>`;
+  const nomi=myCantieri.filter(r=>r.ruolo==='dl').map(r=>esc(r.cantiere.codice_commessa||r.cantiere.nome));
+  return `<div class="section-header"><div><div class="page-title">Copia di sicurezza</div>
+    <div class="page-subtitle">Salvataggio e ripristino dei dati dei cantieri di cui sei DL</div></div></div>
+  ${avvisoCopiaHtml()}
+  <div class="card">
+    <div class="card-header"><span class="card-title">💾 Scarica una copia</span></div>
+    <p style="font-size:13px;margin:0 0 8px">Scarica un file con <strong>tutti i dati</strong> dei tuoi cantieri (${nomi.join(', ')}): fasi, giornale, ODS, SAL, verbali, prelievi, materiali, sospensioni, varianti, ditte, team… </p>
+    <p style="font-size:13px;margin:0 0 12px">Salva il file sul <strong>server dello studio</strong>, ad esempio una volta a settimana: Supabase, nel piano gratuito, non fa copie e un dato cancellato per errore non si recupera.<br>
+    <span style="color:var(--muted)">Stato: ${testoUltimaCopia()}.</span></p>
+    <button class="btn btn-primary" id="btnCopia" onclick="scaricaCopia()">💾 Scarica copia di sicurezza</button>
+    <div id="copiaEsito"></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">↺ Ripristina da una copia</span></div>
+    <p style="font-size:13px;margin:0 0 8px">Scegli il file di una copia scaricata in passato: l'app lo confronta con i dati di adesso e ti mostra cosa manca e cosa è cambiato, prima di scrivere qualunque cosa.</p>
+    <ul style="font-size:12px;margin:0 0 12px 18px;padding:0;color:var(--muted)">
+      <li>Non si cancella mai niente: quello che è stato inserito dopo la copia resta.</li>
+      <li>Si può rimettere anche un intero cantiere eliminato per errore.</li>
+      <li>Prima di scrivere si scarica in automatico una copia dei dati di adesso, per poter tornare indietro.</li>
+    </ul>
+    <label class="btn btn-secondary" id="btnRipr" style="cursor:pointer">↺ Scegli il file della copia…
+      <input type="file" accept=".json,application/json" style="display:none" onchange="if(this.files&&this.files[0]){apriRipristino(this.files[0]);this.value='';}">
+    </label>
+    <div id="riprEsito"></div>
+  </div>`;
+}
+
+async function scaricaCopia(){
+  const ids=cantieriDlIds(); if(!ids.length) return;
+  await conTasto('btnCopia','Lettura dati…', async avanza=>{
+    const dati=await leggiDatiCopia(ids, avanza);
+    const nome=scaricaFileCopia(dati);
+    const righe=Object.values(dati.conteggi).reduce((s,n)=>s+n,0);
+    const male=Object.keys(dati.errori);
+    if(male.length) esitoCopia(`Copia scaricata (<strong>${esc(nome)}</strong>), ma ${male.length===1?'una tabella non si è letta':male.length+' tabelle non si sono lette'}:<br>• ${male.map(t=>esc(NOMI_TABELLE_COPIA[t]||t)+': '+esc(dati.errori[t])).join('<br>• ')}<br>Riprova più tardi.`, 'warning');
+    else esitoCopia(`✅ Copia scaricata: <strong>${esc(nome)}</strong> (${righe.toLocaleString('it-IT')} righe). Salvala sul server dello studio.`);
+  });
+}
+
+const stessaRigaCopia=(a,b)=>Object.keys(a).every(k=>JSON.stringify(a[k]===undefined?null:a[k])===JSON.stringify(b[k]===undefined?null:b[k]));
+
+async function apriRipristino(file){
+  const box=document.getElementById('riprEsito');
+  const msg=(h,t)=>{ if(box) box.innerHTML=`<div class="alert alert-${t||'error'}" style="margin-top:12px">${h}</div>`; };
+  let copia;
+  try{ copia=JSON.parse(await file.text()); }catch(e){ return msg(`Il file «${esc(file.name)}» non si legge: non è una copia di sicurezza del gestionale cantieri.`); }
+  if(!copia || copia.tipo!==TIPO_COPIA || !copia.tabelle || typeof copia.tabelle!=='object')
+    return msg(`Il file «${esc(file.name)}» non è una copia di sicurezza del gestionale cantieri.`);
+  const idsFile=(copia.tabelle.cantieri||[]).map(c=>c.id);
+  if(!idsFile.length) return msg('La copia non contiene cantieri.');
+  await conTasto('btnRipr','Confronto…', async avanza=>{
+    const ora=await leggiDatiCopia(idsFile, avanza);
+    const male=Object.keys(ora.errori).filter(t=>ORDINE_RIPRISTINO.includes(t));
+    if(male.length) return msg('Non riesco a leggere i dati di adesso ('+male.map(t=>esc(NOMI_TABELLE_COPIA[t]||t)).join(', ')+'), quindi non posso confrontarli con la copia. Riprova più tardi.');
+    const sconosciute=Object.keys(copia.tabelle).filter(t=>!TABELLE_COPIA.includes(t));
+    const righe=ORDINE_RIPRISTINO.filter(t=>Array.isArray(copia.tabelle[t])).map(t=>{
+      const qui=new Map((ora.tabelle[t]||[]).map(r=>[r.id,r]));
+      const mancanti=[], diverse=[];
+      copia.tabelle[t].forEach(r=>{
+        if(!r || r.id==null) return;
+        const c=qui.get(r.id);
+        if(!c) mancanti.push(r); else if(!stessaRigaCopia(r,c)) diverse.push(r);
+      });
+      const idCopia=new Set(copia.tabelle[t].map(r=>r&&r.id));
+      const nuove=(ora.tabelle[t]||[]).filter(r=>!idCopia.has(r.id)).length;
+      return {t, nelFile:copia.tabelle[t].length, adesso:(ora.tabelle[t]||[]).length, mancanti, diverse, nuove};
+    });
+    // cantieri della copia che oggi non vedi: eliminati (si possono rimettere)
+    // oppure di cui non sei piu' membro (il database li rifiutera')
+    const visibili=new Set((ora.tabelle.cantieri||[]).map(c=>c.id));
+    const assenti=(copia.tabelle.cantieri||[]).filter(c=>!visibili.has(c.id));
+    RIPR={copia, ora, righe, nomeFile:file.name, sconosciute, assenti};
+    disegnaRipristino();
+  });
+}
+
+function disegnaRipristino(){
+  const {copia,righe,nomeFile,sconosciute,assenti}=RIPR;
+  const nM=righe.reduce((s,r)=>s+r.mancanti.length,0);
+  const nD=righe.reduce((s,r)=>s+r.diverse.length,0);
+  const quando=copia.creata_il?new Date(copia.creata_il):null;
+  const n=x=>x?'<strong>'+x.toLocaleString('it-IT')+'</strong>':'<span style="color:var(--muted)">0</span>';
+  openModal('Ripristina da una copia di sicurezza', `
+    <div class="alert alert-info" style="font-size:12px">Copia <strong>${esc(nomeFile)}</strong>${quando?`, fatta il <strong>${quando.toLocaleDateString('it-IT')} alle ${quando.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}</strong>`:''}${copia.creata_da?' da '+esc(copia.creata_da):''}.
+      Cantieri: ${(copia.tabelle.cantieri||[]).map(c=>esc(c.codice_commessa||c.nome)).join(', ')}.</div>
+    ${assenti.length?`<div class="alert alert-warning" style="font-size:12px">Cantieri della copia che oggi non risultano: <strong>${assenti.map(c=>esc(c.codice_commessa||c.nome)).join(', ')}</strong>. Se sono stati eliminati, il ripristino li rimette con tutti i loro dati (servono i permessi di DL che avevi nella copia).</div>`:''}
+    ${sconosciute.length?`<div class="alert alert-warning" style="font-size:12px">Nel file ci sono dati che questa versione non sa rimettere (${sconosciute.map(esc).join(', ')}): restano fuori.</div>`:''}
+    ${nM||nD?'':'<div class="alert alert-success" style="font-size:12px">I dati di adesso contengono già tutto quello che c\'è nella copia: non c\'è niente da ripristinare.</div>'}
+    <div style="max-height:320px;overflow:auto"><table><thead><tr><th>Dati</th><th style="text-align:right">Nella copia</th><th style="text-align:right">Adesso</th>
+      <th style="text-align:right" title="Cancellate dopo la copia">Mancano adesso</th><th style="text-align:right" title="Modificate dopo la copia">Modificate dopo</th><th style="text-align:right" title="Inserite dopo la copia: restano comunque">Nuove dopo</th></tr></thead><tbody>
+      ${righe.filter(r=>r.nelFile||r.adesso).map(r=>`<tr><td>${esc(NOMI_TABELLE_COPIA[r.t]||r.t)}</td><td style="text-align:right">${n(r.nelFile)}</td><td style="text-align:right">${n(r.adesso)}</td>
+        <td style="text-align:right">${n(r.mancanti.length)}</td><td style="text-align:right">${n(r.diverse.length)}</td><td style="text-align:right">${n(r.nuove)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div style="font-size:12px;margin-top:12px;line-height:1.6">
+      <strong>Recupera solo quello che manca</strong>: tornano le ${nM.toLocaleString('it-IT')} righe cancellate dopo la copia; tutto il resto resta com'è adesso. È quella da usare dopo una cancellazione sbagliata.<br>
+      <strong>Recupera e riporta anche le modifiche</strong>: in più le ${nD.toLocaleString('it-IT')} righe modificate tornano come nella copia; le modifiche fatte dopo su quelle righe si perdono.<br>
+      In tutti e due i casi <strong>non si cancella niente</strong>. Prima di scrivere si scarica una copia dei dati di adesso.</div>
+    <div id="riprConferma"></div>
+    <div class="form-actions" id="riprAzioni">
+      <button class="btn btn-secondary" onclick="closeModal();RIPR=null">Annulla</button>
+      <button class="btn btn-secondary" ${nM?'':'disabled'} onclick="chiediConfermaRipristino(false)">Recupera solo quello che manca</button>
+      <button class="btn btn-primary" ${nM||nD?'':'disabled'} onclick="chiediConfermaRipristino(true)">Recupera e riporta anche le modifiche</button>
+    </div>`);
+}
+// Conferma disegnata nella finestra (niente confirm(): Safari su iPad lo puo' sopprimere)
+function chiediConfermaRipristino(sovrascrivi){
+  if(!RIPR) return;
+  const nM=RIPR.righe.reduce((s,r)=>s+r.mancanti.length,0);
+  const nD=sovrascrivi?RIPR.righe.reduce((s,r)=>s+r.diverse.length,0):0;
+  document.getElementById('riprConferma').innerHTML=`<div class="alert ${sovrascrivi&&nD?'alert-error':'alert-warning'}" style="margin-top:12px;font-size:13px">
+    Rimetto <strong>${nM.toLocaleString('it-IT')}</strong> righe mancanti${sovrascrivi?` e riporto <strong>${nD.toLocaleString('it-IT')}</strong> righe come erano nella copia`:''}.
+    ${sovrascrivi&&nD?'<br><strong>Attenzione:</strong> le modifiche fatte dopo la copia su quelle righe andranno perse.':''}
+    <br>Prima scarico una copia dei dati di adesso.
+    <div style="margin-top:8px"><button class="btn btn-danger btn-sm" id="btnEseguiRipr" onclick="eseguiRipristino(${sovrascrivi})">Sì, procedi con il ripristino</button>
+    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('riprConferma').innerHTML=''">No</button></div></div>`;
+}
+
+const ERR_MANCA_FUNZIONE='manca_ripristina_righe';
+// A blocchi da 200; un blocco rifiutato si riprova riga per riga, cosi' una
+// riga sola che non va non ferma le altre.
+async function scriviRigheCopia(t, righe, sovrascrivi, errori){
+  let fatte=0;
+  if(t==='fasi') righe=righe.slice().sort((a,b)=>(a.parent_id?1:0)-(b.parent_id?1:0));
+  if(t==='accettazione_materiali') righe=righe.slice().sort((a,b)=>(a.origine_id?1:0)-(b.origine_id?1:0));
+  const manda=async blocco=>{
+    const {data,error}=await sb.rpc('ripristina_righe',{tabella:t, righe:blocco, sovrascrivi:!!sovrascrivi});
+    if(error && /ripristina_righe|PGRST202|could not find the function/i.test(error.message||'') && !/Non sei il DL|non si ripristina/.test(error.message||''))
+      throw Object.assign(new Error('Manca la funzione ripristina_righe nel database'),{code:ERR_MANCA_FUNZIONE});
+    return {n:Number(data)||0, error};
+  };
+  for(let i=0;i<righe.length;i+=200){
+    const blocco=righe.slice(i,i+200);
+    const r=await manda(blocco);
+    if(!r.error){ fatte+=r.n; continue; }
+    for(const riga of blocco){
+      const r1=await manda([riga]);
+      if(r1.error) errori.push((NOMI_TABELLE_COPIA[t]||t)+': '+(r1.error.message||r1.error));
+      else fatte+=r1.n;
+    }
+  }
+  return fatte;
+}
+
+async function eseguiRipristino(sovrascrivi){
+  if(!RIPR) return;
+  const {righe}=RIPR;
+  const nM=righe.reduce((s,r)=>s+r.mancanti.length,0);
+  const nD=sovrascrivi?righe.reduce((s,r)=>s+r.diverse.length,0):0;
+  if(!nM && !nD) return;
+  const az=document.getElementById('riprAzioni'); if(az) az.style.display='none';
+  const btn=document.getElementById('btnEseguiRipr'); if(btn) btn.disabled=true;
+  const errori=[]; let fatte=0, nomeSalvata='', erroreGrave='';
+  try{
+    nomeSalvata=scaricaFileCopia(RIPR.ora,'-prima-del-ripristino');
+    for(const r of righe){
+      const daScrivere=sovrascrivi?r.mancanti.concat(r.diverse):r.mancanti;
+      if(!daScrivere.length) continue;
+      if(btn) btn.innerHTML='Ripristino: '+esc(NOMI_TABELLE_COPIA[r.t]||r.t)+'…';
+      fatte+=await scriviRigheCopia(r.t, daScrivere, sovrascrivi, errori);
+    }
+  }catch(e){
+    erroreGrave = e && e.code===ERR_MANCA_FUNZIONE
+      ? 'Per ripristinare manca un aggiornamento del database (sql/2026-11-26-copia-sicurezza-ripristino.sql): va eseguito nel SQL Editor di Supabase. Non è stato scritto niente.'
+      : 'Errore durante il ripristino: '+esc((e&&e.message)||String(e));
+  }
+  RIPR=null;
+  await loadMyCantieri();
+  aggiornaVoceCopia();
+  const tot=nM+nD;
+  const corpo = erroreGrave
+    ? `<div class="alert alert-error">${erroreGrave}${nomeSalvata?`<br>La copia dei dati di prima è in <strong>${esc(nomeSalvata)}</strong>.`:''}</div>`
+    : errori.length
+      ? `<div class="alert alert-warning">Ripristino fatto in parte: <strong>${fatte.toLocaleString('it-IT')}</strong> righe su ${tot.toLocaleString('it-IT')}.<br>Non sono tornate (${errori.length}):<br>• ${errori.slice(0,15).map(esc).join('<br>• ')}${errori.length>15?'<br>• … e altre '+(errori.length-15):''}<br>La copia di prima del ripristino è in <strong>${esc(nomeSalvata)}</strong>.</div>`
+      : `<div class="alert alert-success">✅ Ripristino fatto: <strong>${fatte.toLocaleString('it-IT')}</strong> righe rimesse.<br>La copia dei dati di prima del ripristino è in <strong>${esc(nomeSalvata)}</strong>: se qualcosa non va, si torna indietro ripristinando quella.</div>`;
+  openModal('Esito del ripristino', corpo+`<div class="form-actions"><button class="btn btn-primary" onclick="closeModal();showView('cantieri')">Chiudi</button></div>`);
 }
 
 function noCantiere(){return `<div class="empty"><div class="empty-icon">🏗️</div><h3>Nessun cantiere selezionato</h3><p>Seleziona un cantiere dalla barra laterale.</p></div>`;}
