@@ -202,6 +202,11 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   documento (`odsFraseVerifica`) e promemoria nel giornale dei lavori alla data
   della verifica (`odsPromemoriaVerifica` via `annotaGiornale`; in modifica
   solo se la data cambia). ODS generico: `dati_ods.giorni_termine` facoltativo.
+  **Tutti gli ODS si inviano via PEC firmati digitalmente**: niente riquadri
+  per la firma a mano (`apriDocumentoFirmabile` con `firmaDigitale: true` →
+  solo ruolo e nome dei firmatari + dicitura di firma digitale, pulsante
+  «Genera PDF (da firmare digitalmente)»; lo stesso in `stampaODS`). I
+  verbali restano con la firma a mano.
 - Conteggio giorni contrattuali: sospensioni, riprese, proroghe (una proroga
   non sospende i lavori).
 
