@@ -294,7 +294,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.27e';
+const APP_VERSIONE = '2026.11.27f';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -552,6 +552,27 @@ async function loadMyCantieri(){
   myCantieri.forEach(r => opts += `<option value="${r.cantiere.id}">${r.cantiere.nome}${r.cantiere.codice_commessa?' — '+r.cantiere.codice_commessa:''}</option>`);
   sel.innerHTML = opts;
   aggiornaVoceCopia();
+  await caricaImportiVigenti();
+}
+// Importo contrattuale vigente di ogni cantiere: quello dell'ultima variante
+// con nuovo importo, altrimenti l'importo del contratto. Serve ai limiti del
+// subappalto, che si riferiscono al contratto come modificato dalle varianti.
+let IMPORTO_VIGENTE = {};
+async function caricaImportiVigenti(){
+  IMPORTO_VIGENTE = {};
+  const ids = myCantieri.map(r=>r.cantiere.id);
+  if(!ids.length) return;
+  try{
+    const {data} = await sb.from('varianti').select('cantiere_id,numero,importo_contratto_nuovo').in('cantiere_id', ids);
+    const per = {};
+    (data||[]).forEach(v=>{ (per[v.cantiere_id]=per[v.cantiere_id]||[]).push(v); });
+    Object.keys(per).forEach(k=>{ const vg=variantiRiepilogoDati(per[k]).vigente; if(vg) IMPORTO_VIGENTE[k]=parseFloat(vg.importo_contratto_nuovo); });
+  }catch(e){ console.error('caricaImportiVigenti', e); }
+}
+function importoVigenteCantiere(c){
+  if(!c) return 0;
+  const v = IMPORTO_VIGENTE[c.id];
+  return (v>0) ? v : (parseFloat(c.importo)||0);
 }
 
 async function doLogout(){
@@ -818,7 +839,18 @@ function limiteCategoria(cat){
 }
 function limiteComplessivoSub(c){
   const p = parseFloat(c && c.subappalto_limite_perc);
-  return (isNaN(p) || !(parseFloat(c.importo)>0)) ? null : parseFloat(c.importo)*p/100;
+  const imp = importoVigenteCantiere(c);
+  return (isNaN(p) || !(imp>0)) ? null : imp*p/100;
+}
+// Gli importi delle categorie vanno inseriti come da CONTRATTO (al netto del
+// ribasso e aggiornati con le varianti), cosi' sono confrontabili con gli
+// importi dei contratti di subappalto, che sono prezzi pattuiti fra
+// appaltatore e subappaltatore. Se la loro somma supera l'importo
+// contrattuale vigente sono quasi certamente importi a base di gara.
+function sommaCategorieSub(c){ return categorieSub(c).reduce((a,x)=>a+(parseFloat(x.importo)||0),0); }
+function categorieSubIncoerenti(c){
+  const somma = sommaCategorieSub(c), vig = importoVigenteCantiere(c);
+  return (somma>0 && vig>0 && somma > vig*1.005) ? {somma, vig} : null;
 }
 function limitiSubImpostati(c){ return categorieSub(c).length>0 || limiteComplessivoSub(c)!=null; }
 // Riepilogo per categoria; perDitta (facoltativo) = esito del controllo
@@ -853,6 +885,9 @@ function problemiLimitiSub(c, ditte, perDitta, costi){
   if(!limitiSubImpostati(c)) return out;
   const R = riepilogoLimitiSub(c, ditte, perDitta);
   const haCat = R.righe.length>0;
+  const inc = categorieSubIncoerenti(c);
+  if(inc) out.push({livello:'avviso', titolo:'Importi delle categorie',
+    testo:`la somma delle categorie (${fmtEur(inc.somma)}) supera l'importo contrattuale vigente (${fmtEur(inc.vig)}): sembrano importi a base di gara. Vanno inseriti come da contratto, al netto del ribasso e aggiornati con le varianti, altrimenti i limiti risultano più alti del dovuto`});
   R.senzaCat.forEach(d=>{ if(haCat) out.push({livello:'avviso', ditta:d, testo:'indicare la categoria del subappalto (serve alla verifica del limite contrattuale)'}); });
   R.fuori.forEach(f=>out.push({livello:'grave', ditta:f.ditta,
     testo:`categoria «${f.categoria}»${f.importo?' ('+fmtEur(f.importo)+')':''} non prevista fra quelle subappaltabili a contratto (${R.righe.map(r=>r.cat.categoria).join(', ')||'nessuna'})`}));
@@ -896,13 +931,13 @@ function tabellaLimitiSubHtml(c, ditte, perDitta){
       <td style="text-align:right">${r.limite>0?fmtEur(Math.max(0,r.limite-r.autorizzato)):'—'}</td></tr>`).join('');
   const T = R.tot;
   const tot = T.limite!=null ? `<tr style="border-top:2px solid var(--border)"><td><strong>Limite complessivo</strong> <span style="color:var(--muted)">${esc(T.perc)}% dell'importo contrattuale</span></td>
-      <td style="text-align:right">${fmtEur(c.importo)}</td><td style="text-align:right">${fmtEur(T.limite)}</td>
+      <td style="text-align:right">${fmtEur(importoVigenteCantiere(c))}</td><td style="text-align:right">${fmtEur(T.limite)}</td>
       ${cella(T.autorizzato, T.limite)}${cella(T.registrato, T.limite)}<td style="text-align:right">${fmtEur(Math.max(0,T.limite-T.autorizzato))}</td></tr>` : '';
   return `<div class="card" style="padding:0;margin-bottom:16px">
     <div style="padding:12px 16px;font-weight:700;color:var(--primary)">Limiti del subappalto da contratto</div>
     <table><thead><tr><th>Categoria</th><th style="text-align:right">Importo categoria</th><th style="text-align:right">Limite</th><th style="text-align:right">Autorizzato</th><th style="text-align:right">Manodopera registrata</th><th style="text-align:right">Residuo</th></tr></thead>
     <tbody>${righe}${tot}</tbody></table>
-    <div style="padding:8px 16px;font-size:11px;color:var(--muted)">Contano le sole ditte subappaltatrici (i subaffidamenti no). Manodopera registrata = ore del giornale × costo orario del livello.</div>
+    <div style="padding:8px 16px;font-size:11px;color:var(--muted)">Importi delle categorie come da contratto (al netto del ribasso, aggiornati con le varianti), confrontati con gli importi dei contratti di subappalto. Contano le sole ditte subappaltatrici (i subaffidamenti no). Manodopera registrata = ore del giornale × costo orario del livello, senza ribasso (art. 119, c. 12, d.lgs. 36/2023).</div>
   </div>`;
 }
 
@@ -944,6 +979,17 @@ function controlloSubappalti(c, ditte, giornale){
     } else if(importo>0 && costi && r.perc>=SOGLIA_AVVISO_SUB){
       out.problemi.push({livello:'avviso', ditta:d,
         testo:`costo della manodopera registrata ${fmtEur(r.costo)} pari al ${Math.round(r.perc*100)}% dell'importo comunicato di ${fmtEur(importo)}`});
+    }
+    const manDich = parseFloat(d.manodopera_subappalto)||0;
+    r.manodoperaDichiarata = manDich;
+    if(d.tipo==='subappaltatrice' && importo>0 && !manDich)
+      out.problemi.push({livello:'avviso', ditta:d, testo:'indicare i costi della manodopera compresi nel subappalto (art. 119, c. 12, d.lgs. 36/2023: vanno corrisposti al subappaltatore senza ribasso)'});
+    if(manDich>0 && costi && r.costo>manDich){
+      out.problemi.push({livello:'grave', ditta:d,
+        testo:`manodopera registrata ${fmtEur(r.costo)} superiore ai costi della manodopera dichiarati nel subappalto (${fmtEur(manDich)}): verificare la congruità e che siano corrisposti senza ribasso (art. 119, c. 12)`});
+    } else if(manDich>0 && costi && r.costo>=SOGLIA_AVVISO_SUB*manDich){
+      out.problemi.push({livello:'avviso', ditta:d,
+        testo:`manodopera registrata ${fmtEur(r.costo)} pari al ${Math.round(r.costo/manDich*100)}% dei costi della manodopera dichiarati nel subappalto (${fmtEur(manDich)})`});
     }
     if(r.senzaLivello && costi) r.notaLivello = `${r.senzaLivello} presenze senza livello, conteggiate come operaio comune`;
   });
@@ -1015,6 +1061,8 @@ async function stampaReportSubappalto(dittaId){
     h += `<p>Riepilogo delle presenze registrate nel giornale dei lavori per la ditta <strong>${esc(d.nome)}</strong>${d.piva?' (P.IVA '+esc(d.piva)+')':''}, ${d.tipo==='subaffidataria'?'subaffidataria':'subappaltatrice'}${app?' dell\'impresa appaltatrice <strong>'+esc(app.nome)+'</strong>':''}, con il costo della manodopera calcolato sulle ore registrate e sui costi orari contrattuali, confrontato con l'importo del ${tipoL} comunicato.</p>`;
     h += `<table style="width:100%;border-collapse:collapse;font-size:11px;margin:8px 0">
       <tr><td style="${td};width:40%"><strong>Importo del ${tipoL} comunicato</strong></td><td style="${td}">${importo?fmtEur(importo):'<em>non indicato</em>'}</td></tr>
+      ${d.manodopera_subappalto?`<tr><td style="${td}"><strong>di cui costi della manodopera dichiarati</strong></td><td style="${td}">${fmtEur(d.manodopera_subappalto)} &mdash; da corrispondere senza ribasso (art. 119, c. 12, d.lgs. 36/2023)${totCosto?` &mdash; manodopera registrata pari al <strong>${Math.round(totCosto/d.manodopera_subappalto*100)}%</strong>`:''}</td></tr>`:''}
+      ${d.oneri_sicurezza_subappalto?`<tr><td style="${td}"><strong>di cui costi della sicurezza</strong></td><td style="${td}">${fmtEur(d.oneri_sicurezza_subappalto)}</td></tr>`:''}
       <tr><td style="${td}"><strong>Estremi autorizzazione / comunicazione</strong></td><td style="${td}">${esc(d.estremi_autorizzazione||'—')}</td></tr>
       <tr><td style="${td}"><strong>Lavorazioni comunicate</strong></td><td style="${td}">${righeLavorazioni(d.lavorazioni_affidate).map(esc).join('; ')||'<em>non indicate</em>'}</td></tr>
       <tr><td style="${td}"><strong>Giornate di presenza registrate</strong></td><td style="${td}">${new Set(righe.map(r=>r.data)).size}${righe.length?' (dal '+fmt(righe[0].data)+' al '+fmt(righe[righe.length-1].data)+')':''}</td></tr>
@@ -1085,12 +1133,19 @@ function dittaSubCampiHtml(prefix, d){
       <div style="font-weight:700;color:#856404;font-size:13px;margin-bottom:6px">Subappalto / subaffidamento — dati comunicati</div>
       <div class="form-hint" style="margin-bottom:8px">Obbligatori: servono al controllo automatico delle presenze registrate nel giornale dei lavori.</div>
       <div class="form-grid">
-        <div class="form-group"><label class="form-label">Importo comunicato / autorizzato (€) *</label>
-          <input class="form-control" type="number" step="0.01" id="${prefix}_importo_aff" value="${d.importo_affidato!=null?esc(d.importo_affidato):''}"></div>
+        <div class="form-group"><label class="form-label">Importo del subappalto / subaffidamento (€) *</label>
+          <input class="form-control" type="number" step="0.01" id="${prefix}_importo_aff" value="${d.importo_affidato!=null?esc(d.importo_affidato):''}">
+          <div class="form-hint">Come da richiesta di autorizzazione / contratto di subappalto (prezzi pattuiti con l'appaltatore, comprensivi di manodopera e sicurezza)</div></div>
         <div class="form-group"><label class="form-label">Estremi autorizzazione / comunicazione</label>
           <input class="form-control" id="${prefix}_estremi_aut" value="${cseA(d.estremi_autorizzazione||'')}" placeholder="Es. autorizzazione RUP prot. 1234 del 10/03/2026"></div>
         <div class="form-group span-2"><label class="form-label">Lavorazioni comunicate / autorizzate * (una per riga)</label>
           <textarea class="form-control" id="${prefix}_lav_aff" rows="3" placeholder="Es.&#10;Impianto elettrico&#10;Intonaci interni">${esc(d.lavorazioni_affidate||'')}</textarea></div>
+        <div class="form-group"><label class="form-label">di cui costi della manodopera (€)</label>
+          <input class="form-control" type="number" step="0.01" id="${prefix}_mano_sub" value="${d.manodopera_subappalto!=null?cseA(d.manodopera_subappalto):''}">
+          <div class="form-hint">Dichiarati nella richiesta: vanno corrisposti al subappaltatore senza ribasso (art. 119, c. 12)</div></div>
+        <div class="form-group"><label class="form-label">di cui costi della sicurezza (€)</label>
+          <input class="form-control" type="number" step="0.01" id="${prefix}_sic_sub" value="${d.oneri_sicurezza_subappalto!=null?cseA(d.oneri_sicurezza_subappalto):''}">
+          <div class="form-hint">Senza ribasso (art. 119, c. 12)</div></div>
         <div class="form-group span-2" id="${prefix}_cat_box" style="display:${d.tipo==='subaffidataria'?'none':'block'}">${dittaCategoriaHtml(prefix, d)}</div>
       </div>
       <div id="${prefix}_lim_msg"></div>
@@ -1172,7 +1227,7 @@ function dittaSubToggle(prefix){
 // null = dati non validi (avviso gia' mostrato)
 function dittaSubDati(prefix, tipo){
   if(!(tipo==='subappaltatrice'||tipo==='subaffidataria'))
-    return {importo_affidato:null, lavorazioni_affidate:null, estremi_autorizzazione:null, categoria_subappalto:null, subappalto_categorie:[]};
+    return {importo_affidato:null, lavorazioni_affidate:null, estremi_autorizzazione:null, categoria_subappalto:null, subappalto_categorie:[], manodopera_subappalto:null, oneri_sicurezza_subappalto:null};
   const imp = parseFloat(document.getElementById(prefix+'_importo_aff')?.value);
   const lav = (document.getElementById(prefix+'_lav_aff')?.value||'').trim();
   if(!(imp>0) || !lav){
@@ -1190,7 +1245,11 @@ function dittaSubDati(prefix, tipo){
     cats = rr.map(x=>({categoria:x.categoria, importo: rr.length===1 && !(x.importo>0) ? imp : x.importo}));
   }
   const totCat = cats.reduce((a,x)=>a+x.importo,0);
-  return {importo_affidato: cats.length ? totCat : imp, lavorazioni_affidate:lav,
+  const impTot = cats.length ? totCat : imp;
+  const numOpz = id => { const v=(document.getElementById(prefix+'_'+id)?.value||'').trim(); const x=parseFloat(v); return v===''||isNaN(x)?null:x; };
+  const mano = numOpz('mano_sub'), sic = numOpz('sic_sub');
+  if((mano||0)+(sic||0) > impTot+0.005){ alert('Costi della manodopera e della sicurezza superano l\'importo del subappalto: controlla i valori.'); return null; }
+  return {importo_affidato: impTot, lavorazioni_affidate:lav, manodopera_subappalto:mano, oneri_sicurezza_subappalto:sic,
     estremi_autorizzazione:(document.getElementById(prefix+'_estremi_aut')?.value||'').trim()||null,
     categoria_subappalto: cats.length ? cats.map(x=>x.categoria).join(', ') : null,
     subappalto_categorie: cats};
@@ -1233,7 +1292,7 @@ function cantiereCostiCampiHtml(prefix, c){
   const v = k => c[k]!=null ? esc(c[k]) : '';
   return `<div class="form-group span-2" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
       <div style="font-weight:700;color:var(--primary);font-size:13px">Costo orario della manodopera da contratto</div>
-      <div class="form-hint">Serve al controllo dei subappalti: ore registrate nel giornale × costo orario, confrontate con l'importo comunicato.</div>
+      <div class="form-hint">Serve al controllo dei subappalti: ore registrate nel giornale × costo orario, confrontate con l'importo e con la manodopera dichiarata. Costi orari del contratto collettivo / tabelle ministeriali usati nel progetto, <strong>senza ribasso</strong> (art. 119, c. 12, d.lgs. 36/2023).</div>
     </div>
     <div class="form-group"><label class="form-label">Operaio comune (€/h)</label><input class="form-control" type="number" step="0.01" id="${prefix}_costo_com" value="${v('costo_ora_comune')}"></div>
     <div class="form-group"><label class="form-label">Operaio qualificato (€/h)</label><input class="form-control" type="number" step="0.01" id="${prefix}_costo_qua" value="${v('costo_ora_qualificato')}"></div>
@@ -1251,7 +1310,7 @@ function subCatRigaHtml(prefix, x){
   return `<div class="subcat-row" style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">
     <label style="flex:1 1 100%;min-width:0;font-size:11px">Categoria<select class="form-control sc-cat" style="width:100%;max-width:100%" onchange="sceltaCategoriaSoa(this,'${prefix}')">${opzioniCategorieSoa(x.categoria)}</select></label>
     <label style="flex:3 1 180px;font-size:11px">Descrizione<input class="form-control sc-desc" value="${v('descrizione')}" placeholder="Edifici civili e industriali"></label>
-    <label style="flex:2 1 120px;font-size:11px">Importo categoria (€)<input class="form-control sc-imp" type="number" step="0.01" value="${v('importo')}" oninput="aggiornaLimitiSub('${prefix}')"></label>
+    <label style="flex:2 1 120px;font-size:11px">Importo da contratto (€)<input class="form-control sc-imp" type="number" step="0.01" value="${v('importo')}" oninput="aggiornaLimitiSub('${prefix}')"></label>
     <label style="flex:1 1 90px;font-size:11px">% subappaltabile<input class="form-control sc-perc" type="number" step="0.01" min="0" max="100" value="${v('perc')}" placeholder="0 = no" oninput="aggiornaLimitiSub('${prefix}')"></label>
     <div class="sc-lim" style="flex:1 1 110px;font-size:11px;padding-bottom:8px;color:var(--muted)"></div>
     <button type="button" class="btn btn-danger btn-sm" style="margin-bottom:4px" onclick="this.parentElement.remove();aggiornaLimitiSub('${prefix}')">✕</button>
@@ -1278,11 +1337,12 @@ function limitiSubCampiHtml(prefix, c){
   setTimeout(()=>aggiornaLimitiSub(prefix), 0);
   return `<div class="form-group span-2" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
       <div style="font-weight:700;color:var(--primary);font-size:13px">Limiti del subappalto concessi a contratto</div>
-      <div class="form-hint" style="margin-bottom:8px">Per ogni categoria subappaltabile: importo della categoria e percentuale massima subappaltabile (0 = non subappaltabile). Le ditte subappaltatrici vengono verificate automaticamente rispetto a questi limiti.</div>
-      <div id="${prefix}_subcat_box">${cats.map(x=>subCatRigaHtml(prefix,x)).join('')}</div>
+      <div class="form-hint" style="margin-bottom:8px">Per ogni categoria subappaltabile: importo della categoria <strong>come da contratto, al netto del ribasso e aggiornato con le varianti</strong> (non quello a base di gara), e percentuale massima subappaltabile (0 = non subappaltabile). Gli importi dei subappalti sono prezzi contrattuali: il confronto va fatto su importi omogenei.</div>
+      <div id="${prefix}_subcat_box" data-cantiere="${cseA(c.id||'')}">${cats.map(x=>subCatRigaHtml(prefix,x)).join('')}</div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiSubCat('${prefix}')">+ Categoria</button>
+      <div id="${prefix}_subcat_somma" style="font-size:12px;margin-top:6px"></div>
       <div class="form-grid" style="margin-top:10px">
-        <div class="form-group"><label class="form-label">Limite complessivo (% dell'importo contrattuale)</label>
+        <div class="form-group"><label class="form-label">Limite complessivo (% dell'importo contrattuale vigente)</label>
           <input class="form-control" type="number" step="0.01" min="0" max="100" id="${prefix}_sub_lim_tot" value="${c.subappalto_limite_perc!=null?cseA(c.subappalto_limite_perc):''}" placeholder="facoltativo" oninput="aggiornaLimitiSub('${prefix}')">
           <div class="form-hint" id="${prefix}_sub_lim_tot_eur">Se il contratto fissa un tetto unico al subappalto</div></div>
       </div>
@@ -1299,8 +1359,15 @@ function aggiornaLimitiSub(prefix){
     out.innerHTML = isNaN(p) ? '' : p===0 ? '<span style="color:var(--red)">non subappaltabile</span>' : (imp>0 ? 'limite <strong>'+fmtEur(imp*p/100)+'</strong>' : '');
   });
   const tot=document.getElementById(prefix+'_sub_lim_tot'), info=document.getElementById(prefix+'_sub_lim_tot_eur');
-  const imp=parseFloat(document.getElementById(prefix==='f'?'f_importo':'e_importo')?.value);
-  if(tot && info){ const p=parseFloat(tot.value); info.innerHTML = (!isNaN(p) && imp>0) ? 'Limite complessivo: <strong>'+fmtEur(imp*p/100)+'</strong>' : 'Se il contratto fissa un tetto unico al subappalto'; }
+  const impCampo=parseFloat(document.getElementById(prefix==='f'?'f_importo':'e_importo')?.value);
+  const cid=document.getElementById(prefix+'_subcat_box')?.dataset.cantiere;
+  const imp=(cid && IMPORTO_VIGENTE[cid]>0) ? IMPORTO_VIGENTE[cid] : impCampo;
+  const somma=[...document.querySelectorAll('#'+prefix+'_subcat_box .subcat-row .sc-imp')].reduce((a,x)=>a+(parseFloat(x.value)||0),0);
+  const sm=document.getElementById(prefix+'_subcat_somma');
+  if(sm) sm.innerHTML = !(somma>0) ? '' : (imp>0 && somma>imp*1.005)
+    ? `<span style="color:var(--red)">⚠️ Somma delle categorie ${fmtEur(somma)} superiore all'importo contrattuale ${IMPORTO_VIGENTE[cid]>0?'vigente (con varianti) ':''}${fmtEur(imp)}: sembrano importi a base di gara. Inserisci gli importi come da contratto, al netto del ribasso.</span>`
+    : `<span style="color:var(--muted)">Somma delle categorie ${fmtEur(somma)}${imp>0?' su importo contrattuale '+(IMPORTO_VIGENTE[cid]>0?'vigente ':'')+fmtEur(imp):''}</span>`;
+  if(tot && info){ const p=parseFloat(tot.value); info.innerHTML = (!isNaN(p) && imp>0) ? 'Limite complessivo: <strong>'+fmtEur(imp*p/100)+'</strong>'+(IMPORTO_VIGENTE[cid]>0?' (sull\'importo vigente con varianti)':'') : 'Se il contratto fissa un tetto unico al subappalto'; }
 }
 // Dati dei limiti; {errore} se non validi
 function limitiSubDati(prefix){
@@ -3149,7 +3216,8 @@ async function renderDitte(){
         const col = perc==null ? 'var(--muted)' : perc>1 ? 'var(--red)' : perc>=SOGLIA_AVVISO_SUB ? '#B8860B' : 'var(--green)';
         return `<div>${categorieDitta(d).map(x=>`<span class="badge badge-blue" style="margin-right:4px" title="${cseA(descrCategoriaSoa(x.categoria))}">${esc(x.categoria)}${categorieDitta(d).length>1?' '+fmtEur(x.importo):''}</span>`).join('')}<strong>${d.importo_affidato?fmtEur(d.importo_affidato):'<span style="color:var(--red)">importo mancante</span>'}</strong>${d.estremi_autorizzazione?` <span style="color:var(--muted)">— ${esc(d.estremi_autorizzazione)}</span>`:''}</div>
           <div style="color:var(--muted)">${righeLavorazioni(d.lavorazioni_affidate).map(esc).join(' · ')||'<span style="color:var(--red)">lavorazioni non indicate</span>'}</div>
-          ${r&&r.presenze?`<div style="color:${col};font-weight:600;margin-top:2px">Manodopera registrata: ${fmtEur(r.costo)} (${Math.round(r.ore)} h)${perc!=null?' — '+Math.round(perc*100)+'%':''}</div>`:''}
+          ${d.manodopera_subappalto?`<div style="color:var(--muted)">di cui manodopera dichiarata ${fmtEur(d.manodopera_subappalto)}${d.oneri_sicurezza_subappalto?' · sicurezza '+fmtEur(d.oneri_sicurezza_subappalto):''}</div>`:''}
+          ${r&&r.presenze?`<div style="color:${col};font-weight:600;margin-top:2px">Manodopera registrata: ${fmtEur(r.costo)} (${Math.round(r.ore)} h)${perc!=null?' — '+Math.round(perc*100)+'% dell\'importo':''}${d.manodopera_subappalto?' — '+Math.round(r.costo/d.manodopera_subappalto*100)+'% della manodopera dichiarata':''}</div>`:''}
           ${r&&r.notaLivello?`<div style="color:var(--muted);font-size:10px">${esc(r.notaLivello)}</div>`:''}
           ${r&&r.presenze?`<button class="btn btn-secondary btn-sm" style="margin-top:4px;font-size:11px;padding:2px 8px" onclick="stampaReportSubappalto('${d.id}')">🖨️ Report ore</button>`:''}`;
       })() : '<span style="color:var(--muted)">—</span>'}</td>
