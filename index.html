@@ -293,7 +293,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.26a';
+const APP_VERSIONE = '2026.11.26b';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -705,7 +705,8 @@ async function emettiOdsRitardo(cantiereId){
 //  - costo della manodopera (ore x costo orario contrattuale del livello)
 //    che supera l'importo comunicato (avviso preventivo dal 90%)
 //  - dati dell'affidamento mancanti
-const LIVELLI_OPERAIO = [['comune','Operaio comune'],['qualificato','Operaio qualificato'],['specializzato','Operaio specializzato']];
+// 'direzione' = capo cantiere, direttore tecnico: presenti ma non conteggiati nel costo
+const LIVELLI_OPERAIO = [['comune','Operaio comune'],['qualificato','Operaio qualificato'],['specializzato','Operaio specializzato'],['direzione','Direzione di cantiere (non conteggiato)']];
 const SOGLIA_AVVISO_SUB = 0.9;
 function dittaESub(d){ return !!d && (d.tipo==='subappaltatrice' || d.tipo==='subaffidataria'); }
 function righeLavorazioni(t){ return String(t||'').split(/\n|;/).map(s=>s.trim()).filter(Boolean); }
@@ -737,6 +738,7 @@ function controlloSubappalti(c, ditte, giornale){
     (giornale||[]).forEach(g=>{
       (g.maestranze||[]).forEach(m=>{
         if(String(m.ditta_id||'')!==String(d.id)) return;
+        if(m.livello==='direzione') return; // capo cantiere / direttore tecnico
         const num = parseFloat(m.num)||0;
         const ore = (m.ore!=null && m.ore!=='') ? (parseFloat(m.ore)||0) : oreGiornaliereCantiere(c);
         if(!m.livello) r.senzaLivello++;
