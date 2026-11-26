@@ -294,7 +294,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.27g';
+const APP_VERSIONE = '2026.11.27h';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -1384,9 +1384,9 @@ function subCatRigaHtml(prefix, x){
   return `<div class="subcat-row" style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">
     <label style="flex:1 1 100%;min-width:0;font-size:11px">Categoria<select class="form-control sc-cat" style="width:100%;max-width:100%" onchange="sceltaCategoriaSoa(this,'${prefix}')">${opzioniCategorieSoa(x.categoria)}</select></label>
     <label style="flex:3 1 180px;font-size:11px">Descrizione<input class="form-control sc-desc" value="${v('descrizione')}" placeholder="Edifici civili e industriali"></label>
-    <label style="flex:2 1 130px;font-size:11px">Importo lordo (€)<input class="form-control sc-imp" type="number" step="0.01" value="${v('importo')}" title="Dal computo di progetto o di variante, senza oneri della sicurezza" oninput="aggiornaLimitiSub('${prefix}')"></label>
+    <label style="flex:2 1 130px;font-size:11px"><strong>Importo LORDO</strong> senza sicurezza (€)<input class="form-control sc-imp" type="number" step="0.01" value="${v('importo')}" title="Dal computo di progetto o di variante, senza oneri della sicurezza" oninput="aggiornaLimitiSub('${prefix}')"></label>
     <label style="flex:1 1 90px;font-size:11px">% subappaltabile<input class="form-control sc-perc" type="number" step="0.01" min="0" max="100" value="${v('perc')}" placeholder="0 = no" oninput="aggiornaLimitiSub('${prefix}')"></label>
-    <label style="flex:1 1 90px;font-size:11px">% incidenza manodopera<input class="form-control sc-inc" type="number" step="0.01" min="0" max="100" value="${v('inc_mano')}" placeholder="es. 29" title="Dalla stima di incidenza della manodopera del progetto (riepilogo per categorie)" oninput="aggiornaLimitiSub('${prefix}')"></label>
+    <label style="flex:1 1 110px;font-size:11px"><strong>% incidenza manodopera</strong> *<input class="form-control sc-inc" type="number" step="0.01" min="0" max="100" value="${v('inc_mano')}" placeholder="es. 29" title="Dalla stima di incidenza della manodopera del progetto (riepilogo per categorie)" oninput="aggiornaLimitiSub('${prefix}')"></label>
     <div class="sc-lim" style="flex:1 1 110px;font-size:11px;padding-bottom:8px;color:var(--muted)"></div>
     <button type="button" class="btn btn-danger btn-sm" style="margin-bottom:4px" onclick="this.parentElement.remove();aggiornaLimitiSub('${prefix}')">✕</button>
   </div>`;
@@ -1411,8 +1411,24 @@ function limitiSubCampiHtml(prefix, c){
   const cats = categorieSub(c);
   setTimeout(()=>aggiornaLimitiSub(prefix), 0);
   return `<div class="form-group span-2" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
-      <div style="font-weight:700;color:var(--primary);font-size:13px">Limiti del subappalto concessi a contratto</div>
-      <div class="form-hint" style="margin-bottom:8px">Per ogni categoria: <strong>importo lordo</strong> dal computo di progetto o di variante (senza oneri della sicurezza), percentuale massima subappaltabile (0 = non subappaltabile) e <strong>percentuale di incidenza della manodopera</strong> (stima di incidenza del progetto, riepilogo per categorie). L'app calcola l'importo contrattuale col ribasso indicato in questa scheda e verifica: limiti dei subappalti sull'importo contrattuale, manodopera minima di ogni subappalto (importo riportato al lordo × incidenza, art. 119 c. 12).</div>
+      <div style="font-weight:700;color:var(--primary);font-size:13px">Categorie di lavori, subappalto e manodopera</div>
+      <div class="alert alert-info" style="font-size:12px;margin:6px 0 10px;line-height:1.55">
+        <strong>Come compilare</strong>
+        <ol style="margin:4px 0 0 18px;padding:0">
+          <li>Per ogni categoria inserisci l'<strong>importo LORDO</strong>, cioè quello del computo di progetto o di variante <strong>prima del ribasso</strong> e <strong>SENZA gli oneri della sicurezza</strong>.</li>
+          <li>Per ogni categoria inserisci la <strong>% di incidenza della manodopera</strong> (obbligatoria): la trovi nella stima di incidenza della manodopera del progetto, riepilogo per categorie.</li>
+          <li>Inserisci a parte gli <strong>oneri della sicurezza</strong>, che <strong>non sono soggetti a ribasso</strong>, e il <strong>ribasso offerto</strong>.</li>
+          <li>Gli <strong>importi netti</strong> (contrattuali) li calcola l'app: lordo × (1 − ribasso). Su questi si applicano i limiti dei subappalti; con lordo e incidenza si calcola la manodopera minima di ogni subappalto (art. 119, c. 12).</li>
+        </ol>
+      </div>
+      <div class="form-grid" style="margin-bottom:8px">
+        <div class="form-group"><label class="form-label">Ribasso offerto (%) *</label>
+          <input class="form-control" type="number" step="0.001" id="${prefix}_sub_ribasso" value="${c.ribasso_percentuale!=null?cseA(c.ribasso_percentuale):''}" placeholder="Es. 19.452" oninput="syncCampoSub('${prefix}','ribasso',this.value)">
+          <div class="form-hint">Si applica solo agli importi lordi dei lavori</div></div>
+        <div class="form-group"><label class="form-label">Oneri della sicurezza (€) * — non soggetti a ribasso</label>
+          <input class="form-control" type="number" step="0.01" id="${prefix}_sub_oneri" value="${c.oneri_sicurezza!=null?cseA(c.oneri_sicurezza):''}" placeholder="Es. 30210.66" oninput="syncCampoSub('${prefix}','oneri',this.value)">
+          <div class="form-hint" id="${prefix}_sub_oneri_info">Da contratto. Restano a parte: non entrano negli importi delle categorie</div></div>
+      </div>
       <div id="${prefix}_subcat_box" data-cantiere="${cseA(c.id||'')}">${cats.map(x=>subCatRigaHtml(prefix,x)).join('')}</div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiSubCat('${prefix}')">+ Categoria</button>
       <div id="${prefix}_subcat_somma" style="font-size:12px;margin-top:6px"></div>
@@ -1422,6 +1438,14 @@ function limitiSubCampiHtml(prefix, c){
           <div class="form-hint" id="${prefix}_sub_lim_tot_eur">Se il contratto fissa un tetto unico al subappalto</div></div>
       </div>
     </div>`;
+}
+// Ribasso e oneri compaiono anche piu' in basso nella scheda: i due campi
+// restano allineati (si salva un solo valore)
+function numOVuoto(id){ const v=(document.getElementById(id)?.value||'').trim(); const x=parseFloat(v); return v===''||isNaN(x)?null:x; }
+function syncCampoSub(prefix, nome, valore){
+  const orig = document.getElementById(prefix+'_'+nome);
+  if(orig) orig.value = valore;
+  aggiornaLimitiSub(prefix);
 }
 function aggiungiSubCat(prefix){
   const box=document.getElementById(prefix+'_subcat_box'); if(!box) return;
@@ -1434,11 +1458,20 @@ function ribassoForm(prefix){
   return ribassoCantiere(myCantieri.find(r=>r.cantiere.id===cid)?.cantiere);
 }
 function aggiornaLimitiSub(prefix){
+  ['ribasso','oneri'].forEach(n=>{
+    const o=document.getElementById(prefix+'_'+n), c=document.getElementById(prefix+'_sub_'+n);
+    if(o && c && document.activeElement!==c && c.value!==o.value) c.value=o.value;
+  });
+  const cidO=document.getElementById(prefix+'_subcat_box')?.dataset.cantiere;
+  const oi=document.getElementById(prefix+'_sub_oneri_info');
+  if(oi) oi.innerHTML = (cidO && ONERI_VIGENTI[cidO]!=null)
+    ? 'Da contratto. Con le varianti gli oneri vigenti sono <strong>'+fmtEur(ONERI_VIGENTI[cidO])+'</strong> (usati nel controllo). Restano a parte: non entrano nelle categorie'
+    : 'Da contratto. Restano a parte: non entrano negli importi delle categorie';
   document.querySelectorAll('#'+prefix+'_subcat_box .subcat-row').forEach(r=>{
     const imp=parseFloat(r.querySelector('.sc-imp').value), p=parseFloat(r.querySelector('.sc-perc').value);
     const out=r.querySelector('.sc-lim');
     const rb = ribassoForm(prefix), net = (imp||0)*(1-rb), inc=parseFloat(r.querySelector('.sc-inc')?.value);
-    out.innerHTML = (imp>0?'contratto '+fmtEur(net)+'<br>':'') + (isNaN(p) ? '' : p===0 ? '<span style="color:var(--red)">non subappaltabile</span>' : (imp>0 ? 'limite <strong>'+fmtEur(net*p/100)+'</strong>' : '')) + (!isNaN(inc)&&imp>0 ? '<br>manodopera '+fmtEur(imp*inc/100) : '');
+    out.innerHTML = (imp>0?'netto (calcolato) <strong>'+fmtEur(net)+'</strong><br>':'') + (isNaN(p) ? '' : p===0 ? '<span style="color:var(--red)">non subappaltabile</span>' : (imp>0 ? 'limite <strong>'+fmtEur(net*p/100)+'</strong>' : '')) + (!isNaN(inc)&&imp>0 ? '<br>manodopera '+fmtEur(imp*inc/100) : '');
   });
   const tot=document.getElementById(prefix+'_sub_lim_tot'), info=document.getElementById(prefix+'_sub_lim_tot_eur');
   const impCampo=parseFloat(document.getElementById(prefix==='f'?'f_importo':'e_importo')?.value);
@@ -1470,7 +1503,8 @@ function limitiSubDati(prefix){
     if(perc==='' || isNaN(pi) || pi<0 || pi>100) err.push(`la categoria ${categoria||'?'} senza percentuale subappaltabile valida (0-100)`);
     if(pi>0 && !(ii>0)) err.push(`la categoria ${categoria||'?'} senza importo`);
     const incTxt=r.querySelector('.sc-inc')?.value||'', inc=parseFloat(incTxt);
-    if(incTxt!=='' && (isNaN(inc)||inc<0||inc>100)) err.push(`la categoria ${categoria||'?'} con incidenza della manodopera non valida (0-100)`);
+    if(incTxt==='') err.push(`la % di incidenza della manodopera della categoria ${categoria||'?'}`);
+    else if(isNaN(inc)||inc<0||inc>100) err.push(`la categoria ${categoria||'?'} con incidenza della manodopera non valida (0-100)`);
     cats.push({categoria, descrizione:descrizione||null, importo:isNaN(ii)?0:ii, perc:isNaN(pi)?null:pi, inc_mano:isNaN(inc)?null:inc});
   });
   const dup=cats.map(x=>x.categoria).filter((x,i,a)=>x&&a.indexOf(x)!==i);
@@ -1478,7 +1512,13 @@ function limitiSubDati(prefix){
   const t=document.getElementById(prefix+'_sub_lim_tot')?.value;
   const tp=t===''||t==null?null:parseFloat(t);
   if(tp!=null && (isNaN(tp)||tp<0||tp>100)) err.push('il limite complessivo deve essere fra 0 e 100%');
-  if(err.length) return {errore:'Limiti del subappalto: controlla '+err.join('; ')+'.'};
+  if(cats.length){
+    const rib=(document.getElementById(prefix+'_ribasso')?.value||'').trim();
+    const one=(document.getElementById(prefix+'_oneri')?.value||'').trim();
+    if(rib==='') err.push('il ribasso offerto (serve a calcolare gli importi netti)');
+    if(one==='') err.push('gli oneri della sicurezza non soggetti a ribasso (0 se non previsti)');
+  }
+  if(err.length) return {errore:'Categorie e subappalto: controlla '+err.join('; ')+'.'};
   return {subappalto_categorie:cats, subappalto_limite_perc:tp};
 }
 function cantiereCostiDati(prefix){
@@ -6209,8 +6249,8 @@ async function salvaCantiere(){
     p_estremi_contratto: document.getElementById('f_estremi').value.trim()||null,
     p_numero_repertorio: document.getElementById('f_rep').value.trim()||null,
     p_data_contratto: document.getElementById('f_datacontr').value||null,
-    p_oneri_sicurezza: parseFloat(document.getElementById('f_oneri').value)||null,
-    p_ribasso_percentuale: parseFloat(document.getElementById('f_ribasso').value)||null,
+    p_oneri_sicurezza: numOVuoto('f_oneri'),
+    p_ribasso_percentuale: numOVuoto('f_ribasso'),
     p_link_box: document.getElementById('f_link_box').value.trim()||null,
     p_data_consegna: document.getElementById('f_dc').value||null,
     p_data_fine_contratto: document.getElementById('f_df').value||null
@@ -6374,8 +6414,8 @@ async function salvaEditCantiere(id){
     estremi_contratto: document.getElementById('e_estremi').value.trim()||null,
     numero_repertorio: document.getElementById('e_rep').value.trim()||null,
     data_contratto: document.getElementById('e_datacontr').value||null,
-    oneri_sicurezza: parseFloat(document.getElementById('e_oneri').value)||null,
-    ribasso_percentuale: parseFloat(document.getElementById('e_ribasso').value)||null,
+    oneri_sicurezza: numOVuoto('e_oneri'),
+    ribasso_percentuale: numOVuoto('e_ribasso'),
     link_box: document.getElementById('e_link_box').value.trim()||null
   }).eq('id',id);
   if(error){alert(error.message);return;}
