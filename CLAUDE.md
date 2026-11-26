@@ -19,6 +19,24 @@ materiali, collaudo e sicurezza (CSE). Utente: ingegnere DL italiano.
   database si registrano solo i metadati (chi ha firmato, quando), mai immagini
   delle firme o file.
 - Eliminando un cantiere devono sparire anche tutti i suoi dati collegati.
+- **Copia di sicurezza e ripristino da tenere SEMPRE allineati (regola
+  dell'utente)**: ogni modifica futura che aggiunge o cambia tabelle, o
+  colonne che collegano righe fra loro, va riportata anche nel ripristino,
+  altrimenti la copia non trova corrispondenza e il ripristino si blocca. In
+  pratica, a ogni nuova tabella:
+  1. `index.html`: aggiungerla a `ORDINE_RIPRISTINO` (nell'ordine dei
+     collegamenti: prima chi è richiamato dagli altri) e a `NOMI_TABELLE_COPIA`;
+  2. nuova migrazione `sql/AAAA-MM-GG-….sql` che ricrea
+     `public.ripristina_righe` con la tabella nell'elenco `consentite`
+     (la tabella deve avere `id` e `cantiere_id`; altrimenti adattare i
+     controlli dei permessi nella funzione);
+  3. se la tabella richiama sé stessa (come `fasi.parent_id`,
+     `accettazione_materiali.origine_id`), ordinare le righe in
+     `scriviRigheCopia`;
+  4. lanciare `node test/controllo-copia.js` (deve dire «ok») e confrontare
+     con le tabelle vere: `select table_name from information_schema.tables
+     where table_schema='public'`;
+  5. provare nel browser copia → cancellazione → ripristino.
 
 ## Architettura
 - **Tutta l'app è in un solo file: `index.html`** (~13.000 righe, HTML + CSS +
@@ -104,6 +122,21 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
 - Conteggio giorni contrattuali: sospensioni, riprese, proroghe (una proroga
   non sospende i lavori).
 
+### Copia di sicurezza (menu Sistema → 💾 Copia di sicurezza, solo DL)
+- Scarica `gestione-cantieri-copia-AAAA-MM-GG.json` con tutte le tabelle dei
+  cantieri di cui l'utente è DL (+ profili, solo consultazione). «!» rosso e
+  promemoria in dashboard se l'ultima copia ha più di 7 giorni (data salvata
+  nel browser, `localStorage` `gc_ultima_copia`).
+- Ripristino: confronta file e dati di adesso (mancano / modificate / nuove),
+  poi «solo quello che manca» oppure «anche le modifiche». Non cancella mai
+  niente; prima scarica `…-prima-del-ripristino.json`. Rimette anche un
+  cantiere eliminato per intero. Conferme disegnate nella finestra (niente
+  `confirm`).
+- Le righe le scrive `public.ripristina_righe(tabella, righe, sovrascrivi)`
+  (`sql/2026-11-26-copia-sicurezza-ripristino.sql`): controlla che chi
+  ripristina sia DL del cantiere, spegne i trigger di registro durante
+  l'inserimento, sovrascrive solo righe di cantieri di cui si è DL.
+
 ## Supabase
 - Progetto usato dall'app: **SCS - gestionale cantiere DL**, ref
   `kdshrvsaecdbcfpsoggz` (regione eu-north-1). L'altro progetto `scs-gestionale`
@@ -114,7 +147,8 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   liste_righe, accettazione_materiali. RLS attiva su tutte.
 - Funzioni: `e_membro`, `e_dl`, `my_role`, `is_collaudatore`,
   `puo_gestire_verbale`, `annota_verbale_rup`, `aggiungi_membro_cantiere`,
-  `crea_cantiere`, trigger di log su giornale/ods/sal.
+  `crea_cantiere`, `ripristina_righe` (ripristino da copia), trigger di log su
+  giornale/ods/sal.
 - **Migrazioni**: salvare sempre il file in `sql/AAAA-MM-GG-descrizione.sql`
   (idempotente: `if not exists`, `drop policy if exists`…). Poi:
   - aggiunte non distruttive (colonne, tabelle, funzioni) → applicarle con il
