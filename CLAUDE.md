@@ -122,7 +122,13 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
 - Subappalti: limiti concessi a contratto nella scheda del cantiere
   (`cantieri.subappalto_categorie` jsonb `[{categoria, descrizione, importo,
   perc}]`, perc 0 = non subappaltabile; `subappalto_limite_perc` = limite
-  complessivo facoltativo) e `ditte.categoria_subappalto`. Verifica al
+  complessivo facoltativo; categoria scelta dal menu `CATEGORIE_SOA` OG/OS).
+  Una ditta può avere più categorie: `ditte.subappalto_categorie` jsonb
+  `[{categoria, importo}]` (menu filtrato sulle categorie del contratto),
+  `importo_affidato` = somma, `categoria_subappalto` = elenco leggibile;
+  `categorieDitta(d)` legge anche le ditte vecchie con una sola categoria.
+  La manodopera registrata si ripartisce fra le categorie della ditta in
+  proporzione agli importi. Verifica al
   salvataggio della ditta (`verificaLimiteSubAlSalvataggio`, «Salva
   comunque») e segnalazioni in `problemiLimitiSub` dentro
   `controlloSubappalti`: importi autorizzati e manodopera registrata nel
