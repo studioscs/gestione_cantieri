@@ -140,7 +140,11 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   Cantiere`, `oneriVigentiCantiere`: ultima variante); se no, avviso. Il limite
   complessivo si calcola sull'importo vigente. Ditta: `manodopera_subappalto`
   e `oneri_sicurezza_subappalto` dichiarati (art. 119 c.12: senza ribasso).
-  `manodoperaMinimaDitta(d,c)` = Σ (importo categoria − quota oneri) /
+  Sicurezza: la sicurezza INCLUSA nei prezzi resta nei lordi delle categorie ed
+  è ribassata; solo gli oneri della sicurezza SPECIALI (stimati a parte, PSC)
+  non sono ribassati (cantiere `oneri_sicurezza`, ditta `oneri_sicurezza_
+  subappalto` = sola quota di oneri speciali).
+  `manodoperaMinimaDitta(d,c)` = Σ (importo categoria − quota oneri speciali) /
   (1−ribasso) × incidenza: se la dichiarata è inferiore → segnalazione grave
   (ribasso applicato alla manodopera). Anche la manodopera registrata nel
   giornale si confronta con la dichiarata. I costi orari del cantiere non
