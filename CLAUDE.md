@@ -97,7 +97,7 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
 - Controllo subappalti/subaffidamenti (livello `direzione` = capo cantiere/DT, non conteggiato): ditte sub con importo e lavorazioni
   comunicate (`ditte.importo_affidato`, `lavorazioni_affidate`); presenze nel
   giornale con livello, ore e lavorazione per riga (`maestranze` jsonb); costi
-  orari contrattuali sul cantiere (`costo_ora_*`, `ore_giornaliere`).
+  orari contrattuali sul cantiere (`costo_ora_*` comune/qualificato/specializzato/b1, `ore_giornaliere`).
   `controlloSubappalti()` + `boxSubappaltiHtml()` (cantieri, dashboard, ditte,
   giornale): lavorazioni non comunicate e costo manodopera oltre l'importo.
 - Conteggio giorni contrattuali: sospensioni, riprese, proroghe (una proroga
