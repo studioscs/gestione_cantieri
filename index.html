@@ -294,7 +294,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.28e';
+const APP_VERSIONE = '2026.11.28f';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -713,14 +713,10 @@ async function emettiOdsRitardo(cantiereId){
   const {data:fasi}=await sb.from('fasi').select('*').eq('cantiere_id',cantiereId).order('ordine');
   const ritardi=fasiInRitardo(fasi);
   const riscontri=ritardi.map(x=>`La lavorazione "${x.f.nome}" risulta in ritardo rispetto al cronoprogramma: ${testoRitardo(x.r)}.`);
-  const disposizioni=[
-    'Si ordina all\'impresa di incrementare immediatamente la manodopera e i mezzi d\'opera impiegati in cantiere, in numero adeguato al recupero del ritardo accumulato sulle lavorazioni sopra indicate.',
-    'L\'impresa dovrà trasmettere alla Direzione Lavori, entro il termine indicato, il cronoprogramma aggiornato con le azioni di recupero e l\'elenco nominativo del personale impiegato.'
-  ];
   await openModalNuovoODS({
-    tipo:'senza_aumento',
+    tipo:'manodopera',
     oggetto:'Aumento della manodopera per recupero del ritardo sul cronoprogramma dei lavori',
-    riscontri: riscontri.length?riscontri:[''], disposizioni
+    riscontri: riscontri.length?riscontri:['']
   });
 }
 
@@ -6868,15 +6864,22 @@ function toggleOdsTipo(){
   const str = document.getElementById('ods_box_strutturato');
   if(gen) gen.style.display = cfg.strutturato ? 'none' : 'block';
   if(str) str.style.display = cfg.strutturato ? 'block' : 'none';
-  ['senza_aumento','rimando_variante'].forEach(t=>{
+  ['senza_aumento','rimando_variante','manodopera'].forEach(t=>{
     const el = document.getElementById('ods_extra_'+t);
     if(el) el.style.display = (tipo===t) ? 'block' : 'none';
   });
+  const eco = document.getElementById('ods_box_economico'); if(eco) eco.style.display = tipo==='manodopera' ? 'none' : 'block';
+  const ggw = document.getElementById('ods_gg_wrap'); if(ggw) ggw.style.display = tipo==='manodopera' ? 'none' : '';
+  odsAggiornaDataVerifica();
 }
 
 function raccogliDatiODS(){
   const tipo = document.getElementById('ods_tipo').value;
-  if(!ODS_TIPI[tipo]?.strutturato) return {tipo, dx:null};
+  const verifica = odsDatiVerifica();
+  if(!ODS_TIPI[tipo]?.strutturato){
+    const gl = document.getElementById('ods_gg_lib')?.value||'';
+    return {tipo, dx: (verifica || gl) ? {verifica, giorni_termine: gl||null} : null};
+  }
   const g = id => { const el=document.getElementById(id); return el ? el.value.trim() : ''; };
   const dx = {
     impresa_nome: g('ods_imp_nome')||null,
@@ -6888,9 +6891,18 @@ function raccogliDatiODS(){
     luogo: g('ods_luogo')||null,
     giorni_termine: g('ods_gg')||null,
     voci_aumento: odsRaccogliVoci('ods_aum'),
-    voci_diminuzione: odsRaccogliVoci('ods_dim')
+    voci_diminuzione: odsRaccogliVoci('ods_dim'),
+    verifica
   };
-  if(tipo==='senza_aumento'){
+  if(tipo==='manodopera'){
+    dx.riscontri = odsRaccogliElenco('ods_rit');
+    dx.disposizioni_extra = odsRaccogliElenco('ods_disp_mano');
+    dx.disposizioni = dx.disposizioni_extra;
+    dx.giorni_manodopera = g('ods_gg_mano')||'10';
+    dx.giorni_cronoprogramma = g('ods_gg_crono')||'10';
+    dx.giorni_termine = String(Math.max(parseInt(dx.giorni_manodopera,10)||0, parseInt(dx.giorni_cronoprogramma,10)||0));
+    dx.voci_aumento = []; dx.voci_diminuzione = [];
+  } else if(tipo==='senza_aumento'){
     dx.riscontri = odsRaccogliElenco('ods_riscontri');
     dx.disposizioni = odsRaccogliElenco('ods_disposizioni');
   } else {
@@ -6919,16 +6931,18 @@ function odsFormHtml(o, ctx){
       <select class="form-control" id="ods_tipo" onchange="toggleOdsTipo()">
         ${Object.keys(ODS_TIPI).map(k=>`<option value="${k}"${(o?.tipo_ods||'generico')===k?' selected':''}>${esc(ODS_TIPI[k].label)}</option>`).join('')}
       </select>
-      <div class="form-hint">I due modelli strutturati generano il documento completo su carta intestata; il testo di legge è già impostato e si compilano solo le parti variabili.</div>
+      <div class="form-hint">I modelli strutturati generano il documento completo su carta intestata; il testo di legge è già impostato e si compilano solo le parti variabili.</div>
     </div>
     <div class="form-group"><label class="form-label">Numero ODS</label><input class="form-control" id="ods_num" value="${esc(o?o.numero:numStr)}"></div>
-    <div class="form-group"><label class="form-label">Data</label><input class="form-control" type="date" id="ods_data" value="${(o&&o.data)||today()}"></div>
+    <div class="form-group"><label class="form-label">Data</label><input class="form-control" type="date" id="ods_data" value="${(o&&o.data)||today()}" oninput="odsAggiornaDataVerifica()"></div>
     <div class="form-group span-2"><label class="form-label">Oggetto *</label><input class="form-control" id="ods_ogg" value="${esc(o?o.oggetto:(c?.descrizione||''))}"></div>
   </div>
 
   <div id="ods_box_generico">
     <div class="form-group span-2" style="margin-top:10px"><label class="form-label">Testo dell'ordine *</label>
       <textarea class="form-control" id="ods_corpo" rows="6" placeholder="Si ordina all'impresa di…">${esc(o?.corpo||'')}</textarea></div>
+    <div class="form-group" style="max-width:240px"><label class="form-label">Termine assegnato (giorni)</label>
+      <input class="form-control" type="number" min="0" id="ods_gg_lib" value="${esc((o&&o.dati_ods&&o.dati_ods.giorni_termine)||'')}" placeholder="facoltativo" oninput="odsAggiornaDataVerifica()"></div>
   </div>
 
   <div id="ods_box_strutturato" style="display:none">
@@ -6948,7 +6962,7 @@ function odsFormHtml(o, ctx){
       <div class="form-group"><label class="form-label">Direttore dei Lavori</label><input class="form-control" id="ods_dl" value="${esc(dx.redattore||dlNome)}"></div>
       <div class="form-group"><label class="form-label">R.U.P.</label><input class="form-control" id="ods_rup" value="${esc(dx.rup_nome||rupNome)}"></div>
       <div class="form-group"><label class="form-label">Luogo di emissione</label><input class="form-control" id="ods_luogo" value="${esc(dx.luogo||'RECANATI')}"></div>
-      <div class="form-group"><label class="form-label">Termine esecuzione (giorni)</label><input class="form-control" type="number" id="ods_gg" value="${esc(dx.giorni_termine||'15')}"></div>
+      <div class="form-group" id="ods_gg_wrap"><label class="form-label">Termine esecuzione (giorni)</label><input class="form-control" type="number" id="ods_gg" value="${esc(dx.giorni_termine||'15')}" oninput="odsAggiornaDataVerifica()"></div>
     </div>
 
     <!-- MODELLO A -->
@@ -6959,6 +6973,23 @@ function odsFormHtml(o, ctx){
       <div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:14px">Disposizioni impartite</div>
       <div class="form-hint">Cosa deve fare l'Impresa. Ogni riga diventa un punto dell'elenco.</div>
       ${odsElencoEditorHtml('ods_disposizioni','ods-disp',dx.disposizioni||[''],'Es. provveda a disporre una griglia di raccolta acque continua…','Disposizione')}
+    </div>
+
+    <!-- MODELLO C: manodopera -->
+    <div id="ods_extra_manodopera" style="display:none">
+      <div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:14px">Ritardi riscontrati</div>
+      <div class="form-hint">Lavorazioni in ritardo rispetto al cronoprogramma (proposte in automatico dalle fasi del cantiere).</div>
+      ${odsElencoEditorHtml('ods_rit','ods-rit',dx.riscontri||[''],'Es. La lavorazione «solai 1° impalcato» risulta in ritardo di 20 giorni…','Ritardo')}
+      <div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:14px">Ulteriori disposizioni (facoltative)</div>
+      <div class="form-hint">L'ordine di adeguare manodopera e mezzi e di trasmettere il cronoprogramma aggiornato è già nel testo: qui solo eventuali prescrizioni in più.</div>
+      ${odsElencoEditorHtml('ods_disp_mano','ods-dispm',dx.disposizioni_extra||[''],'Es. garantire la presenza continuativa di almeno due squadre di carpentieri…','Disposizione')}
+      <div class="form-grid" style="margin-top:10px">
+        <div class="form-group"><label class="form-label">Giorni per adeguare la manodopera *</label>
+          <input class="form-control" type="number" min="1" id="ods_gg_mano" value="${esc(dx.giorni_manodopera||10)}" oninput="odsAggiornaDataVerifica()">
+          <div class="form-hint">Art. 122, c. 4: salvo urgenza, non meno di 10 giorni</div></div>
+        <div class="form-group"><label class="form-label">Giorni per trasmettere il cronoprogramma aggiornato *</label>
+          <input class="form-control" type="number" min="1" id="ods_gg_crono" value="${esc(dx.giorni_cronoprogramma||10)}" oninput="odsAggiornaDataVerifica()"></div>
+      </div>
     </div>
 
     <!-- MODELLO B -->
@@ -6989,6 +7020,7 @@ function odsFormHtml(o, ctx){
       </div>
     </div>
 
+    <div id="ods_box_economico">
     <div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:14px">Conseguenze economiche</div>
     <div class="form-hint">Spunta <strong>NP</strong> sulle voci oggetto di verbale di concordamento nuovi prezzi: verranno contrassegnate con (*) nel documento.</div>
     <div style="font-size:12px;font-weight:700;margin:8px 0 4px">Importi in aumento</div>
@@ -6996,7 +7028,9 @@ function odsFormHtml(o, ctx){
     <div style="font-size:12px;font-weight:700;margin:12px 0 4px">Importi in diminuzione</div>
     ${odsVociEditorHtml('ods_dim',dx.voci_diminuzione&&dx.voci_diminuzione.length?dx.voci_diminuzione:[{}])}
     <div id="ods_saldo" style="font-size:12px;font-weight:700;margin-top:8px"></div>
+    </div>
   </div>
+  ${odsVerificaHtml(o)}
 
   `;
 }
@@ -7032,6 +7066,7 @@ async function openModalNuovoODS(pre){
     const riempi=(boxId,cls,righe)=>{ const b=document.getElementById(boxId); if(b && righe) b.innerHTML=righe.map(r=>odsRigaTestoHtml(cls,r,ph)).join(''); };
     riempi('ods_riscontri','ods-riscontro',pre.riscontri);
     riempi('ods_disposizioni','ods-disp',pre.disposizioni);
+    if(pre.tipo==='manodopera') riempi('ods_rit','ods-rit',pre.riscontri);
     const corpo=document.getElementById('ods_corpo');
     if(corpo && pre.riscontri) corpo.value=[...(pre.riscontri||[]),...(pre.disposizioni||[])].filter(Boolean).join('\n\n');
   }
@@ -7069,6 +7104,8 @@ async function salvaODS(){
     document.getElementById('ods_data').value,
     `[ODS] Emesso ${document.getElementById('ods_num').value} — ${document.getElementById('ods_ogg').value}`
   );
+  // Promemoria della verifica dell'adempimento nel giornale
+  await odsPromemoriaVerifica(document.getElementById('ods_num').value, document.getElementById('ods_data').value, oggetto, datiOds && datiOds.verifica);
   closeModal();showView('ods');
 }
 async function accettaODS(id){
@@ -7797,6 +7834,8 @@ async function openModalEditODS(id){
 async function salvaEditODS(id){
   const oggetto = document.getElementById('ods_ogg').value.trim();
   if(!oggetto){ alert('Oggetto obbligatorio'); return; }
+  const {data:prima} = await sb.from('ods').select('dati_ods').eq('id',id).single();
+  const dataVerPrima = prima && prima.dati_ods && prima.dati_ods.verifica && prima.dati_ods.verifica.data;
   const {tipo:tipoOds, dx:datiOds} = raccogliDatiODS();
   const strutturato = !!ODS_TIPI[tipoOds]?.strutturato;
   const corpo = document.getElementById('ods_corpo')?.value.trim()||'';
@@ -7811,6 +7850,9 @@ async function salvaEditODS(id){
     dati_ods: datiOds
   }).eq('id',id);
   if(error){ alert(error.message); return; }
+  // promemoria solo se la data della verifica e' nuova o cambiata
+  if(datiOds && datiOds.verifica && datiOds.verifica.data && datiOds.verifica.data!==dataVerPrima)
+    await odsPromemoriaVerifica(document.getElementById('ods_num').value.trim(), document.getElementById('ods_data').value, oggetto, datiOds.verifica);
   closeModal(); showView('ods');
 }
 
@@ -8113,6 +8155,8 @@ async function stampaODS(id){
     <div><div class="label">Stato</div>${o.stato.toUpperCase()}</div></div>
   <div><div class="label">Oggetto</div><strong style="font-size:14px">${esc(o.oggetto)}</strong></div>
   <div class="body-text">${esc(o.corpo)}</div>
+  ${(o.dati_ods && o.dati_ods.giorni_termine) ? `<p>L'Impresa dovrà adempiere a quanto sopra entro e non oltre giorni <strong>${esc(o.dati_ods.giorni_termine)}</strong> dal ricevimento del presente Ordine di Servizio.</p>` : ''}
+  ${odsFraseVerifica(o.dati_ods)}
   <div class="firma-grid">${firme.map(f=>`<div class="firma-box"><div class="label">${ROLE_LABELS[f.ruolo]||f.ruolo}</div>
     <div style="margin-top:8px;font-size:12px">${esc(f.nome)}</div>
     <div style="font-size:11px;color:#6C757D;margin-top:4px">${f.stato==='firmato'?'✅ Firmato '+fmt(f.data):f.stato==='presa_visione'?'👁️ Presa visione '+fmt(f.data):'⏳ In attesa'}</div></div>`).join('')}</div>
@@ -10151,8 +10195,59 @@ const ODS_TIPI = {
     titolo: 'ORDINE DI SERVIZIO',
     normativa: 'd.lgs. 36/2023, artt. 1 e 120 &mdash; art. 122, commi 3 e 4',
     strutturato: true
+  },
+  manodopera: {
+    label: 'Aumento della manodopera per recupero del ritardo',
+    titolo: 'ORDINE DI SERVIZIO',
+    normativa: 'd.lgs. 36/2023, art. 122, comma 4 &mdash; All. II.14',
+    strutturato: true
   }
 };
+// ---- verifica dell'adempimento (tutti gli ODS) ----
+// dati_ods.verifica = {verbale:true, data:'AAAA-MM-GG'}: nel documento
+// compare la frase sulla verifica con verbale di sopralluogo e nel giornale
+// dei lavori, alla data indicata, si annota un promemoria.
+function aggiungiGiorniData(d, n){
+  if(!d || n==null || n==='' || isNaN(parseInt(n,10))) return '';
+  const x=new Date(d+'T00:00:00'); x.setDate(x.getDate()+parseInt(n,10));
+  return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+}
+function odsFraseVerifica(dx){
+  const v = dx && dx.verifica;
+  if(!v || !v.verbale) return '';
+  return '<p>La verifica dell\'adempimento del presente Ordine di Servizio sarà effettuata con apposito <strong>verbale di sopralluogo</strong>, redatto in contraddittorio con l\'Impresa'
+    + (v.data ? ', in data <strong>'+fmt(v.data)+'</strong>' : ', alla scadenza del termine assegnato') + '.</p>';
+}
+function odsVerificaHtml(o){
+  const v = (o && o.dati_ods && o.dati_ods.verifica) || {verbale:true, data:''};
+  return `<div style="font-weight:700;color:var(--primary);font-size:13px;border-top:2px solid var(--primary);padding-top:10px;margin-top:12px">Verifica dell'adempimento</div>
+    <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin:6px 0;cursor:pointer"><input type="checkbox" id="ods_ver_chk" ${v.verbale!==false?'checked':''}> La verifica dell'adempimento sarà eseguita con <strong>verbale di sopralluogo</strong> (la frase compare nell'ordine di servizio)</label>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Data della verifica</label>
+        <input class="form-control" type="date" id="ods_ver_data" value="${cseA(v.data||'')}" data-manuale="${v.data?'1':''}" oninput="this.dataset.manuale='1'">
+        <div class="form-hint">Proposta alla scadenza del termine assegnato. In questa data il giornale dei lavori riporterà un promemoria della verifica.</div></div>
+    </div>`;
+}
+function odsAggiornaDataVerifica(){
+  const el=document.getElementById('ods_ver_data'); if(!el || el.dataset.manuale==='1') return;
+  const tipo=document.getElementById('ods_tipo')?.value;
+  const d=document.getElementById('ods_data')?.value;
+  const gg = tipo==='manodopera' ? Math.max(parseInt(document.getElementById('ods_gg_mano')?.value||0,10)||0, parseInt(document.getElementById('ods_gg_crono')?.value||0,10)||0)
+    : (ODS_TIPI[tipo]?.strutturato ? document.getElementById('ods_gg')?.value : document.getElementById('ods_gg_lib')?.value);
+  const nuova = aggiungiGiorniData(d, gg);
+  if(nuova) el.value = nuova;
+}
+function odsDatiVerifica(){
+  const chk=document.getElementById('ods_ver_chk');
+  if(!chk) return null;
+  return {verbale:!!chk.checked, data:document.getElementById('ods_ver_data')?.value||null};
+}
+// Promemoria nel giornale dei lavori alla data della verifica
+async function odsPromemoriaVerifica(numero, dataOds, oggetto, verifica){
+  if(!verifica || !verifica.data) return;
+  await annotaGiornale(verifica.data,
+    `[PROMEMORIA] Verifica dell'adempimento dell'Ordine di Servizio n. ${numero} del ${fmt(dataOds)} — «${oggetto}»: eseguire il sopralluogo e redigere il verbale di verifica (Verbali → «Verifica adempimento OdS»).`);
+}
 const ODS_CAUSE = [
   'imprevisto tecnico',
   'sopravvenuta impossibilità oggettiva',
@@ -10341,6 +10436,7 @@ function bodyOdsSenzaAumento(c, o, dx){
   }
   const gg = dx.giorni_termine!=null && dx.giorni_termine!=='' ? dx.giorni_termine : 15;
   html += '<p>&ndash; provveda ad eseguire le modifiche meglio indicate negli elaborati grafici di cantiere allegati alla presente entro e non oltre giorni <strong>'+esc(gg)+'</strong> dal ricevimento del presente Ordine di Servizio.</p>';
+  html += odsFraseVerifica(dx);
 
   html += odsClausolaInadempienza();
 
@@ -10357,6 +10453,35 @@ function bodyOdsSenzaAumento(c, o, dx){
       html += '<p style="font-size:10px">(*) Voci oggetto di verbale di concordamento nuovi prezzi, allegato.</p>';
     }
   }
+  return html;
+}
+
+// ============================================================
+// MODELLO C — aumento della manodopera per recupero del ritardo
+// (art. 122, c. 4: termine non inferiore a 10 giorni, poi processo
+// verbale in contraddittorio)
+// ============================================================
+function bodyOdsManodopera(c, o, dx){
+  let html = odsDestinatarioHtml(dx);
+  html += '<p>Il sottoscritto <strong>'+esc(dx.redattore||'')+'</strong> nella sua qualità di Direttore dei Lavori per le opere in premessa,</p>';
+  const riscontri = dx.riscontri||[];
+  html += '<p style="margin-bottom:2px">&ndash; accertato che, rispetto al cronoprogramma dei lavori, risultano i seguenti ritardi:</p>';
+  if(riscontri.length){
+    html += '<ol style="margin:0 0 8px 18px;padding:0">';
+    riscontri.forEach(r=>{ html += '<li style="margin-bottom:4px">'+esc(r)+'</li>'; });
+    html += '</ol>';
+  }
+  html += '<p>&ndash; ritenuto che la manodopera e i mezzi d\'opera attualmente impiegati in cantiere non siano adeguati al rispetto dei tempi contrattuali;</p>';
+  html += '<p>&ndash; visto l\'art. 122, comma 4, del d.lgs. 36/2023 e gli strumenti di direzione e controllo del Direttore dei Lavori di cui all\'All. II.14;</p>';
+  html += '<p class="center" style="font-weight:800;letter-spacing:.28em;margin:14px 0 8px">O R D I N A</p>';
+  html += '<p>all\'Impresa esecutrice dei lavori di che trattasi:</p><ul style="margin:0 0 8px 18px;padding:0">';
+  (dx.disposizioni||[]).forEach(d=>{ html += '<li style="margin-bottom:4px">'+esc(d)+'</li>'; });
+  const ggM = dx.giorni_manodopera || 10, ggC = dx.giorni_cronoprogramma || 10;
+  html += '<li style="margin-bottom:4px">di adeguare la manodopera e i mezzi d\'opera impiegati in cantiere, in numero idoneo al recupero del ritardo accumulato, entro e non oltre giorni <strong>'+esc(ggM)+'</strong> dal ricevimento del presente Ordine di Servizio;</li>';
+  html += '<li style="margin-bottom:4px">di trasmettere alla Direzione Lavori, entro e non oltre giorni <strong>'+esc(ggC)+'</strong> dal ricevimento del presente Ordine di Servizio, il cronoprogramma aggiornato con le azioni di recupero del ritardo e l\'elenco nominativo del personale impiegato.</li>';
+  html += '</ul>';
+  html += odsFraseVerifica(dx);
+  html += '<p>Si avverte che, scaduto il termine assegnato e redatto processo verbale in contraddittorio con l\'Impresa, qualora l\'inadempimento permanga, la Stazione Appaltante potrà procedere alla risoluzione del contratto ai sensi dell\'articolo 122, comma 4, del d.lgs. 36/2023, fermo restando l\'eventuale pagamento delle penali previste dal contratto.</p>';
   return html;
 }
 
@@ -10401,6 +10526,7 @@ function bodyOdsRimandoVariante(c, o, dx){
   html += '</ul>';
 
   html += '<p>Si dà atto che la presente modifica verrà formalizzata con la prima perizia di variante utile o in sede di assestamento finale, restando inteso che il presente ordine non costituisce variante sostanziale ai sensi dell\'art. 120 del d.lgs. 36/2023.</p>';
+  html += odsFraseVerifica(dx);
   html += odsClausolaInadempienza();
 
   const aum = dx.voci_aumento||[], dim = dx.voci_diminuzione||[];
@@ -11604,8 +11730,8 @@ async function apriODSFirmabile(id, solaLettura){
     const c = getCantiereObj(o.cantiere_id);
     const dx = o.dati_ods || {};
 
-    const corpoHtml = (o.tipo_ods==='rimando_variante')
-      ? bodyOdsRimandoVariante(c, o, dx)
+    const corpoHtml = (o.tipo_ods==='rimando_variante') ? bodyOdsRimandoVariante(c, o, dx)
+      : (o.tipo_ods==='manodopera') ? bodyOdsManodopera(c, o, dx)
       : bodyOdsSenzaAumento(c, o, dx);
 
     const metaRows = [
@@ -12052,6 +12178,11 @@ function testoOrdinatoDaODS(o){
   const dx = o.dati_ods || {};
   if(o.tipo_ods==='senza_aumento'){
     return (dx.disposizioni||[]).filter(Boolean).join('; ');
+  }
+  if(o.tipo_ods==='manodopera'){
+    return (dx.disposizioni||[]).filter(Boolean).concat([
+      'di adeguare la manodopera e i mezzi d\'opera impiegati in cantiere, in numero idoneo al recupero del ritardo accumulato, entro giorni '+(dx.giorni_manodopera||10)+' dal ricevimento',
+      'di trasmettere alla Direzione Lavori il cronoprogramma aggiornato con le azioni di recupero e l\'elenco nominativo del personale impiegato entro giorni '+(dx.giorni_cronoprogramma||10)+' dal ricevimento']).join('; ');
   }
   if(o.tipo_ods==='rimando_variante'){
     const parti = [];
