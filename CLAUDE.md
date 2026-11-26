@@ -128,15 +128,20 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   `importo_affidato` = somma, `categoria_subappalto` = elenco leggibile;
   `categorieDitta(d)` legge anche le ditte vecchie con una sola categoria.
   La manodopera registrata si ripartisce fra le categorie della ditta in
-  proporzione agli importi. **Importi omogenei**: le categorie del cantiere
-  vanno inserite come da contratto (al netto del ribasso, aggiornate con le
-  varianti), perché i subappalti sono prezzi contrattuali; se la loro somma
-  supera l'importo vigente (`importoVigenteCantiere(c)`, ultima variante,
-  mappa `IMPORTO_VIGENTE`) l'app avvisa «sembrano importi a base di gara».
-  Il limite complessivo si calcola sull'importo vigente. Ditta: `manodopera_
-  subappalto` e `oneri_sicurezza_subappalto` dichiarati (art. 119 c.12: senza
-  ribasso), confrontati con la manodopera registrata; i costi orari del
-  cantiere non vanno ribassati. Verifica al
+  proporzione agli importi. **Importi delle categorie LORDI** (computo di
+  progetto/variante, senza oneri della sicurezza) + `inc_mano` (% incidenza
+  della manodopera del progetto) nel jsonb; l'app calcola il netto col
+  `ribasso_percentuale` del cantiere (`nettoCategoria`) e applica i limiti al
+  netto (omogeneo con i subappalti, prezzi contrattuali). Coerenza:
+  Σ lordi × (1−ribasso) + oneri vigenti = importo vigente (`importoVigente
+  Cantiere`, `oneriVigentiCantiere`: ultima variante); se no, avviso. Il limite
+  complessivo si calcola sull'importo vigente. Ditta: `manodopera_subappalto`
+  e `oneri_sicurezza_subappalto` dichiarati (art. 119 c.12: senza ribasso).
+  `manodoperaMinimaDitta(d,c)` = Σ (importo categoria − quota oneri) /
+  (1−ribasso) × incidenza: se la dichiarata è inferiore → segnalazione grave
+  (ribasso applicato alla manodopera). Anche la manodopera registrata nel
+  giornale si confronta con la dichiarata. I costi orari del cantiere non
+  vanno ribassati. Verifica al
   salvataggio della ditta (`verificaLimiteSubAlSalvataggio`, «Salva
   comunque») e segnalazioni in `problemiLimitiSub` dentro
   `controlloSubappalti`: importi autorizzati e manodopera registrata nel
