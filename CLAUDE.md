@@ -130,7 +130,10 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   La manodopera registrata si ripartisce fra le categorie della ditta in
   proporzione agli importi. **Importi delle categorie LORDI** (computo di
   progetto/variante, senza oneri della sicurezza) + `inc_mano` (% incidenza
-  della manodopera del progetto) nel jsonb; l'app calcola il netto col
+  della manodopera del progetto, obbligatoria) nel jsonb; nella stessa sezione
+  «Categorie di lavori, subappalto e manodopera» ci sono istruzioni numerate e
+  i campi ribasso e oneri della sicurezza (obbligatori se ci sono categorie,
+  allineati con `${prefix}_ribasso`/`_oneri` via `syncCampoSub`); l'app calcola il netto col
   `ribasso_percentuale` del cantiere (`nettoCategoria`) e applica i limiti al
   netto (omogeneo con i subappalti, prezzi contrattuali). Coerenza:
   Σ lordi × (1−ribasso) + oneri vigenti = importo vigente (`importoVigente
