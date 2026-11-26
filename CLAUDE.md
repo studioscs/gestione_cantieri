@@ -221,6 +221,19 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   (Safari → File → Aggiungi al Dock) e Windows. Voce nascosta se l'app è già
   installata (`appInstallata()`).
 
+### Smartphone (iPhone/Android, fino a 768px)
+- Blocco CSS «Smartphone» dopo le regole `@media(max-width:768px)`: barra in
+  alto compatta (nome e ruolo spostati in cima al menu, `#sidebarUtente`),
+  finestre a tutta larghezza dal basso, campi a 16px (sotto, iPhone ingrandisce
+  la pagina), `min-width:0` su form e griglie (i `<select>` lunghi non devono
+  allargare la pagina). Le tabelle sono avvolte in `.tabella-scroll` (scorrono
+  di lato al loro interno) da un MutationObserver, solo su smartphone.
+- Documenti firmabili: `@media screen and (max-width:600px)` in
+  `PDF_ENGINE_CSS` (foglio nella larghezza dello schermo, pulsanti a capo).
+- Prova: Playwright con `devices['iPhone 14']` (anche SE, 15 Pro Max, Pixel 7,
+  orizzontale): `document.documentElement.scrollWidth` deve essere uguale a
+  `innerWidth` in tutte le pagine e finestre.
+
 ### Copia di sicurezza (menu Sistema → 💾 Copia di sicurezza, solo DL)
 - Scarica `gestione-cantieri-copia-AAAA-MM-GG.json` con tutte le tabelle dei
   cantieri di cui l'utente è DL (+ profili, solo consultazione). «!» rosso e

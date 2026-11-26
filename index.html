@@ -151,12 +151,59 @@ textarea.form-control{resize:vertical;min-height:80px}
   .form-grid,.form-grid-3{grid-template-columns:1fr}
   .form-group.span-2,.form-group.span-3{grid-column:span 1}
 }
+/* ===== Smartphone (iPhone e Android, larghezza fino a 768px) ===== */
+.layout,.main{min-width:0}
+.tabella-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.solo-mobile{display:none}
+@media(max-width:768px){
+  .topbar{padding:0 10px;padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right))}
+  .topbar-brand{gap:8px;min-width:0}
+  .topbar-brand span{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topbar-brand small,#topbarUser,#topbarRole{display:none}
+  .topbar-right{gap:8px;flex-shrink:0}
+  #topbarVersione{margin-left:0!important;color:rgba(255,255,255,.65)!important}
+  .solo-mobile{display:block}
+  .sidebar-utente{padding:4px 16px 12px;border-bottom:1px solid var(--border);margin-bottom:8px;font-size:13px;font-weight:600;color:var(--primary)}
+  .sidebar-utente small{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .sidebar{width:min(280px,85vw);height:calc(100dvh - 56px);padding-bottom:max(16px,env(safe-area-inset-bottom))}
+  .nav-item{padding:11px 16px;font-size:14px}
+  .main{padding:14px 12px;padding-bottom:max(24px,env(safe-area-inset-bottom))}
+  .card{padding:14px}
+  .card-header{flex-wrap:wrap;gap:8px}
+  .page-title{font-size:17px}
+  .kpi-row{gap:10px;margin-bottom:16px}
+  .kpi{padding:12px}.kpi-value{font-size:20px}
+  .btn-group{flex-wrap:wrap}
+  .section-header{margin-bottom:14px}
+  .ods-header,.fase-header,.giornale-date,.subfase-item{flex-wrap:wrap;gap:8px}
+  .subfase-item{padding-left:20px}
+  .fase-meta{gap:8px}
+  table{font-size:12px}
+  thead th{padding:8px;font-size:10px}
+  tbody td{padding:8px}
+  /* finestre: a tutta larghezza dal basso, intestazione sempre visibile */
+  .modal-overlay{padding:0;align-items:flex-end}
+  .modal{max-width:100%!important;width:100%!important;max-height:92vh;max-height:92dvh;border-radius:12px 12px 0 0}
+  .modal-header{padding:14px 16px;position:sticky;top:0;background:#fff;z-index:5}
+  .modal-body{padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+  .modal-close{font-size:26px;padding:4px 8px}
+  .form-actions{flex-wrap:wrap}
+  .form-actions .btn{flex:1 1 auto;justify-content:center;padding:10px 14px}
+  /* iPhone ingrandisce la pagina se il testo dei campi e' sotto i 16px */
+  input,select,textarea,.form-control,.cantiere-selector select{font-size:16px!important}
+  .login-box{padding:24px 18px}
+  input[type=file]{max-width:100%}
+  .form-group,.form-grid>*,.form-grid-3>*{min-width:0}
+  .modal select,.modal input,.modal textarea{max-width:100%;min-width:0}
+  .tabella-scroll>table{min-width:max(100%,560px)}
+  .main img,.modal img{max-width:100%;height:auto}
+}
 /* Menu a scomparsa (drawer): telefoni in verticale (<=768px) e telefoni in
    orizzontale (altezza schermo bassa: iPhone landscape ~390-430px di altezza).
    L'iPad, anche in orizzontale, ha altezza >500px quindi mantiene la sidebar fissa. */
 @media(max-width:768px), (max-height:500px) and (orientation:landscape){
   .menu-toggle{display:flex}
-  .sidebar{position:fixed;top:56px;left:0;height:calc(100vh - 56px);z-index:95;transform:translateX(-100%);transition:transform 220ms ease;box-shadow:2px 0 12px rgba(0,0,0,0.15)}
+  .sidebar{position:fixed;top:56px;left:0;height:calc(100vh - 56px);height:calc(100dvh - 56px);z-index:95;transform:translateX(-100%);transition:transform 220ms ease;box-shadow:2px 0 12px rgba(0,0,0,0.15)}
   .sidebar.open{transform:translateX(0)}
   .sidebar-backdrop.open{display:block}
 }
@@ -249,6 +296,7 @@ textarea.form-control{resize:vertical;min-height:80px}
   <div class="layout">
     <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
     <nav class="sidebar" id="sidebar">
+      <div class="sidebar-utente solo-mobile"><span id="sidebarUtente">—</span><small id="sidebarRuolo"></small></div>
       <div class="cantiere-selector">
         <label>Cantiere attivo</label>
         <select id="cantiereSel" onchange="selectCantiere(this.value)"><option value="">— Seleziona —</option></select>
@@ -303,7 +351,29 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.28h';
+const APP_VERSIONE = '2026.11.28i';
+
+// ---- Smartphone: le tabelle larghe scorrono di lato dentro un riquadro,
+// cosi' la pagina resta della larghezza dello schermo ----
+(function(){
+  const mq = window.matchMedia ? window.matchMedia('(max-width:768px)') : null;
+  let attesa = false;
+  function avvolgi(){
+    attesa = false;
+    if(!mq || !mq.matches) return;
+    document.querySelectorAll('.main table, .modal table').forEach(t=>{
+      if(t.dataset.avv) return; t.dataset.avv='1';
+      const par = t.parentElement; if(!par || par.classList.contains('tabella-scroll')) return;
+      const cs = getComputedStyle(par);
+      if(cs.overflowX==='auto' || cs.overflowX==='scroll') return;
+      const w = document.createElement('div'); w.className='tabella-scroll';
+      par.insertBefore(w, t); w.appendChild(t);
+    });
+  }
+  const obs = new MutationObserver(()=>{ if(!attesa){ attesa=true; requestAnimationFrame(avvolgi); } });
+  document.addEventListener('DOMContentLoaded', ()=>{ obs.observe(document.body,{childList:true,subtree:true}); avvolgi(); });
+  if(mq && mq.addEventListener) mq.addEventListener('change', avvolgi);
+})();
 
 // ---- App installabile (PWA): Windows, Mac, iPhone/iPad ----
 let _promptInstalla = null;
@@ -565,6 +635,7 @@ async function onLoggedIn(){
   mostraSchermata('appScreen');
   const displayName = (currentUser.nome || currentUser.cognome) ? `${currentUser.nome} ${currentUser.cognome}`.trim() : currentUser.email;
   document.getElementById('topbarUser').textContent = displayName;
+  { const su=document.getElementById('sidebarUtente'); if(su) su.textContent = displayName; }
   const elVer = document.getElementById('topbarVersione');
   if(elVer) elVer.textContent = 'v' + APP_VERSIONE;
   await loadMyCantieri();
@@ -651,6 +722,7 @@ function selectCantiere(id, skipView){
   currentRole = r ? r.ruolo : null;
   currentAncheCSE = !!(r && r.anche_cse);
   document.getElementById('topbarRole').textContent = currentRole ? ROLE_LABELS[currentRole] + (currentAncheCSE && currentRole!=='cse' ? ' + CSE' : '') : '—';
+  { const sr=document.getElementById('sidebarRuolo'); if(sr) sr.textContent = document.getElementById('topbarRole').textContent.replace('—',''); }
   const nav = document.getElementById('navCantiere');
   nav.style.opacity = id?'1':'0.4';
   nav.style.pointerEvents = id?'auto':'none';
@@ -9237,6 +9309,21 @@ img.sig-img{display:block;width:100%;max-height:300px;object-fit:contain;object-
 .tb-primary{background:#2E75B6;color:#fff}
 .tb-secondary{background:#fff;color:#1F3864}
 .tb-ghost{background:rgba(255,255,255,.15);color:#fff}
+/* smartphone: il foglio sta nella larghezza dello schermo */
+@media screen and (max-width:600px){
+  .doc-wrap{padding:10px 12px}
+  .doc-table{table-layout:fixed}
+  .lh-logo{min-width:0;flex:1 1 auto}
+  .lh-logo img,.lh-studio img{max-width:100%;height:auto;max-height:42px}
+  .lh-cert{margin-left:8px}
+  .meta-block td.k{width:96px}
+  .toolbar{justify-content:stretch;padding:8px}
+  .toolbar button{flex:1 1 auto;padding:10px 10px}
+  canvas.sig-canvas{height:220px}
+  .sig-name-inputs{flex-wrap:wrap}
+  .sig-name-inputs input{font-size:16px;flex:1 1 100%;width:100%}
+  .firma-label{flex-wrap:wrap}
+}
 @media print{
   .no-print{display:none!important}
   body{background:#fff}
@@ -10281,7 +10368,7 @@ function odsFraseVerifica(dx){
 function odsVerificaHtml(o){
   const v = (o && o.dati_ods && o.dati_ods.verifica) || {verbale:true, data:''};
   return `<div style="font-weight:700;color:var(--primary);font-size:13px;border-top:2px solid var(--primary);padding-top:10px;margin-top:12px">Verifica dell'adempimento</div>
-    <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin:6px 0;cursor:pointer"><input type="checkbox" id="ods_ver_chk" ${v.verbale!==false?'checked':''}> La verifica dell'adempimento sarà eseguita con <strong>verbale di sopralluogo</strong> (la frase compare nell'ordine di servizio)</label>
+    <label style="font-size:12px;display:flex;gap:6px;align-items:flex-start;margin:6px 0;cursor:pointer"><input type="checkbox" id="ods_ver_chk" ${v.verbale!==false?'checked':''} style="flex-shrink:0;margin-top:2px"><span>La verifica dell'adempimento sarà eseguita con <strong>verbale di sopralluogo</strong> (la frase compare nell'ordine di servizio)</span></label>
     <div class="form-grid">
       <div class="form-group"><label class="form-label">Data della verifica</label>
         <input class="form-control" type="date" id="ods_ver_data" value="${cseA(v.data||'')}" data-manuale="${v.data?'1':''}" oninput="this.dataset.manuale='1'">
