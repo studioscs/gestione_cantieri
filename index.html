@@ -294,7 +294,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.27d';
+const APP_VERSIONE = '2026.11.27e';
 console.log('GestioneCantiere — versione ' + APP_VERSIONE);
 
 const SUPABASE_URL = 'https://kdshrvsaecdbcfpsoggz.supabase.co';
@@ -742,6 +742,76 @@ function categorieSub(c){
   return Array.isArray(a) ? a.filter(x=>x && String(x.categoria||'').trim()) : [];
 }
 function normCat(s){ return String(s||'').toUpperCase().replace(/\s+/g,''); }
+// Categorie di opere generali (OG) e specializzate (OS) — d.lgs. 36/2023,
+// All. II.12 (gia' All. A al d.P.R. 207/2010)
+const CATEGORIE_SOA = [
+  ['OG1','Edifici civili e industriali'],
+  ['OG2','Restauro e manutenzione dei beni immobili sottoposti a tutela'],
+  ['OG3','Strade, autostrade, ponti, viadotti, ferrovie, metropolitane'],
+  ['OG4','Opere d\'arte nel sottosuolo'],
+  ['OG5','Dighe'],
+  ['OG6','Acquedotti, gasdotti, oleodotti, opere di irrigazione e di evacuazione'],
+  ['OG7','Opere marittime e lavori di dragaggio'],
+  ['OG8','Opere fluviali, di difesa, di sistemazione idraulica e di bonifica'],
+  ['OG9','Impianti per la produzione di energia elettrica'],
+  ['OG10','Impianti per la trasformazione alta/media tensione e per la distribuzione di energia elettrica; pubblica illuminazione'],
+  ['OG11','Impianti tecnologici'],
+  ['OG12','Opere ed impianti di bonifica e protezione ambientale'],
+  ['OG13','Opere di ingegneria naturalistica'],
+  ['OS1','Lavori in terra'],
+  ['OS2-A','Superfici decorate di beni immobili del patrimonio culturale e beni culturali mobili'],
+  ['OS2-B','Beni culturali mobili di interesse archivistico e librario'],
+  ['OS3','Impianti idrico-sanitario, cucine, lavanderie'],
+  ['OS4','Impianti elettromeccanici trasportatori'],
+  ['OS5','Impianti pneumatici e antintrusione'],
+  ['OS6','Finiture di opere generali in materiali lignei, plastici, metallici e vetrosi'],
+  ['OS7','Finiture di opere generali di natura edile e tecnica'],
+  ['OS8','Opere di impermeabilizzazione'],
+  ['OS9','Impianti per la segnaletica luminosa e la sicurezza del traffico'],
+  ['OS10','Segnaletica stradale non luminosa'],
+  ['OS11','Apparecchiature strutturali speciali'],
+  ['OS12-A','Barriere stradali di sicurezza'],
+  ['OS12-B','Barriere paramassi, fermaneve e simili'],
+  ['OS13','Strutture prefabbricate in cemento armato'],
+  ['OS14','Impianti di smaltimento e recupero rifiuti'],
+  ['OS15','Pulizia di acque marine, lacustri, fluviali'],
+  ['OS16','Impianti per centrali di produzione di energia elettrica'],
+  ['OS17','Linee telefoniche ed impianti di telefonia'],
+  ['OS18-A','Componenti strutturali in acciaio'],
+  ['OS18-B','Componenti per facciate continue'],
+  ['OS19','Impianti di reti di telecomunicazione e di trasmissione dati'],
+  ['OS20-A','Rilevamenti topografici'],
+  ['OS20-B','Indagini geognostiche'],
+  ['OS21','Opere strutturali speciali'],
+  ['OS22','Impianti di potabilizzazione e depurazione'],
+  ['OS23','Demolizione di opere'],
+  ['OS24','Verde e arredo urbano'],
+  ['OS25','Scavi archeologici'],
+  ['OS26','Pavimentazioni e sovrastrutture speciali'],
+  ['OS27','Impianti per la trazione elettrica'],
+  ['OS28','Impianti termici e di condizionamento'],
+  ['OS29','Armamento ferroviario'],
+  ['OS30','Impianti interni elettrici, telefonici, radiotelefonici e televisivi'],
+  ['OS31','Impianti per la mobilità sospesa'],
+  ['OS32','Strutture in legno'],
+  ['OS33','Coperture speciali'],
+  ['OS34','Sistemi antirumore per infrastrutture di mobilità'],
+  ['OS35','Interventi a basso impatto ambientale']
+];
+function descrCategoriaSoa(cat){ const x=CATEGORIE_SOA.find(c=>normCat(c[0])===normCat(cat)); return x?x[1]:''; }
+// Categorie del subappalto di una ditta: [{categoria, importo}]. Le ditte
+// inserite con una sola categoria (categoria_subappalto + importo_affidato)
+// valgono come una riga.
+function categorieDitta(d){
+  if(!d) return [];
+  let a = d.subappalto_categorie;
+  if(typeof a==='string'){ try{ a=JSON.parse(a); }catch(e){ a=[]; } }
+  a = Array.isArray(a) ? a.filter(x=>x && String(x.categoria||'').trim()) : [];
+  if(a.length) return a.map(x=>({categoria:String(x.categoria).trim().toUpperCase(), importo:parseFloat(x.importo)||0}));
+  const k = String(d.categoria_subappalto||'').trim();
+  if(k && !/,/.test(k)) return [{categoria:k.toUpperCase(), importo:parseFloat(d.importo_affidato)||0}];
+  return [];
+}
 function limiteCategoria(cat){
   const p = parseFloat(cat && cat.perc);
   return isNaN(p) ? null : (parseFloat(cat.importo)||0)*p/100;
@@ -759,10 +829,17 @@ function riepilogoLimitiSub(c, ditte, perDitta){
   const fuori=[], senzaCat=[];
   const reg = d => (perDitta && perDitta[d.id] && perDitta[d.id].costo) || 0;
   subs.forEach(d=>{
-    const k = normCat(d.categoria_subappalto);
-    const r = k ? righe.find(x=>normCat(x.cat.categoria)===k) : null;
-    if(r){ r.autorizzato += parseFloat(d.importo_affidato)||0; r.registrato += reg(d); r.ditte.push(d); }
-    else if(k) fuori.push(d); else senzaCat.push(d);
+    const cd = categorieDitta(d);
+    if(!cd.length){ senzaCat.push(d); return; }
+    // la manodopera registrata e' della ditta: si ripartisce fra le sue
+    // categorie in proporzione agli importi (in parti uguali se mancano)
+    const totImp = cd.reduce((a,x)=>a+x.importo,0);
+    cd.forEach(x=>{
+      const quota = totImp>0 ? x.importo/totImp : 1/cd.length;
+      const r = righe.find(y=>normCat(y.cat.categoria)===normCat(x.categoria));
+      if(r){ r.autorizzato += x.importo; r.registrato += reg(d)*quota; if(!r.ditte.includes(d)) r.ditte.push(d); }
+      else fuori.push({ditta:d, categoria:x.categoria, importo:x.importo});
+    });
   });
   return {righe, fuori, senzaCat,
     tot:{limite:limiteComplessivoSub(c), perc:parseFloat(c&&c.subappalto_limite_perc),
@@ -777,8 +854,8 @@ function problemiLimitiSub(c, ditte, perDitta, costi){
   const R = riepilogoLimitiSub(c, ditte, perDitta);
   const haCat = R.righe.length>0;
   R.senzaCat.forEach(d=>{ if(haCat) out.push({livello:'avviso', ditta:d, testo:'indicare la categoria del subappalto (serve alla verifica del limite contrattuale)'}); });
-  R.fuori.forEach(d=>out.push({livello:'grave', ditta:d,
-    testo:`categoria «${d.categoria_subappalto}» non prevista fra quelle subappaltabili a contratto (${R.righe.map(r=>r.cat.categoria).join(', ')||'nessuna'})`}));
+  R.fuori.forEach(f=>out.push({livello:'grave', ditta:f.ditta,
+    testo:`categoria «${f.categoria}»${f.importo?' ('+fmtEur(f.importo)+')':''} non prevista fra quelle subappaltabili a contratto (${R.righe.map(r=>r.cat.categoria).join(', ')||'nessuna'})`}));
   R.righe.forEach(r=>{
     const tit = 'Categoria '+r.cat.categoria;
     if(r.limite==null) return;
@@ -1019,28 +1096,67 @@ function dittaSubCampiHtml(prefix, d){
       <div id="${prefix}_lim_msg"></div>
     </div>`;
 }
-// Categoria del subappalto, scelta fra quelle subappaltabili del contratto,
-// con limite, gia' autorizzato e residuo (DITTE_LIMITI = ditte del cantiere,
-// caricate all'apertura della finestra)
+// Categorie del subappalto: una o piu' righe «categoria + importo», con la
+// categoria scelta SOLO fra quelle subappaltabili indicate nel contratto
+// (scheda del cantiere), con limite, gia' autorizzato e residuo.
+// DITTE_LIMITI = ditte del cantiere, caricate all'apertura della finestra.
 let DITTE_LIMITI = [];
-function dittaCategoriaHtml(prefix, d){
+function opzioniCategorieDitta(prefix, dittaId, sel){
   const c = getCantiereObj();
   const cats = categorieSub(c);
-  const altre = (DITTE_LIMITI||[]).filter(x=>!d || x.id!==d.id);
-  const R = riepilogoLimitiSub(c, altre, null);
-  const opz = cats.map(cat=>{
+  const R = riepilogoLimitiSub(c, (DITTE_LIMITI||[]).filter(x=>x.id!==dittaId), null);
+  let h = '<option value="">— categoria —</option>' + cats.map(cat=>{
     const r = R.righe.find(x=>normCat(x.cat.categoria)===normCat(cat.categoria));
     const lim = r ? r.limite : null;
-    const info = lim===0 ? 'NON subappaltabile' : lim==null ? '' : `limite ${fmtEur(lim)} — residuo ${fmtEur(Math.max(0, lim-(r?r.autorizzato:0)))}`;
-    return `<option value="${cseA(cat.categoria)}"${normCat(d&&d.categoria_subappalto)===normCat(cat.categoria)?' selected':''}>${esc(cat.categoria)}${cat.descrizione?' — '+esc(cat.descrizione):''}${info?' ('+info+')':''}</option>`;
+    const info = lim===0 ? 'NON subappaltabile' : lim==null ? '' : `residuo ${fmtEur(Math.max(0, lim-(r?r.autorizzato:0)))} su ${fmtEur(lim)}`;
+    return `<option value="${cseA(cat.categoria)}"${normCat(sel)===normCat(cat.categoria)?' selected':''}>${esc(cat.categoria)}${cat.descrizione?' — '+esc(cat.descrizione):''}${info?' ('+info+')':''}</option>`;
   }).join('');
-  const fuori = d && d.categoria_subappalto && !cats.some(cat=>normCat(cat.categoria)===normCat(d.categoria_subappalto));
-  if(cats.length) return `<label class="form-label">Categoria del subappalto *</label>
-      <select class="form-control" id="${prefix}_cat_sub"><option value="">— scegli la categoria —</option>${opz}${fuori?`<option value="${cseA(d.categoria_subappalto)}" selected>${esc(d.categoria_subappalto)} (non prevista a contratto)</option>`:''}</select>
-      <div class="form-hint">Categorie subappaltabili indicate nella scheda del cantiere: l'importo viene verificato con il limite contrattuale.</div>`;
-  return `<label class="form-label">Categoria del subappalto</label>
-      <input class="form-control" id="${prefix}_cat_sub" value="${cseA((d&&d.categoria_subappalto)||'')}" placeholder="Es. OG1, OS30">
-      <div class="form-hint">Per la verifica automatica del limite indica nella scheda del cantiere (✏️) le categorie subappaltabili e i loro limiti.</div>`;
+  if(sel && !cats.some(cat=>normCat(cat.categoria)===normCat(sel)))
+    h += `<option value="${cseA(sel)}" selected>${esc(sel)} (non prevista a contratto)</option>`;
+  return h;
+}
+function dittaCatRigaHtml(prefix, dittaId, x){
+  x = x || {};
+  return `<div class="dcat-row" style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px;flex-wrap:wrap">
+    <label style="flex:3 1 260px;min-width:0;font-size:11px">Categoria<select class="form-control dc-cat" style="width:100%;max-width:100%" onchange="aggiornaImportoDitta('${prefix}')">${opzioniCategorieDitta(prefix, dittaId, x.categoria)}</select></label>
+    <label style="flex:1 1 120px;font-size:11px">Importo (€)<input class="form-control dc-imp" type="number" step="0.01" value="${x.importo!=null&&x.importo!==''?cseA(x.importo):''}" oninput="aggiornaImportoDitta('${prefix}')"></label>
+    <button type="button" class="btn btn-danger btn-sm" style="margin-bottom:4px" onclick="this.parentElement.remove();aggiornaImportoDitta('${prefix}')">✕</button>
+  </div>`;
+}
+function dittaCategoriaHtml(prefix, d){
+  const cats = categorieSub(getCantiereObj());
+  const did = d && d.id ? d.id : null;
+  if(!cats.length) return `<label class="form-label">Categorie del subappalto</label>
+      <div class="alert alert-warning" style="font-size:12px;margin:0">Nella scheda del cantiere (Cantieri → ✏️) non sono ancora indicate le categorie subappaltabili a contratto: inseriscile per poter scegliere qui le categorie e verificare i limiti.</div>`;
+  const righe = categorieDitta(d);
+  setTimeout(()=>aggiornaImportoDitta(prefix), 0);
+  return `<label class="form-label">Categorie del subappalto * <span style="font-weight:400;text-transform:none">(una riga per ogni categoria di opere, solo quelle a contratto)</span></label>
+    <div id="${prefix}_dcat_box">${(righe.length?righe:[{}]).map(x=>dittaCatRigaHtml(prefix, did, x)).join('')}</div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="aggiungiCatDitta('${prefix}','${did||''}')">+ Altra categoria</button>
+    <div class="form-hint" id="${prefix}_dcat_tot">L'importo comunicato è la somma delle categorie.</div>`;
+}
+function aggiungiCatDitta(prefix, dittaId){
+  const box=document.getElementById(prefix+'_dcat_box'); if(!box) return;
+  const t=document.createElement('div'); t.innerHTML=dittaCatRigaHtml(prefix, dittaId||null, null); box.appendChild(t.firstElementChild);
+}
+function righeCatDitta(prefix){
+  return [...document.querySelectorAll('#'+prefix+'_dcat_box .dcat-row')].map(r=>({
+    categoria:(r.querySelector('.dc-cat').value||'').trim().toUpperCase(),
+    importoTxt:r.querySelector('.dc-imp').value, importo:parseFloat(r.querySelector('.dc-imp').value)||0
+  }));
+}
+// L'importo totale della ditta segue la somma delle categorie
+function aggiornaImportoDitta(prefix){
+  const rr = righeCatDitta(prefix).filter(x=>x.categoria || x.importoTxt!=='');
+  const tot = rr.reduce((a,x)=>a+x.importo,0);
+  const inp = document.getElementById(prefix+'_importo_aff');
+  const info = document.getElementById(prefix+'_dcat_tot');
+  const lm = document.getElementById(prefix+'_lim_msg'); if(lm){ lm.innerHTML=''; lm.dataset.confermato=''; }
+  if(!inp) return;
+  if(rr.some(x=>x.importo>0)){
+    inp.value = Math.round(tot*100)/100; inp.readOnly = true; inp.style.background = '#f8f9fa';
+    if(info) info.innerHTML = 'Importo comunicato = somma delle categorie: <strong>'+fmtEur(tot)+'</strong>';
+  } else { inp.readOnly = false; inp.style.background = ''; if(info) info.textContent = 'L\'importo comunicato è la somma delle categorie.'; }
 }
 function dittaSubToggle(prefix){
   const t = document.getElementById(prefix+'_tipo')?.value;
@@ -1049,25 +1165,35 @@ function dittaSubToggle(prefix){
   const cb = document.getElementById(prefix+'_cat_box');
   if(cb) cb.style.display = t==='subappaltatrice' ? 'block' : 'none';
   const lm = document.getElementById(prefix+'_lim_msg'); if(lm) lm.innerHTML='';
+  const inp = document.getElementById(prefix+'_importo_aff');
+  if(t!=='subappaltatrice' && inp){ inp.readOnly=false; inp.style.background=''; }
+  else aggiornaImportoDitta(prefix);
 }
 // null = dati non validi (avviso gia' mostrato)
 function dittaSubDati(prefix, tipo){
   if(!(tipo==='subappaltatrice'||tipo==='subaffidataria'))
-    return {importo_affidato:null, lavorazioni_affidate:null, estremi_autorizzazione:null, categoria_subappalto:null};
+    return {importo_affidato:null, lavorazioni_affidate:null, estremi_autorizzazione:null, categoria_subappalto:null, subappalto_categorie:[]};
   const imp = parseFloat(document.getElementById(prefix+'_importo_aff')?.value);
   const lav = (document.getElementById(prefix+'_lav_aff')?.value||'').trim();
   if(!(imp>0) || !lav){
     alert('Per una ditta subappaltatrice o subaffidataria indica importo e lavorazioni comunicate: servono al controllo delle presenze nel giornale dei lavori.');
     return null;
   }
-  const cat = tipo==='subappaltatrice' ? ((document.getElementById(prefix+'_cat_sub')?.value||'').trim().toUpperCase()||null) : null;
-  if(tipo==='subappaltatrice' && !cat && categorieSub(getCantiereObj()).length){
-    alert('Indica la categoria del subappalto: serve alla verifica del limite concesso a contratto.');
-    return null;
+  let cats = [];
+  if(tipo==='subappaltatrice' && categorieSub(getCantiereObj()).length){
+    const rr = righeCatDitta(prefix).filter(x=>x.categoria || x.importoTxt!=='');
+    if(!rr.length){ alert('Indica la categoria (o le categorie) del subappalto: serve alla verifica del limite concesso a contratto.'); return null; }
+    if(rr.some(x=>!x.categoria)){ alert('C\'è una riga con importo ma senza categoria: scegli la categoria o elimina la riga.'); return null; }
+    const dup = rr.map(x=>normCat(x.categoria)).filter((x,i,a)=>a.indexOf(x)!==i);
+    if(dup.length){ alert('La categoria '+dup[0]+' è indicata due volte: somma gli importi in un\'unica riga.'); return null; }
+    if(rr.length>1 && rr.some(x=>!(x.importo>0))){ alert('Con più categorie indica l\'importo di ciascuna: serve a verificare il limite di ogni categoria.'); return null; }
+    cats = rr.map(x=>({categoria:x.categoria, importo: rr.length===1 && !(x.importo>0) ? imp : x.importo}));
   }
-  return {importo_affidato:imp, lavorazioni_affidate:lav,
+  const totCat = cats.reduce((a,x)=>a+x.importo,0);
+  return {importo_affidato: cats.length ? totCat : imp, lavorazioni_affidate:lav,
     estremi_autorizzazione:(document.getElementById(prefix+'_estremi_aut')?.value||'').trim()||null,
-    categoria_subappalto:cat};
+    categoria_subappalto: cats.length ? cats.map(x=>x.categoria).join(', ') : null,
+    subappalto_categorie: cats};
 }
 // Verifica del limite prima di salvare una ditta subappaltatrice: se il
 // nuovo importo fa superare il limite della categoria o quello complessivo,
@@ -1083,7 +1209,7 @@ async function verificaLimiteSubAlSalvataggio(prefix, dittaId, tipo, sub){
   const prob = problemiLimitiSub(c, ditte, null, false)
     .filter(p=>p.livello==='grave' && (
       p.titolo==='Limite complessivo' ||
-      (p.titolo && normCat(p.titolo.replace(/^Categoria /,''))===normCat(sub.categoria_subappalto)) ||
+      (p.titolo && (sub.subappalto_categorie||[]).some(x=>normCat(p.titolo.replace(/^Categoria /,''))===normCat(x.categoria))) ||
       (p.ditta && p.ditta.id===(dittaId||'nuova'))));
   if(!prob.length) return true;
   if(box){
@@ -1123,13 +1249,28 @@ function subCatRigaHtml(prefix, x){
   x = x || {};
   const v = k => x[k]!=null ? cseA(x[k]) : '';
   return `<div class="subcat-row" style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">
-    <label style="flex:1 1 80px;font-size:11px">Categoria<input class="form-control sc-cat" value="${v('categoria')}" placeholder="OG1" oninput="aggiornaLimitiSub('${prefix}')"></label>
+    <label style="flex:1 1 100%;min-width:0;font-size:11px">Categoria<select class="form-control sc-cat" style="width:100%;max-width:100%" onchange="sceltaCategoriaSoa(this,'${prefix}')">${opzioniCategorieSoa(x.categoria)}</select></label>
     <label style="flex:3 1 180px;font-size:11px">Descrizione<input class="form-control sc-desc" value="${v('descrizione')}" placeholder="Edifici civili e industriali"></label>
     <label style="flex:2 1 120px;font-size:11px">Importo categoria (€)<input class="form-control sc-imp" type="number" step="0.01" value="${v('importo')}" oninput="aggiornaLimitiSub('${prefix}')"></label>
     <label style="flex:1 1 90px;font-size:11px">% subappaltabile<input class="form-control sc-perc" type="number" step="0.01" min="0" max="100" value="${v('perc')}" placeholder="0 = no" oninput="aggiornaLimitiSub('${prefix}')"></label>
     <div class="sc-lim" style="flex:1 1 110px;font-size:11px;padding-bottom:8px;color:var(--muted)"></div>
     <button type="button" class="btn btn-danger btn-sm" style="margin-bottom:4px" onclick="this.parentElement.remove();aggiornaLimitiSub('${prefix}')">✕</button>
   </div>`;
+}
+function opzioniCategorieSoa(sel){
+  const k = normCat(sel);
+  let h = '<option value="">— scegli —</option>'
+    + '<optgroup label="Opere generali (OG)">' + CATEGORIE_SOA.filter(c=>c[0].startsWith('OG')).map(c=>`<option value="${c[0]}"${k===normCat(c[0])?' selected':''}>${c[0]} — ${esc(c[1])}</option>`).join('') + '</optgroup>'
+    + '<optgroup label="Opere specializzate (OS)">' + CATEGORIE_SOA.filter(c=>c[0].startsWith('OS')).map(c=>`<option value="${c[0]}"${k===normCat(c[0])?' selected':''}>${c[0]} — ${esc(c[1])}</option>`).join('') + '</optgroup>';
+  if(k && !CATEGORIE_SOA.some(c=>normCat(c[0])===k)) h += `<option value="${cseA(String(sel).toUpperCase())}" selected>${esc(String(sel).toUpperCase())}</option>`;
+  return h;
+}
+// Scegliendo la categoria si propone la descrizione ufficiale
+function sceltaCategoriaSoa(sel, prefix){
+  const row = sel.closest('.subcat-row');
+  const desc = row && row.querySelector('.sc-desc');
+  if(desc && (!desc.value.trim() || CATEGORIE_SOA.some(c=>c[1]===desc.value.trim()))) desc.value = descrCategoriaSoa(sel.value);
+  aggiornaLimitiSub(prefix);
 }
 function limitiSubCampiHtml(prefix, c){
   c = c || {};
@@ -1169,7 +1310,7 @@ function limitiSubDati(prefix){
     const descrizione=r.querySelector('.sc-desc').value.trim();
     const imp=r.querySelector('.sc-imp').value, perc=r.querySelector('.sc-perc').value;
     if(!categoria && !descrizione && imp==='' && perc==='') return;
-    if(!categoria) err.push('una categoria senza sigla (es. OG1)');
+    if(!categoria) err.push('una riga senza categoria');
     const pi=parseFloat(perc), ii=parseFloat(imp);
     if(perc==='' || isNaN(pi) || pi<0 || pi>100) err.push(`la categoria ${categoria||'?'} senza percentuale subappaltabile valida (0-100)`);
     if(pi>0 && !(ii>0)) err.push(`la categoria ${categoria||'?'} senza importo`);
@@ -3006,7 +3147,7 @@ async function renderDitte(){
         const r = esitoSubD && esitoSubD.perDitta[d.id];
         const perc = r && r.perc!=null ? r.perc : null;
         const col = perc==null ? 'var(--muted)' : perc>1 ? 'var(--red)' : perc>=SOGLIA_AVVISO_SUB ? '#B8860B' : 'var(--green)';
-        return `<div>${d.categoria_subappalto?`<span class="badge badge-blue" style="margin-right:4px">${esc(d.categoria_subappalto)}</span>`:''}<strong>${d.importo_affidato?fmtEur(d.importo_affidato):'<span style="color:var(--red)">importo mancante</span>'}</strong>${d.estremi_autorizzazione?` <span style="color:var(--muted)">— ${esc(d.estremi_autorizzazione)}</span>`:''}</div>
+        return `<div>${categorieDitta(d).map(x=>`<span class="badge badge-blue" style="margin-right:4px" title="${cseA(descrCategoriaSoa(x.categoria))}">${esc(x.categoria)}${categorieDitta(d).length>1?' '+fmtEur(x.importo):''}</span>`).join('')}<strong>${d.importo_affidato?fmtEur(d.importo_affidato):'<span style="color:var(--red)">importo mancante</span>'}</strong>${d.estremi_autorizzazione?` <span style="color:var(--muted)">— ${esc(d.estremi_autorizzazione)}</span>`:''}</div>
           <div style="color:var(--muted)">${righeLavorazioni(d.lavorazioni_affidate).map(esc).join(' · ')||'<span style="color:var(--red)">lavorazioni non indicate</span>'}</div>
           ${r&&r.presenze?`<div style="color:${col};font-weight:600;margin-top:2px">Manodopera registrata: ${fmtEur(r.costo)} (${Math.round(r.ore)} h)${perc!=null?' — '+Math.round(perc*100)+'%':''}</div>`:''}
           ${r&&r.notaLivello?`<div style="color:var(--muted);font-size:10px">${esc(r.notaLivello)}</div>`:''}
