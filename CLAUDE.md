@@ -190,6 +190,18 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   comunque») e segnalazioni in `problemiLimitiSub` dentro
   `controlloSubappalti`: importi autorizzati e manodopera registrata nel
   giornale contro il limite. Contano solo le subappaltatrici.
+- Ordini di servizio (`ods`, `ODS_TIPI`: generico, senza_aumento,
+  rimando_variante, **manodopera**). Il modello `manodopera` (aumento della
+  manodopera per recupero del ritardo, art. 122 c.4) nasce dal pulsante del
+  riquadro ritardi (`emettiOdsRitardo`): ritardi precompilati, giorni per
+  adeguare la manodopera e per trasmettere il cronoprogramma aggiornato
+  (default 10, minimo di legge), niente tavole né parte economica
+  (`bodyOdsManodopera`). Per TUTTI gli ODS: sezione «Verifica
+  dell'adempimento» (`dati_ods.verifica = {verbale, data}`, data proposta =
+  data ODS + termine) → frase «verifica con verbale di sopralluogo» nel
+  documento (`odsFraseVerifica`) e promemoria nel giornale dei lavori alla data
+  della verifica (`odsPromemoriaVerifica` via `annotaGiornale`; in modifica
+  solo se la data cambia). ODS generico: `dati_ods.giorni_termine` facoltativo.
 - Conteggio giorni contrattuali: sospensioni, riprese, proroghe (una proroga
   non sospende i lavori).
 
