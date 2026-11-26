@@ -100,6 +100,7 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   orari contrattuali sul cantiere (`costo_ora_*` comune/qualificato/specializzato/b1, `ore_giornaliere`).
   `controlloSubappalti()` + `boxSubappaltiHtml()` (cantieri, dashboard, ditte,
   giornale): lavorazioni non comunicate e costo manodopera oltre l'importo.
+  Report stampabile per ditta: `stampaReportSubappalto(dittaId)`.
 - Conteggio giorni contrattuali: sospensioni, riprese, proroghe (una proroga
   non sospende i lavori).
 
