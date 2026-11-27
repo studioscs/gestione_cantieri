@@ -239,6 +239,10 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   cantieri di cui l'utente è DL (+ profili, solo consultazione). «!» rosso e
   promemoria in dashboard se l'ultima copia ha più di 7 giorni (data salvata
   nel browser, `localStorage` `gc_ultima_copia`).
+- Su iPhone/iPad (soprattutto con l'app installata) il download automatico
+  del file non parte: dopo la preparazione `pulsantiSalvaCopiaHtml()` mostra
+  «📤 Salva in File / condividi» (`navigator.share` con il file,
+  `condividiFileCopia`) e «⬇️ Scarica di nuovo il file» (`ULTIMO_FILE_COPIA`).
 - Ripristino: confronta file e dati di adesso (mancano / modificate / nuove),
   poi «solo quello che manca» oppure «anche le modifiche». Non cancella mai
   niente; prima scarica `…-prima-del-ripristino.json`. Rimette anche un
