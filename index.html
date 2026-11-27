@@ -351,7 +351,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.28i';
+const APP_VERSIONE = '2026.11.28j';
 
 // ---- Smartphone: le tabelle larghe scorrono di lato dentro un riquadro,
 // cosi' la pagina resta della larghezza dello schermo ----
@@ -6231,6 +6231,29 @@ async function leggiDatiCopia(ids, avanza){
   }
   return {tabelle, conteggi, errori};
 }
+let ULTIMO_FILE_COPIA=null;
+function puoCondividereFile(){
+  try{ return !!(navigator.canShare && navigator.share && navigator.canShare({files:[new File(['x'],'x.json',{type:'application/json'})]})); }catch(e){ return false; }
+}
+// pulsanti per salvare il file quando il download automatico non parte
+function pulsantiSalvaCopiaHtml(){
+  if(!ULTIMO_FILE_COPIA) return '';
+  const f=ULTIMO_FILE_COPIA;
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+    ${puoCondividereFile()?`<button class="btn btn-primary btn-sm" onclick="condividiFileCopia()">📤 Salva in File / condividi</button>`:''}
+    <a class="btn btn-secondary btn-sm" href="${f.url}" download="${cseA(f.nome)}" target="_blank" rel="noopener">⬇️ Scarica di nuovo il file</a>
+  </div>
+  <div style="font-size:11px;margin-top:6px;opacity:.85">Se il file non è stato scaricato (succede su iPhone e iPad), usa «Salva in File / condividi» e scegli <strong>Salva su File</strong>, oppure invialo per email.</div>`;
+}
+async function condividiFileCopia(){
+  const f=ULTIMO_FILE_COPIA; if(!f) return;
+  try{
+    await navigator.share({files:[new File([f.blob], f.nome, {type:'application/json'})], title:f.nome});
+  }catch(e){
+    if(e && e.name==='AbortError') return;
+    esitoCopia('Non riesco ad aprire la condivisione ('+esc((e&&e.message)||String(e))+'). Prova con «Scarica di nuovo il file».'+pulsantiSalvaCopiaHtml(), 'warning');
+  }
+}
 function scaricaFileCopia(dati, suffisso){
   const ora=new Date();
   const copia={
@@ -6241,10 +6264,14 @@ function scaricaFileCopia(dati, suffisso){
   };
   const nome='gestione-cantieri-copia-'+oggiLocale()+(suffisso||'')+'.json';
   const blob=new Blob([JSON.stringify(copia)],{type:'application/json'});
+  // il file resta a disposizione per «Salva in File / condividi» e per il
+  // collegamento di riserva: su iPhone/iPad (soprattutto con l'app installata
+  // sulla schermata Home) il download automatico non parte
+  if(ULTIMO_FILE_COPIA && ULTIMO_FILE_COPIA.url) setTimeout((u=>()=>URL.revokeObjectURL(u))(ULTIMO_FILE_COPIA.url), 60000);
+  ULTIMO_FILE_COPIA={blob, nome, url:URL.createObjectURL(blob)};
   const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download=nome;
+  a.href=ULTIMO_FILE_COPIA.url; a.download=nome;
   document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(a.href),10000);
   if(!suffisso && !Object.keys(dati.errori).length){ try{ localStorage.setItem(CHIAVE_COPIA, ora.toISOString()); }catch(e){} }
   return nome;
 }
@@ -6293,14 +6320,19 @@ async function renderCopia(){
 
 async function scaricaCopia(){
   const ids=cantieriDlIds(); if(!ids.length) return;
+  esitoCopia('⏳ Lettura dei dati in corso…', 'info');
+  try{
   await conTasto('btnCopia','Lettura dati…', async avanza=>{
     const dati=await leggiDatiCopia(ids, avanza);
     const nome=scaricaFileCopia(dati);
     const righe=Object.values(dati.conteggi).reduce((s,n)=>s+n,0);
     const male=Object.keys(dati.errori);
-    if(male.length) esitoCopia(`Copia scaricata (<strong>${esc(nome)}</strong>), ma ${male.length===1?'una tabella non si è letta':male.length+' tabelle non si sono lette'}:<br>• ${male.map(t=>esc(NOMI_TABELLE_COPIA[t]||t)+': '+esc(dati.errori[t])).join('<br>• ')}<br>Riprova più tardi.`, 'warning');
-    else esitoCopia(`✅ Copia scaricata: <strong>${esc(nome)}</strong> (${righe.toLocaleString('it-IT')} righe). Salvala sul server dello studio.`);
+    if(male.length) esitoCopia(`Copia preparata (<strong>${esc(nome)}</strong>), ma ${male.length===1?'una tabella non si è letta':male.length+' tabelle non si sono lette'}:<br>• ${male.map(t=>esc(NOMI_TABELLE_COPIA[t]||t)+': '+esc(dati.errori[t])).join('<br>• ')}<br>Riprova più tardi.`+pulsantiSalvaCopiaHtml(), 'warning');
+    else esitoCopia(`✅ Copia pronta: <strong>${esc(nome)}</strong> (${righe.toLocaleString('it-IT')} righe). Salvala sul server dello studio.`+pulsantiSalvaCopiaHtml());
   });
+  }catch(e){
+    esitoCopia('La copia non è stata preparata: '+esc((e&&e.message)||String(e))+'. Controlla la connessione e riprova.', 'error');
+  }
 }
 
 const stessaRigaCopia=(a,b)=>Object.keys(a).every(k=>JSON.stringify(a[k]===undefined?null:a[k])===JSON.stringify(b[k]===undefined?null:b[k]));
