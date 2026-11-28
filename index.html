@@ -195,6 +195,8 @@ textarea.form-control{resize:vertical;min-height:80px}
   input[type=file]{max-width:100%}
   .form-group,.form-grid>*,.form-grid-3>*{min-width:0}
   .modal select,.modal input,.modal textarea{max-width:100%;min-width:0}
+  .modal label{min-width:0;max-width:100%}
+  .modal label>select,.modal label>input:not([type=checkbox]):not([type=radio]){width:100%}
   .tabella-scroll>table{min-width:max(100%,560px)}
   .main img,.modal img{max-width:100%;height:auto}
 }
@@ -351,7 +353,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 // ============================================================
 // Versione del file. Serve a verificare che su GitHub sia stato
 // caricato l'aggiornamento e che il browser non stia usando la cache.
-const APP_VERSIONE = '2026.11.28j';
+const APP_VERSIONE = '2026.11.28k';
 
 // ---- Smartphone: le tabelle larghe scorrono di lato dentro un riquadro,
 // cosi' la pagina resta della larghezza dello schermo ----
