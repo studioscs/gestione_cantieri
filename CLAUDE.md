@@ -229,10 +229,14 @@ la raccolta dati in `raccogliDatiExtraVerbale`, il ramo in
   allargare la pagina). Le tabelle sono avvolte in `.tabella-scroll` (scorrono
   di lato al loro interno) da un MutationObserver, solo su smartphone.
 - Documenti firmabili: `@media screen and (max-width:600px)` in
-  `PDF_ENGINE_CSS` (foglio nella larghezza dello schermo, pulsanti a capo).
+  `PDF_ENGINE_CSS` (foglio nella larghezza dello schermo; pulsanti su due
+  colonne e non fissi, così non coprono il documento).
 - Prova: Playwright con `devices['iPhone 14']` (anche SE, 15 Pro Max, Pixel 7,
   orizzontale): `document.documentElement.scrollWidth` deve essere uguale a
   `innerWidth` in tutte le pagine e finestre.
+  Controllare anche ogni voce del menu, ogni tipo di verbale (con utente
+  `anche_cse` per vedere i 7 della sicurezza) e ogni modello di ODS: finestra
+  nuova, finestra di modifica e documento.
 
 ### Copia di sicurezza (menu Sistema → 💾 Copia di sicurezza, solo DL)
 - Scarica `gestione-cantieri-copia-AAAA-MM-GG.json` con tutte le tabelle dei
